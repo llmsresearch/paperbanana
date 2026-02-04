@@ -70,6 +70,7 @@ Or set it up manually:
 ```bash
 cp .env.example .env
 # Edit .env and add: GOOGLE_API_KEY=your-key-here
+# Optional: Set GEMINI_BASE_URL=http://your-proxy:port if using a proxy
 ```
 
 ### Step 3: Generate a Diagram
@@ -135,6 +136,7 @@ paperbanana generate \
   --input method.txt \
   --caption "Overview of our framework" \
   --output diagram.png \
+  --image sketch.png \
   --iterations 3
 ```
 
@@ -143,6 +145,7 @@ paperbanana generate \
 | `--input` | `-i` | Path to methodology text file (required) |
 | `--caption` | `-c` | Figure caption / communicative intent (required) |
 | `--output` | `-o` | Output image path (default: auto-generated in `outputs/`) |
+| `--image` | `-img` | Path to input image(s) (e.g. sketch or chart) |
 | `--iterations` | `-n` | Number of Visualizer-Critic refinement rounds |
 | `--vlm-provider` | | VLM provider name (default: `gemini`) |
 | `--vlm-model` | | VLM model name (default: `gemini-2.0-flash`) |

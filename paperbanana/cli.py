@@ -52,6 +52,9 @@ def generate(
     config: Optional[str] = typer.Option(
         None, "--config", help="Path to config YAML file"
     ),
+    image: Optional[list[str]] = typer.Option(
+        None, "--image", "-img", help="Path to input image(s)"
+    ),
 ):
     """Generate a methodology diagram from a text description."""
     # Load source text
@@ -89,6 +92,7 @@ def generate(
         source_context=source_context,
         communicative_intent=caption,
         diagram_type=DiagramType.METHODOLOGY,
+        input_images=image,
     )
 
     console.print(Panel.fit(
