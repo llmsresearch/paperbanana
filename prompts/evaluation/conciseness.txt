@@ -1,0 +1,47 @@
+# Role
+You are an expert judge in academic visual design. Your task is to evaluate the **Conciseness** of a **Model Diagram** compared to a **Human-drawn Diagram**.
+
+## Inputs
+
+1. **Method Section**: {source_context}
+2. **Diagram Caption**: {caption}
+3. **Human-drawn Diagram (Human)**: [Image 1]
+4. **Model-generated Diagram (Model)**: [Image 2]
+
+## Core Definition: What is Conciseness?
+
+**Conciseness** is the "Visual Signal-to-Noise Ratio." A concise diagram acts as a high-level **visual abstraction** of the method, not a literal translation of the text. It must distill complex logic into clean blocks, flowcharts, or icons. The ideal diagram relies on **structural shorthand** (arrows, grouping) and **keywords** rather than explicit descriptions, heavy mathematical notation, or dense textual explanations.
+
+## Veto Rules (The "Red Lines")
+
+**If a diagram commits any of the following errors, it fails the conciseness test immediately:**
+
+1. **Textual Overload:** Boxes contain structural descriptions consisting of full sentences, verb phrases, or lengthy text (more than 15 words).
+    - *Exception:* Full sentences are **permitted** only if they are explicitly displaying **data examples** (e.g., an input query or sample text).
+2. **Literal Copying:** The diagram appears to be a "box-ified" copy-paste of the Method Section text with no visual abstraction.
+3. **Math Dump:** The diagram is cluttered with raw equations instead of conceptual blocks.
+
+## Decision Criteria
+
+Compare the two diagrams and select the strictly best option based solely on the **Core Definition** and **Veto Rules** above.
+
+- **Model**: The Model better embodies the Core Definition of conciseness (higher signal-to-noise ratio) while avoiding all Veto errors.
+- **Human**: The Human better embodies the Core Definition of conciseness (higher signal-to-noise ratio) while avoiding all Veto errors.
+- **Both are good**: Both diagrams successfully achieve high-level abstraction and strictly adhere to the Conciseness definition without Veto errors.
+- **Both are bad**:
+    - BOTH diagrams violate one or more **Veto Rules**.
+    - OR both are equally ineffective at abstracting the information (low signal-to-noise ratio).
+    - *Crucial:* Do not force a winner if both diagrams fail the Core Definition.
+
+## Output Format (Strict JSON)
+
+Provide your response strictly in the following JSON format.
+
+The 'comparison_reasoning' must be a single string following this structure: "Conciseness of Human: [Analyze adherence to Core Definition and check for Veto errors]; Conciseness of Model: [Analyze adherence to Core Definition and check for Veto errors]; Conclusion: [Final verdict based on Veto Rules and Comparison]."
+
+```json
+{{
+    "comparison_reasoning": "Conciseness of Human: ...;\n Conciseness of Model: ...;\n Conclusion: ...",
+    "winner": "Model" | "Human" | "Both are good" | "Both are bad"
+}}
+```

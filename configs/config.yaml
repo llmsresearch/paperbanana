@@ -1,0 +1,35 @@
+# PaperBanana Default Configuration
+# Override via CLI: paperbanana generate --vlm-provider gemini --image-provider google_imagen
+
+# Provider settings
+vlm:
+  provider: gemini
+  model: gemini-2.0-flash
+
+image:
+  provider: google_imagen
+  model: gemini-3-pro-image-preview
+
+# Pipeline settings
+pipeline:
+  num_retrieval_examples: 10
+  refinement_iterations: 3
+  output_resolution: "2k"   # 1k, 2k, 4k
+  diagram_type: methodology  # methodology, statistical_plot
+
+# Reference set
+reference:
+  path: data/reference_sets
+  guidelines_path: data/guidelines
+
+# Output settings
+output:
+  dir: outputs
+  save_iterations: true
+  save_prompts: true
+  save_metadata: true
+
+# Logging
+logging:
+  level: INFO
+  format: json

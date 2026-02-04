@@ -1,0 +1,21 @@
+Our model builds on the Transformer architecture with several key modifications.
+
+The input tokens are first embedded through a learned embedding layer and combined
+with sinusoidal positional encodings. The combined representations are passed through
+a stack of N=12 encoder layers, each consisting of multi-head self-attention (8 heads)
+followed by a position-wise feed-forward network with GELU activation. Layer
+normalization is applied before each sub-layer (Pre-LN), and residual connections
+wrap each sub-layer.
+
+The decoder follows a similar structure but includes an additional cross-attention
+layer between the self-attention and feed-forward sub-layers. The cross-attention
+attends to the encoder's output representations. Causal masking in the decoder's
+self-attention prevents attending to future positions.
+
+We introduce a novel sparse attention pattern in the encoder that reduces the
+quadratic complexity to O(n sqrt(n)) by attending to a subset of positions
+selected through a learned routing mechanism. The router predicts attention
+scores for all positions and selects the top-k positions for each query.
+
+The final decoder output is projected through a linear layer followed by
+softmax to produce output token probabilities.

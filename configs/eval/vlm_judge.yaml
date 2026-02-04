@@ -1,0 +1,8 @@
+# VLM-as-Judge evaluation config
+judge_model: gpt-4o
+dimensions:
+  - faithfulness
+  - conciseness
+  - readability
+  - aesthetics
+score_range: [1, 10]

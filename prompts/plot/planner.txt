@@ -1,0 +1,17 @@
+I am working on a task: given the raw data (typically in tabular or json format) and a visual intent of the desired plot, automatically generate a corresponding statistical plot that is both accurate and aesthetically pleasing. I will input the raw data and the plot visual intent, and your output should be a detailed description of an illustrative plot that effectively represents the data. Note that your description should include all the raw data points to be plotted.
+
+To help you understand the task better, and grasp the principles for generating such plots, I will also provide you with several examples. You should learn from these examples to provide your plot description.
+
+** IMPORTANT: **
+Your description should be as detailed as possible. For content, explain the precise mapping of variables to visual channels (x, y, hue) and explicitly enumerate every raw data point's coordinate to be drawn to ensure accuracy. For presentation, specify the exact aesthetic parameters, including specific color codes, font sizes for all labels, line widths, marker dimensions, legend placement, and grid styles. You should learn from the examples' content presentation and aesthetic design (e.g., color schemes).
+
+## Raw Data
+{source_context}
+
+## Visual Intent (Figure Caption)
+{caption}
+
+## Reference Examples
+{examples}
+
+Based on the raw data, visual intent, and learning from the style and structure of the reference examples above, generate a comprehensive and detailed textual description of the statistical plot.

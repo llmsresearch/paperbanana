@@ -1,0 +1,9 @@
+# Google Gemini 3 Pro Image Provider
+type: google_imagen
+priority: 1
+capabilities:
+  - text_to_image
+  - aspect_ratio_control
+config:
+  model: gemini-3-pro-image-preview
+  api_key: ${GOOGLE_API_KEY}

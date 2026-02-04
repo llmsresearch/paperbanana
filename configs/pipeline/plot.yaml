@@ -1,0 +1,5 @@
+# Statistical plot generation pipeline config
+diagram_type: statistical_plot
+num_retrieval_examples: 5
+refinement_iterations: 3
+output_resolution: "2k"

@@ -1,0 +1,13 @@
+# Google Gemini VLM Provider (FREE tier)
+# Get API key: https://makersuite.google.com/app/apikey
+type: gemini
+priority: 2
+capabilities:
+  - text_generation
+  - vision_input
+  - json_mode
+config:
+  model: gemini-2.0-flash
+  api_key: ${GOOGLE_API_KEY}
+  temperature: 1.0
+  max_tokens: 4096

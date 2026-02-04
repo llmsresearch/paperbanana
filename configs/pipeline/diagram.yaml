@@ -1,0 +1,5 @@
+# Diagram generation pipeline config
+diagram_type: methodology
+num_retrieval_examples: 10
+refinement_iterations: 3
+output_resolution: "2k"

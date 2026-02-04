@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Outputs and generated images
+outputs/
+run_*/
+*.png
+*.jpg
+*.jpeg
+!data/reference_sets/**/*.png
+!data/reference_sets/**/*.jpg
+
+# Reference set build artifacts (large, copyrighted PDFs)
+data/reference_sets/output/
+data/reference_sets/input/
+data/reference_sets/mineru_exports/
+
+# Copyrighted paper text
+paper.md
+
+# Credentials
+*.pem
+*.p12
+
+# Logs
+*.log
+
+# AI tool configs
+.cursor/
+.claude/
+.deepseek/
+.gemini/
+.google/
+.openai/
+.anthropic/
+.ollama/
+.mcp/
+.mcp.yaml
+.mcp.json
+.mcp.yml
+.mcp.yaml.lock
+CLAUDE.md
+
+
+.ruff_cache/
+.pytest_cache/
+.venv/
+.env
