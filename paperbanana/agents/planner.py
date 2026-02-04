@@ -9,6 +9,7 @@ import structlog
 from paperbanana.agents.base import BaseAgent
 from paperbanana.core.types import DiagramType, ReferenceExample
 from paperbanana.core.utils import load_image
+from PIL import Image
 from paperbanana.providers.base import VLMProvider
 
 logger = structlog.get_logger()
@@ -35,6 +36,7 @@ class PlannerAgent(BaseAgent):
         caption: str,
         examples: list[ReferenceExample],
         diagram_type: DiagramType = DiagramType.METHODOLOGY,
+        input_images: list[Image.Image] | None = None,
     ) -> str:
         """Generate a detailed textual description of the target diagram.
 
@@ -43,21 +45,32 @@ class PlannerAgent(BaseAgent):
             caption: Communicative intent / figure caption.
             examples: Retrieved reference examples for in-context learning.
             diagram_type: Type of diagram being generated.
+            input_images: Optional user-provided input images (sketches/charts).
 
         Returns:
             Detailed textual description for the Visualizer.
         """
-        # Format examples for in-context learning
-        examples_text = self._format_examples(examples)
+        # Format input images info
+        input_imgs = input_images or []
+        num_inputs = len(input_imgs)
+        input_images_text = ""
+        if num_inputs > 0:
+            input_images_text = f"\n**User Input Images**: [See images 1-{num_inputs} provided above]\n"
+
+        # Format examples for in-context learning (start index after input images)
+        examples_text = self._format_examples(examples, start_index=num_inputs)
 
         # Load reference images for visual in-context learning
         example_images = self._load_example_images(examples)
+        
+        # Combine images: User Inputs + Reference Examples
+        all_images = input_imgs + example_images
 
         prompt_type = "diagram" if diagram_type == DiagramType.METHODOLOGY else "plot"
         template = self.load_prompt(prompt_type)
         prompt = self.format_prompt(
             template,
-            source_context=source_context,
+            source_context=source_context + input_images_text,
             caption=caption,
             examples=examples_text,
         )
@@ -71,7 +84,7 @@ class PlannerAgent(BaseAgent):
 
         description = await self.vlm.generate(
             prompt=prompt,
-            images=example_images if example_images else None,
+            images=all_images if all_images else None,
             temperature=0.7,
             max_tokens=4096,
         )
@@ -79,17 +92,18 @@ class PlannerAgent(BaseAgent):
         logger.info("Planner generated description", length=len(description))
         return description
 
-    def _format_examples(self, examples: list[ReferenceExample]) -> str:
+    def _format_examples(self, examples: list[ReferenceExample], start_index: int = 0) -> str:
         """Format reference examples for the planner prompt.
 
-        Each example includes its text metadata and a reference to the
-        corresponding image (passed separately as visual input).
+        Args:
+            examples: List of reference examples.
+            start_index: Starting index for image references (after user inputs).
         """
         if not examples:
             return "(No reference examples available. Generate based on source context alone.)"
 
         lines = []
-        img_index = 0
+        img_index = start_index
         for i, ex in enumerate(examples, 1):
             has_image = self._has_valid_image(ex)
             image_ref = ""

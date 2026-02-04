@@ -21,7 +21,7 @@ from paperbanana.core.types import (
     IterationRecord,
     RunMetadata,
 )
-from paperbanana.core.utils import ensure_dir, generate_run_id, save_json
+from paperbanana.core.utils import ensure_dir, generate_run_id, save_json, load_image
 from paperbanana.guidelines.methodology import load_methodology_guidelines
 from paperbanana.guidelines.plots import load_plot_guidelines
 from paperbanana.providers.registry import ProviderRegistry
@@ -199,11 +199,22 @@ class PaperBananaPipeline:
 
         # Step 2: Planner — generate textual description
         logger.info("Phase 1: Planning")
+        
+        # Load user input images if provided
+        input_images = []
+        if input.input_images:
+            for img_path in input.input_images:
+                try:
+                    input_images.append(load_image(img_path))
+                except Exception as e:
+                    logger.warning("Failed to load input image", path=img_path, error=str(e))
+
         description = await self.planner.run(
             source_context=input.source_context,
             caption=input.communicative_intent,
             examples=examples,
             diagram_type=input.diagram_type,
+            input_images=input_images,
         )
 
         # Step 3: Stylist — optimize description aesthetics

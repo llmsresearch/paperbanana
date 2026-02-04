@@ -24,6 +24,9 @@ class GenerationInput(BaseModel):
     raw_data: Optional[dict[str, Any]] = Field(
         default=None, description="Raw data for statistical plots (CSV path or dict)"
     )
+    input_images: Optional[list[str]] = Field(
+        default=None, description="Paths to user-provided input images"
+    )
 
 
 class ReferenceExample(BaseModel):
