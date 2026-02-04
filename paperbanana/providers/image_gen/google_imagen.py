@@ -44,7 +44,14 @@ class GoogleImagenGen(ImageGenProvider):
             try:
                 from google import genai
 
-                self._client = genai.Client(api_key=self._api_key)
+                import os
+                
+                kwargs = {"api_key": self._api_key}
+                base_url = os.getenv("GEMINI_BASE_URL")
+                if base_url:
+                    kwargs["http_options"] = {"base_url": base_url}
+
+                self._client = genai.Client(**kwargs)
             except ImportError:
                 raise ImportError(
                     "google-genai is required for Google Imagen provider. "

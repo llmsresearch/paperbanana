@@ -35,7 +35,7 @@ class ReferenceStore:
             self._loaded = True
             return
 
-        with open(index_file) as f:
+        with open(index_file, encoding="utf-8") as f:
             data = json.load(f)
 
         for item in data.get("examples", []):

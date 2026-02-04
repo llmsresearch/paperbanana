@@ -4,10 +4,10 @@
 # Provider settings
 vlm:
   provider: gemini
-  model: gemini-2.0-flash
+  model: gemini-3-flash
 
 image:
-  provider: google_imagen
+  provider: gemini
   model: gemini-3-pro-image-preview
 
 # Pipeline settings
@@ -31,5 +31,5 @@ output:
 
 # Logging
 logging:
-  level: INFO
+  level: DEBUG
   format: json
