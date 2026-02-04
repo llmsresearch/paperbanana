@@ -113,7 +113,7 @@ PaperBanana implements a two-phase multi-agent pipeline with 5 specialized agent
 
 | Component | Provider | Model |
 |-----------|----------|-------|
-| VLM (planning, critique) | Google Gemini | `gemini-3-flash` |
+| VLM (planning, critique) | Google Gemini | `gemini-2.0-flash` |
 | Image Generation | Google Gemini | `gemini-3-pro-image-preview` |
 
 ---
@@ -139,7 +139,7 @@ paperbanana generate \
 | `--image` | `-img` | Path to input image(s) (e.g. sketch or chart) |
 | `--iterations` | `-n` | Number of Visualizer-Critic refinement rounds |
 | `--vlm-provider` | | VLM provider name (default: `gemini`) |
-| `--vlm-model` | | VLM model name (default: `gemini-3-flash`) |
+| `--vlm-model` | | VLM model name (default: `gemini-2.0-flash`) |
 | `--image-provider` | | Image gen provider (default: `google_imagen`) |
 | `--image-model` | | Image gen model (default: `gemini-3-pro-image-preview`) |
 | `--config` | | Path to YAML config file (see `configs/config.yaml`) |
@@ -238,7 +238,7 @@ Key settings:
 ```yaml
 vlm:
   provider: gemini
-  model: gemini-3-flash
+  model: gemini-2.0-flash
 
 image:
   provider: google_imagen

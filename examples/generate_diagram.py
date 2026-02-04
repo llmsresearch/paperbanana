@@ -37,7 +37,7 @@ async def main():
 
     settings = Settings(
         vlm_provider="gemini",
-        vlm_model="gemini-3-flash",
+        vlm_model="gemini-2.0-flash",
         image_provider="google_imagen",
         image_model="gemini-3-pro-image-preview",
         refinement_iterations=2,
