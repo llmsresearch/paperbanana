@@ -136,7 +136,7 @@ paperbanana generate \
 | `--input` | `-i` | Path to methodology text file (required) |
 | `--caption` | `-c` | Figure caption / communicative intent (required) |
 | `--output` | `-o` | Output image path (default: auto-generated in `outputs/`) |
-| `--image` | `-img` | Path to input image(s) (e.g. sketch or chart) |
+| `--image` | `-img` | Path to input image(s); repeat for multiple (e.g. `--image a.png --image b.png`) |
 | `--iterations` | `-n` | Number of Visualizer-Critic refinement rounds |
 | `--vlm-provider` | | VLM provider name (default: `gemini`) |
 | `--vlm-model` | | VLM model name (default: `gemini-2.0-flash`) |
