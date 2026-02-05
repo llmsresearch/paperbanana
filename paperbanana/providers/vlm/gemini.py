@@ -20,7 +20,7 @@ class GeminiVLM(VLMProvider):
     Free tier: https://makersuite.google.com/app/apikey
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3-pro-preview"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash"):
         self._api_key = api_key
         self._model = model
         self._client = None

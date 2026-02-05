@@ -65,6 +65,13 @@ def generate(
 
     source_context = input_path.read_text(encoding="utf-8")
 
+    # Validate image paths if provided
+    if image:
+        for img_path in image:
+            if not Path(img_path).exists():
+                console.print(f"[red]Error: Image file not found: {img_path}[/red]")
+                raise typer.Exit(1)
+
     # Build settings — only override values explicitly passed via CLI
     overrides = {}
     if vlm_provider:
