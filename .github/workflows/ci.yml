@@ -41,7 +41,7 @@ jobs:
         run: pytest tests/ -v --tb=short --cov=paperbanana --cov-report=xml
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
