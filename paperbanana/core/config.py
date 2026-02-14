@@ -44,6 +44,7 @@ class OutputConfig(BaseSettings):
     """Output configuration."""
 
     dir: str = "outputs"
+    format: str = "png"
     save_iterations: bool = True
     save_prompts: bool = True
     save_metadata: bool = True
@@ -69,6 +70,7 @@ class Settings(BaseSettings):
 
     # Output settings
     output_dir: str = "outputs"
+    output_format: str = "png"
     save_iterations: bool = True
 
     # API Keys (loaded from environment)
@@ -109,6 +111,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "reference.path": "reference_set_path",
         "reference.guidelines_path": "guidelines_path",
         "output.dir": "output_dir",
+        "output.format": "output_format",
         "output.save_iterations": "save_iterations",
     }
 

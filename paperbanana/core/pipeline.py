@@ -22,7 +22,7 @@ from paperbanana.core.types import (
     IterationRecord,
     RunMetadata,
 )
-from paperbanana.core.utils import ensure_dir, generate_run_id, save_json
+from paperbanana.core.utils import ensure_dir, generate_run_id, load_image, save_image, save_json
 from paperbanana.guidelines.methodology import load_methodology_guidelines
 from paperbanana.guidelines.plots import load_plot_guidelines
 from paperbanana.providers.registry import ProviderRegistry
@@ -310,12 +310,13 @@ class PaperBananaPipeline:
 
         # Final output
         final_image = iterations[-1].image_path
-        final_output_path = str(self._run_dir / "final_output.png")
+        output_format = getattr(self.settings, "output_format", "png").lower()
+        ext = "jpg" if output_format == "jpeg" else output_format
+        final_output_path = str(self._run_dir / f"final_output.{ext}")
 
-        # Copy final image to output location
-        import shutil
-
-        shutil.copy2(final_image, final_output_path)
+        # Load and save in desired format (handles PNG→JPEG/WebP conversion)
+        img = load_image(final_image)
+        save_image(img, final_output_path, format=output_format)
 
         total_seconds = time.perf_counter() - total_start
         logger.info(

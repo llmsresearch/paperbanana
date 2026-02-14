@@ -41,9 +41,19 @@ def generate(
     iterations: Optional[int] = typer.Option(
         None, "--iterations", "-n", help="Refinement iterations"
     ),
+    format: str = typer.Option(
+        "png",
+        "--format",
+        "-f",
+        help="Output image format (png, jpeg, or webp)",
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
 ):
     """Generate a methodology diagram from a text description."""
+    if format not in ("png", "jpeg", "webp"):
+        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+        raise typer.Exit(1)
+
     # Load source text
     input_path = Path(input)
     if not input_path.exists():
@@ -66,6 +76,7 @@ def generate(
         overrides["refinement_iterations"] = iterations
     if output:
         overrides["output_dir"] = str(Path(output).parent)
+    overrides["output_format"] = format
 
     if config:
         settings = Settings.from_yaml(config, **overrides)
@@ -119,8 +130,18 @@ def plot(
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output image path"),
     vlm_provider: str = typer.Option("gemini", "--vlm-provider", help="VLM provider"),
     iterations: int = typer.Option(3, "--iterations", "-n", help="Number of refinement iterations"),
+    format: str = typer.Option(
+        "png",
+        "--format",
+        "-f",
+        help="Output image format (png, jpeg, or webp)",
+    ),
 ):
     """Generate a statistical plot from data."""
+    if format not in ("png", "jpeg", "webp"):
+        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+        raise typer.Exit(1)
+
     data_path = Path(data)
     if not data_path.exists():
         console.print(f"[red]Error: Data file not found: {data}[/red]")
@@ -150,6 +171,7 @@ def plot(
     settings = Settings(
         vlm_provider=vlm_provider,
         refinement_iterations=iterations,
+        output_format=format,
     )
 
     gen_input = GenerationInput(
