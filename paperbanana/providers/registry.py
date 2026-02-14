@@ -50,7 +50,9 @@ class ProviderRegistry:
                 model=settings.image_model,
             )
         elif provider == "openrouter_imagen":
-            from paperbanana.providers.image_gen.openrouter_imagen import OpenRouterImageGen
+            from paperbanana.providers.image_gen.openrouter_imagen import (
+                OpenRouterImageGen,
+            )
 
             return OpenRouterImageGen(
                 api_key=settings.openrouter_api_key,

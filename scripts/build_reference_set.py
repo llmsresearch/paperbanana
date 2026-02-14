@@ -197,11 +197,22 @@ def parse_content_list(content_list_path: Path) -> dict:
 
     # 1. Extract paper title
     skip_titles = {
-        "abstract", "contents", "table of contents", "references",
-        "acknowledgment", "acknowledgments", "acknowledgement",
-        "appendix", "supplementary material", "supplementary",
-        "introduction", "conclusion", "conclusions",
-        "related work", "limitations", "broader impact",
+        "abstract",
+        "contents",
+        "table of contents",
+        "references",
+        "acknowledgment",
+        "acknowledgments",
+        "acknowledgement",
+        "appendix",
+        "supplementary material",
+        "supplementary",
+        "introduction",
+        "conclusion",
+        "conclusions",
+        "related work",
+        "limitations",
+        "broader impact",
     }
     paper_title = ""
 
@@ -246,9 +257,7 @@ def parse_content_list(content_list_path: Path) -> dict:
         method_section_nums = explicit_method_nums
     else:
         # Positional fallback: sections between intro and experiments
-        method_section_nums = set(
-            _find_method_sections_by_position(headings)
-        )
+        method_section_nums = set(_find_method_sections_by_position(headings))
 
     # 4. Extract methodology section text
     in_method = False
@@ -325,13 +334,15 @@ def parse_content_list(content_list_path: Path) -> dict:
 
         ratio = compute_aspect_ratio(bbox)
 
-        figures.append({
-            "caption": caption,
-            "local_path": abs_img_path,
-            "img_path": img_path,
-            "aspect_ratio": ratio,
-            "bbox": bbox,
-        })
+        figures.append(
+            {
+                "caption": caption,
+                "local_path": abs_img_path,
+                "img_path": img_path,
+                "aspect_ratio": ratio,
+                "bbox": bbox,
+            }
+        )
 
     return {
         "title": paper_title,
@@ -354,17 +365,39 @@ def identify_methodology_figures(
     - Caption suggests methodology/architecture (not results/plots)
     """
     result_keywords = [
-        "performance", "accuracy", "comparison", "ablation",
-        "training curve", "loss curve", "convergence",
-        "visualization of", "t-sne", "tsne", "qualitative",
-        "pass@", "wall-clock", "efficiency",
+        "performance",
+        "accuracy",
+        "comparison",
+        "ablation",
+        "training curve",
+        "loss curve",
+        "convergence",
+        "visualization of",
+        "t-sne",
+        "tsne",
+        "qualitative",
+        "pass@",
+        "wall-clock",
+        "efficiency",
     ]
 
     method_keywords = [
-        "overview", "architecture", "framework", "pipeline",
-        "model", "method", "proposed", "approach", "system",
-        "structure", "design", "workflow", "diagram",
-        "illustration", "confronting", "mechanism",
+        "overview",
+        "architecture",
+        "framework",
+        "pipeline",
+        "model",
+        "method",
+        "proposed",
+        "approach",
+        "system",
+        "structure",
+        "design",
+        "workflow",
+        "diagram",
+        "illustration",
+        "confronting",
+        "mechanism",
     ]
 
     candidates = []
@@ -411,25 +444,64 @@ def guess_category(title: str, methodology_text: str) -> str:
 
     category_keywords = {
         "agent_reasoning": [
-            "agent", "llm", "language model", "retrieval", "reasoning",
-            "reinforcement learning", "planning", "rag",
-            "multi-agent", "dialogue", "chatbot", "instruction",
-            "chain-of-thought", "code generation", "tool use",
+            "agent",
+            "llm",
+            "language model",
+            "retrieval",
+            "reasoning",
+            "reinforcement learning",
+            "planning",
+            "rag",
+            "multi-agent",
+            "dialogue",
+            "chatbot",
+            "instruction",
+            "chain-of-thought",
+            "code generation",
+            "tool use",
         ],
         "vision_perception": [
-            "vision", "image", "object detection", "segmentation",
-            "visual", "point cloud", "3d", "video", "camera",
-            "optical", "lidar", "depth", "perception", "reconstruction",
+            "vision",
+            "image",
+            "object detection",
+            "segmentation",
+            "visual",
+            "point cloud",
+            "3d",
+            "video",
+            "camera",
+            "optical",
+            "lidar",
+            "depth",
+            "perception",
+            "reconstruction",
         ],
         "generative_learning": [
-            "diffusion", "generative", "vae", "autoencoder", "gan",
-            "generation", "synthesis", "denoising", "latent",
-            "flow matching", "score-based",
+            "diffusion",
+            "generative",
+            "vae",
+            "autoencoder",
+            "gan",
+            "generation",
+            "synthesis",
+            "denoising",
+            "latent",
+            "flow matching",
+            "score-based",
         ],
         "science_applications": [
-            "graph", "molecule", "protein", "drug", "chemical",
-            "physics", "material", "biology", "genome",
-            "gnn", "scientific", "neural network",
+            "graph",
+            "molecule",
+            "protein",
+            "drug",
+            "chemical",
+            "physics",
+            "material",
+            "biology",
+            "genome",
+            "gnn",
+            "scientific",
+            "neural network",
         ],
     }
 
@@ -456,7 +528,9 @@ def process_paper(
 
     # Derive paper ID from directory name
     # Structure: output/{paper_id}/hybrid_auto/ → paper_id is grandparent
-    dir_name = paper_dir.parent.name if paper_dir.name.endswith("auto") else paper_dir.name
+    dir_name = (
+        paper_dir.parent.name if paper_dir.name.endswith("auto") else paper_dir.name
+    )
 
     print(f"\nProcessing: {dir_name}")
     print(f"  Source: {content_list}")
@@ -482,7 +556,8 @@ def process_paper(
     if not candidates:
         # Take the first captioned figure within aspect ratio range
         in_range = [
-            f for f in figures
+            f
+            for f in figures
             if f["caption"] and min_ratio <= f["aspect_ratio"] <= max_ratio
         ]
         if in_range:
@@ -536,23 +611,30 @@ def main():
         description="Build PaperBanana reference set from MinerU local output"
     )
     parser.add_argument(
-        "--input", required=True,
+        "--input",
+        required=True,
         help="MinerU output directory (or single paper's hybrid_auto dir)",
     )
     parser.add_argument(
-        "--output", required=True,
+        "--output",
+        required=True,
         help="Output directory for reference set",
     )
     parser.add_argument(
-        "--min-ratio", type=float, default=1.5,
+        "--min-ratio",
+        type=float,
+        default=1.5,
         help="Minimum aspect ratio (default: 1.5)",
     )
     parser.add_argument(
-        "--max-ratio", type=float, default=3.5,
+        "--max-ratio",
+        type=float,
+        default=3.5,
         help="Maximum aspect ratio (default: 3.5)",
     )
     parser.add_argument(
-        "--append", action="store_true",
+        "--append",
+        action="store_true",
         help="Append to existing index.json instead of overwriting",
     )
     args = parser.parse_args()

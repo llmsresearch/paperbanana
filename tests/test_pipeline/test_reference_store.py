@@ -83,7 +83,12 @@ def test_get_by_id():
     with tempfile.TemporaryDirectory() as tmpdir:
         data = {
             "examples": [
-                {"id": "r1", "source_context": "c1", "caption": "c1", "image_path": "i1"},
+                {
+                    "id": "r1",
+                    "source_context": "c1",
+                    "caption": "c1",
+                    "image_path": "i1",
+                },
             ],
         }
         Path(tmpdir, "index.json").write_text(json.dumps(data))
