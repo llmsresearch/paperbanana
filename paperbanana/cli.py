@@ -286,5 +286,20 @@ def evaluate(
             console.print(f"\n[bold]{dim}[/bold]: {result.reasoning}")
 
 
+@app.command()
+def version():
+    """Show version information."""
+    import sys
+    from importlib.metadata import version
+
+    try:
+        pkg_version = version("paperbanana")
+    except Exception:
+        pkg_version = "unknown"
+
+    console.print(f"PaperBanana version: [bold]{pkg_version}[/bold]")
+    console.print(f"Python version:      [bold]{sys.version.split()[0]}[/bold]")
+
+
 if __name__ == "__main__":
     app()
