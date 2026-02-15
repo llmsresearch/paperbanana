@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -170,6 +171,8 @@ class PaperBananaPipeline:
         Returns:
             GenerationOutput with final image and metadata.
         """
+        total_start = time.perf_counter()
+
         logger.info(
             "Starting generation",
             run_id=self.run_id,
@@ -189,6 +192,7 @@ class PaperBananaPipeline:
         # Step 1: Retriever — find relevant examples
         logger.info("Phase 1: Retrieval")
         candidates = self.reference_store.get_all()
+        retrieval_start = time.perf_counter()
         examples = await self.retriever.run(
             source_context=input.source_context,
             caption=input.communicative_intent,
@@ -196,24 +200,42 @@ class PaperBananaPipeline:
             num_examples=self.settings.num_retrieval_examples,
             diagram_type=input.diagram_type,
         )
+        retrieval_seconds = time.perf_counter() - retrieval_start
+        logger.info(
+            "[Retriever] done",
+            seconds=round(retrieval_seconds, 1),
+            examples_found=len(examples),
+        )
 
         # Step 2: Planner — generate textual description
         logger.info("Phase 1: Planning")
+        planning_start = time.perf_counter()
         description = await self.planner.run(
             source_context=input.source_context,
             caption=input.communicative_intent,
             examples=examples,
             diagram_type=input.diagram_type,
         )
+        planning_seconds = time.perf_counter() - planning_start
+        logger.info(
+            "[Planner] done",
+            seconds=round(planning_seconds, 1),
+        )
 
         # Step 3: Stylist — optimize description aesthetics
         logger.info("Phase 1: Styling")
+        styling_start = time.perf_counter()
         optimized_description = await self.stylist.run(
             description=description,
             guidelines=guidelines,
             source_context=input.source_context,
             caption=input.communicative_intent,
             diagram_type=input.diagram_type,
+        )
+        styling_seconds = time.perf_counter() - styling_start
+        logger.info(
+            "[Stylist] done",
+            seconds=round(styling_seconds, 1),
         )
 
         # Save planning outputs
@@ -231,19 +253,27 @@ class PaperBananaPipeline:
 
         current_description = optimized_description
         iterations: list[IterationRecord] = []
+        iteration_timings = []
 
         for i in range(self.settings.refinement_iterations):
             logger.info(f"Phase 2: Iteration {i + 1}/{self.settings.refinement_iterations}")
 
             # Step 4: Visualizer — generate image
+            visualizer_start = time.perf_counter()
             image_path = await self.visualizer.run(
                 description=current_description,
                 diagram_type=input.diagram_type,
                 raw_data=input.raw_data,
                 iteration=i + 1,
             )
+            visualizer_seconds = time.perf_counter() - visualizer_start
+            logger.info(
+                f"[Visualizer] Iteration {i + 1}/{self.settings.refinement_iterations} done",
+                seconds=round(visualizer_seconds, 1),
+            )
 
             # Step 5: Critic — evaluate and provide feedback
+            critic_start = time.perf_counter()
             critique = await self.critic.run(
                 image_path=image_path,
                 description=current_description,
@@ -251,12 +281,25 @@ class PaperBananaPipeline:
                 caption=input.communicative_intent,
                 diagram_type=input.diagram_type,
             )
+            critic_seconds = time.perf_counter() - critic_start
+            logger.info(
+                "[Critic] done",
+                seconds=round(critic_seconds, 1),
+                needs_revision=critique.needs_revision,
+            )
 
             iteration_record = IterationRecord(
                 iteration=i + 1,
                 description=current_description,
                 image_path=image_path,
                 critique=critique,
+            )
+            iteration_timings.append(
+                {
+                    "iteration": i + 1,
+                    "visualizer_seconds": visualizer_seconds,
+                    "critic_seconds": critic_seconds,
+                }
             )
             iterations.append(iteration_record)
 
@@ -296,6 +339,13 @@ class PaperBananaPipeline:
 
         shutil.copy2(final_image, final_output_path)
 
+        total_seconds = time.perf_counter() - total_start
+        logger.info(
+            "Total generation time",
+            run_id=self.run_id,
+            total_seconds=total_seconds,
+        )
+
         # Build metadata
         metadata = RunMetadata(
             run_id=self.run_id,
@@ -308,14 +358,24 @@ class PaperBananaPipeline:
             config_snapshot=self.settings.model_dump(exclude={"google_api_key"}),
         )
 
+        metadata_dict = metadata.model_dump()
+
+        metadata_dict["timing"] = {
+            "total_seconds": total_seconds,
+            "retrieval_seconds": retrieval_seconds,
+            "planning_seconds": planning_seconds,
+            "styling_seconds": styling_seconds,
+            "iterations": iteration_timings,
+        }
+
         if self.settings.save_iterations:
-            save_json(metadata.model_dump(), self._run_dir / "metadata.json")
+            save_json(metadata_dict, self._run_dir / "metadata.json")
 
         output = GenerationOutput(
             image_path=final_output_path,
             description=current_description,
             iterations=iterations,
-            metadata=metadata.model_dump(),
+            metadata=metadata_dict,
         )
 
         logger.info(

@@ -44,12 +44,10 @@ def _fig(h: str) -> str:
 PAPER_SELECTIONS = {
     "2404.15806v1": {
         "title": (
-            "Where to Mask: Structure-Guided Masking "
-            "for Graph Masked Autoencoders"
+            "Where to Mask: Structure-Guided Masking " "for Graph Masked Autoencoders"
         ),
         "selected_figure": _fig(
-            "9da89b3f6897112272256431dcad41239"
-            "009c826b5da14efdb95deaeb0e38199"
+            "9da89b3f6897112272256431dcad41239" "009c826b5da14efdb95deaeb0e38199"
         ),
         "caption": (
             "Overview of StructMAE. (a) The overall pipeline: Input Graph -> SBS (Structure-based "
@@ -66,8 +64,7 @@ PAPER_SELECTIONS = {
             "During Continual Pre-Training?"
         ),
         "selected_figure": _fig(
-            "6167e9ed1ed7500b7a76ba5fb813cabf"
-            "b897d526c1f6d1c18981d3d41ba07a2e"
+            "6167e9ed1ed7500b7a76ba5fb813cabf" "b897d526c1f6d1c18981d3d41ba07a2e"
         ),
         "caption": (
             "Concept Circuits: A transformer block "
@@ -86,8 +83,7 @@ PAPER_SELECTIONS = {
             "Inference by Glimpsing One Token of Thoughts"
         ),
         "selected_figure": _fig(
-            "7b79ff05f01bf6cc8e5fdaeb95c92e3b"
-            "c667deae618b1f2a821c482827489943"
+            "7b79ff05f01bf6cc8e5fdaeb95c92e3b" "c667deae618b1f2a821c482827489943"
         ),
         "caption": (
             "Overview of GlimpRouter. The framework "
@@ -109,8 +105,7 @@ PAPER_SELECTIONS = {
             "Watermark for Large Reasoning LLMs"
         ),
         "selected_figure": _fig(
-            "222b8921a57bd4baf5ca6f251ff2081e"
-            "fb7d3b764b17015fe5a02e427dd28c23"
+            "222b8921a57bd4baf5ca6f251ff2081e" "fb7d3b764b17015fe5a02e427dd28c23"
         ),
         "caption": (
             "ReasonMark pipeline: A prompt is processed "
@@ -127,8 +122,7 @@ PAPER_SELECTIONS = {
     "2601.06411v1": {
         "title": "Structured Episodic Event Memory",
         "selected_figure": _fig(
-            "d72791f8835f57030107137b3aa96990"
-            "8fa785393b58d0d4d2afb91a7dce0204"
+            "d72791f8835f57030107137b3aa96990" "8fa785393b58d0d4d2afb91a7dce0204"
         ),
         "caption": (
             "SEEM architecture overview. Sequential "
@@ -145,13 +139,9 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.06953v2": {
-        "title": (
-            "X-Coder: Fully Synthetic Training "
-            "for Competitive Programming"
-        ),
+        "title": ("X-Coder: Fully Synthetic Training " "for Competitive Programming"),
         "selected_figure": _fig(
-            "5a0097931425808d877b1ccdb7cabc36"
-            "8545e988513d5344f181d168b61d21d5"
+            "5a0097931425808d877b1ccdb7cabc36" "8545e988513d5344f181d168b61d21d5"
         ),
         "caption": (
             "Task Generation pipeline for X-Coder. "
@@ -165,13 +155,9 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.07033v1": {
-        "title": (
-            "Codified Foreshadowing-Payoff "
-            "Text Generation"
-        ),
+        "title": ("Codified Foreshadowing-Payoff " "Text Generation"),
         "selected_figure": _fig(
-            "4c72a4be8084b767765f79246c6615dd"
-            "2788558e43724d1ed7da56ac04503e68"
+            "4c72a4be8084b767765f79246c6615dd" "2788558e43724d1ed7da56ac04503e68"
         ),
         "caption": (
             "The Codified Foreshadow-Payoff Generation "
@@ -186,13 +172,9 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.07055v1": {
-        "title": (
-            "Dr. Zero: Self-Evolving Search Agents "
-            "without Training Data"
-        ),
+        "title": ("Dr. Zero: Self-Evolving Search Agents " "without Training Data"),
         "selected_figure": _fig(
-            "1852b8683cae159e96fea0bc3e3f4736"
-            "71975b10aea5a021abda1ffd88c60b1e"
+            "1852b8683cae159e96fea0bc3e3f4736" "71975b10aea5a021abda1ffd88c60b1e"
         ),
         "caption": (
             "Self-Evolution Feedback Loop in Dr. Zero. "
@@ -207,13 +189,9 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.09259v1": {
-        "title": (
-            "MAXS: Meta-Adaptive Exploration "
-            "with LLM Agents"
-        ),
+        "title": ("MAXS: Meta-Adaptive Exploration " "with LLM Agents"),
         "selected_figure": _fig(
-            "812e3007cb785627d953fdd256f5396e"
-            "d2a3cdd921805d0783e913f899f4d1c1"
+            "812e3007cb785627d953fdd256f5396e" "d2a3cdd921805d0783e913f899f4d1c1"
         ),
         "caption": (
             "MAXS architecture. An LLM Agent with "
@@ -229,12 +207,10 @@ PAPER_SELECTIONS = {
     },
     "2601.09708v1": {
         "title": (
-            "Fast-ThinkAct: Efficient VLA Reasoning "
-            "via Verbalizable Latent Planning"
+            "Fast-ThinkAct: Efficient VLA Reasoning " "via Verbalizable Latent Planning"
         ),
         "selected_figure": _fig(
-            "9daba4ee7c2e20f2e82e35d6a390779a"
-            "cfe09bbf703f9f30e11ab4167f1a0a73"
+            "9daba4ee7c2e20f2e82e35d6a390779a" "cfe09bbf703f9f30e11ab4167f1a0a73"
         ),
         "caption": (
             "Fast-ThinkAct training framework. "
@@ -255,8 +231,7 @@ PAPER_SELECTIONS = {
             "for Streaming Video Understanding"
         ),
         "selected_figure": _fig(
-            "813dda147e6b461cfaca5a3b170fe31f"
-            "f051726459d57ba73017edb93890cfb4"
+            "813dda147e6b461cfaca5a3b170fe31f" "f051726459d57ba73017edb93890cfb4"
         ),
         "caption": (
             "HERMES architecture for streaming video "
@@ -277,8 +252,7 @@ PAPER_SELECTIONS = {
             "Diffusion Language Models"
         ),
         "selected_figure": _fig(
-            "d54598fd7978964c341d00e87ed6afcb"
-            "1d373e831716075f3dd82542bd05679e"
+            "d54598fd7978964c341d00e87ed6afcb" "1d373e831716075f3dd82542bd05679e"
         ),
         "caption": (
             "Confronting vs. bypassing uncertainty in "
@@ -297,8 +271,7 @@ PAPER_SELECTIONS = {
             "of Code Diffusion Large Language Model"
         ),
         "selected_figure": _fig(
-            "449ee807689da1a7aa8d341c5d9b078d"
-            "466858e306b8a8bb413498ebf7c601d0"
+            "449ee807689da1a7aa8d341c5d9b078d" "466858e306b8a8bb413498ebf7c601d0"
         ),
         "caption": (
             "Stable-DiffCoder training pipeline. "
@@ -406,7 +379,9 @@ def main():
         print(f"\n--- {paper_id} ---")
 
         # Load content list
-        content_path = INPUT_DIR / paper_id / "hybrid_auto" / f"{paper_id}_content_list.json"
+        content_path = (
+            INPUT_DIR / paper_id / "hybrid_auto" / f"{paper_id}_content_list.json"
+        )
         if not content_path.exists():
             print(f"  ERROR: Content list not found: {content_path}")
             continue
@@ -417,7 +392,9 @@ def main():
         # Extract methodology text
         method_text = extract_methodology_text(content_list, sel["method_sections"])
         if not method_text:
-            print(f"  WARNING: No methodology text extracted for sections {sel['method_sections']}")
+            print(
+                f"  WARNING: No methodology text extracted for sections {sel['method_sections']}"
+            )
             # Try to show what sections exist
             continue
 
