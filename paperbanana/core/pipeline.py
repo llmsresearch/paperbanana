@@ -201,6 +201,11 @@ class PaperBananaPipeline:
             diagram_type=input.diagram_type,
         )
         retrieval_seconds = time.perf_counter() - retrieval_start
+        logger.info(
+            "[Retriever] done",
+            seconds=round(retrieval_seconds, 1),
+            examples_found=len(examples),
+        )
 
         # Step 2: Planner — generate textual description
         logger.info("Phase 1: Planning")
@@ -212,6 +217,10 @@ class PaperBananaPipeline:
             diagram_type=input.diagram_type,
         )
         planning_seconds = time.perf_counter() - planning_start
+        logger.info(
+            "[Planner] done",
+            seconds=round(planning_seconds, 1),
+        )
 
         # Step 3: Stylist — optimize description aesthetics
         logger.info("Phase 1: Styling")
@@ -224,6 +233,10 @@ class PaperBananaPipeline:
             diagram_type=input.diagram_type,
         )
         styling_seconds = time.perf_counter() - styling_start
+        logger.info(
+            "[Stylist] done",
+            seconds=round(styling_seconds, 1),
+        )
 
         # Save planning outputs
         if self.settings.save_iterations:
@@ -254,6 +267,10 @@ class PaperBananaPipeline:
                 iteration=i + 1,
             )
             visualizer_seconds = time.perf_counter() - visualizer_start
+            logger.info(
+                f"[Visualizer] Iteration {i + 1}/{self.settings.refinement_iterations} done",
+                seconds=round(visualizer_seconds, 1),
+            )
 
             # Step 5: Critic — evaluate and provide feedback
             critic_start = time.perf_counter()
@@ -265,6 +282,11 @@ class PaperBananaPipeline:
                 diagram_type=input.diagram_type,
             )
             critic_seconds = time.perf_counter() - critic_start
+            logger.info(
+                "[Critic] done",
+                seconds=round(critic_seconds, 1),
+                needs_revision=critique.needs_revision,
+            )
 
             iteration_record = IterationRecord(
                 iteration=i + 1,
