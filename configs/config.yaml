@@ -1,19 +1,22 @@
 # PaperBanana Default Configuration
-# Override via CLI: paperbanana generate --vlm-provider gemini --image-provider google_imagen
+# Override via CLI: paperbanana generate --vlm-provider openai --image-provider openai_imagen
 
 # Provider settings
 vlm:
-  provider: gemini
-  model: gemini-2.0-flash
+  provider: openai
+  model: gpt-5.2
 
 image:
-  provider: google_imagen
-  model: gemini-3-pro-image-preview
+  provider: openai_imagen
+  model: gpt-image-1.5
 
 # Pipeline settings
 pipeline:
   num_retrieval_examples: 10
   refinement_iterations: 3
+  # auto_refine: true         # Loop until critic is satisfied
+  # max_iterations: 30        # Safety cap for auto_refine mode
+  # optimize_inputs: true     # Preprocess inputs for better generation
   output_resolution: "2k"   # 1k, 2k, 4k
   diagram_type: methodology  # methodology, statistical_plot
 

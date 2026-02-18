@@ -1,0 +1,13 @@
+# OpenAI VLM Provider
+# Get API key: https://platform.openai.com/api-keys
+type: openai
+priority: 1
+capabilities:
+  - text_generation
+  - vision_input
+  - json_mode
+config:
+  model: gpt-5.2
+  api_key: ${OPENAI_API_KEY}
+  temperature: 1.0
+  max_tokens: 4096

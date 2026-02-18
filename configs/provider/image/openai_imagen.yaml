@@ -1,0 +1,9 @@
+# OpenAI Image Provider (GPT-Image-1.5)
+# Get API key: https://platform.openai.com/api-keys
+type: openai_imagen
+priority: 1
+capabilities:
+  - text_to_image
+config:
+  model: gpt-image-1.5
+  api_key: ${OPENAI_API_KEY}
