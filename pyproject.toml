@@ -43,7 +43,8 @@ dependencies = [
 
 [project.optional-dependencies]
 google = ["google-genai>=1.0"]
-all-providers = ["google-genai>=1.0"]
+openai = ["openai>=1.0"]
+all-providers = ["google-genai>=1.0", "openai>=1.0"]
 mcp = ["fastmcp>=2.0"]
 dev = [
     "pytest>=8.0",

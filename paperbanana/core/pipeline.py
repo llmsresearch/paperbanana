@@ -10,6 +10,7 @@ from typing import Optional
 import structlog
 
 from paperbanana.agents.critic import CriticAgent
+from paperbanana.agents.optimizer import InputOptimizerAgent
 from paperbanana.agents.planner import PlannerAgent
 from paperbanana.agents.retriever import RetrieverAgent
 from paperbanana.agents.stylist import StylistAgent
@@ -124,6 +125,7 @@ class PaperBananaPipeline:
 
         # Initialize agents
         prompt_dir = self._find_prompt_dir()
+        self.optimizer = InputOptimizerAgent(self._vlm, prompt_dir=prompt_dir)
         self.retriever = RetrieverAgent(self._vlm, prompt_dir=prompt_dir)
         self.planner = PlannerAgent(self._vlm, prompt_dir=prompt_dir)
         self.stylist = StylistAgent(
@@ -173,6 +175,18 @@ class PaperBananaPipeline:
         """
         total_start = time.perf_counter()
 
+        # Save input for resume/continue support
+        if self.settings.save_iterations:
+            save_json(
+                {
+                    "source_context": input.source_context,
+                    "communicative_intent": input.communicative_intent,
+                    "diagram_type": input.diagram_type.value,
+                    "raw_data": input.raw_data,
+                },
+                self._run_dir / "run_input.json",
+            )
+
         logger.info(
             "Starting generation",
             run_id=self.run_id,
@@ -186,6 +200,41 @@ class PaperBananaPipeline:
             if input.diagram_type == DiagramType.METHODOLOGY
             else self._plot_guidelines
         )
+
+        # ── Phase 0: Input Optimization (optional) ───────────────────
+        optimize_seconds = 0.0
+        if self.settings.optimize_inputs:
+            logger.info("Phase 0: Optimizing inputs (parallel)")
+            optimize_start = time.perf_counter()
+            optimized = await self.optimizer.run(
+                source_context=input.source_context,
+                caption=input.communicative_intent,
+                diagram_type=input.diagram_type,
+            )
+            optimize_seconds = time.perf_counter() - optimize_start
+            logger.info(
+                "[Optimizer] done",
+                seconds=round(optimize_seconds, 1),
+            )
+
+            # Save originals and apply optimized versions
+            if self.settings.save_iterations:
+                save_json(
+                    {
+                        "original_context": input.source_context,
+                        "original_caption": input.communicative_intent,
+                        "optimized_context": optimized["optimized_context"],
+                        "optimized_caption": optimized["optimized_caption"],
+                    },
+                    self._run_dir / "optimization.json",
+                )
+
+            input = GenerationInput(
+                source_context=optimized["optimized_context"],
+                communicative_intent=optimized["optimized_caption"],
+                diagram_type=input.diagram_type,
+                raw_data=input.raw_data,
+            )
 
         # ── Phase 1: Linear Planning ─────────────────────────────────
 
@@ -255,8 +304,16 @@ class PaperBananaPipeline:
         iterations: list[IterationRecord] = []
         iteration_timings = []
 
-        for i in range(self.settings.refinement_iterations):
-            logger.info(f"Phase 2: Iteration {i + 1}/{self.settings.refinement_iterations}")
+        if self.settings.auto_refine:
+            total_iters = self.settings.max_iterations
+        else:
+            total_iters = self.settings.refinement_iterations
+
+        for i in range(total_iters):
+            logger.info(
+                f"Phase 2: Iteration {i + 1}/{total_iters}"
+                + (" (auto)" if self.settings.auto_refine else "")
+            )
 
             # Step 4: Visualizer — generate image
             visualizer_start = time.perf_counter()
@@ -268,7 +325,7 @@ class PaperBananaPipeline:
             )
             visualizer_seconds = time.perf_counter() - visualizer_start
             logger.info(
-                f"[Visualizer] Iteration {i + 1}/{self.settings.refinement_iterations} done",
+                f"[Visualizer] Iteration {i + 1}/{total_iters} done",
                 seconds=round(visualizer_seconds, 1),
             )
 
@@ -356,13 +413,16 @@ class PaperBananaPipeline:
             image_provider=getattr(self._image_gen, "name", "custom"),
             image_model=getattr(self._image_gen, "model_name", "custom"),
             refinement_iterations=len(iterations),
-            config_snapshot=self.settings.model_dump(exclude={"google_api_key"}),
+            config_snapshot=self.settings.model_dump(
+                exclude={"google_api_key", "openai_api_key", "openrouter_api_key"}
+            ),
         )
 
         metadata_dict = metadata.model_dump()
 
         metadata_dict["timing"] = {
             "total_seconds": total_seconds,
+            "optimize_seconds": optimize_seconds,
             "retrieval_seconds": retrieval_seconds,
             "planning_seconds": planning_seconds,
             "styling_seconds": styling_seconds,
@@ -384,6 +444,178 @@ class PaperBananaPipeline:
             run_id=self.run_id,
             output=final_output_path,
             total_iterations=len(iterations),
+        )
+
+        return output
+
+    async def continue_run(
+        self,
+        resume_state,
+        additional_iterations: Optional[int] = None,
+        user_feedback: Optional[str] = None,
+    ) -> GenerationOutput:
+        """Continue a previous run with more iterations.
+
+        Args:
+            resume_state: ResumeState loaded from a previous run.
+            additional_iterations: Number of extra iterations (or use settings).
+            user_feedback: Optional user comments for the critic to consider.
+
+        Returns:
+            GenerationOutput with final image and metadata.
+        """
+
+        total_start = time.perf_counter()
+
+        # Override run dir to write into the existing run
+        run_dir = Path(resume_state.run_dir)
+        self.run_id = resume_state.run_id
+
+        if self.settings.auto_refine:
+            total_iters = self.settings.max_iterations
+        else:
+            total_iters = additional_iterations or self.settings.refinement_iterations
+
+        start_iter = resume_state.last_iteration
+        current_description = resume_state.last_description
+
+        logger.info(
+            "Continuing run",
+            run_id=self.run_id,
+            from_iteration=start_iter,
+            additional_iterations=total_iters,
+            has_feedback=user_feedback is not None,
+        )
+
+        iterations: list[IterationRecord] = []
+        iteration_timings = []
+
+        for i in range(total_iters):
+            iter_num = start_iter + i + 1
+            logger.info(
+                f"Phase 2: Iteration {iter_num}" + (" (auto)" if self.settings.auto_refine else "")
+            )
+
+            # Visualizer — generate image
+            visualizer_start = time.perf_counter()
+            image_path = await self.visualizer.run(
+                description=current_description,
+                diagram_type=resume_state.diagram_type,
+                raw_data=resume_state.raw_data,
+                iteration=iter_num,
+            )
+            visualizer_seconds = time.perf_counter() - visualizer_start
+            logger.info(
+                f"[Visualizer] Iteration {iter_num} done",
+                seconds=round(visualizer_seconds, 1),
+            )
+
+            # Critic — evaluate with optional user feedback
+            critic_start = time.perf_counter()
+            critique = await self.critic.run(
+                image_path=image_path,
+                description=current_description,
+                source_context=resume_state.source_context,
+                caption=resume_state.communicative_intent,
+                diagram_type=resume_state.diagram_type,
+                user_feedback=user_feedback,
+            )
+            critic_seconds = time.perf_counter() - critic_start
+            logger.info(
+                "[Critic] done",
+                seconds=round(critic_seconds, 1),
+                needs_revision=critique.needs_revision,
+            )
+
+            iteration_record = IterationRecord(
+                iteration=iter_num,
+                description=current_description,
+                image_path=image_path,
+                critique=critique,
+            )
+            iteration_timings.append(
+                {
+                    "iteration": iter_num,
+                    "visualizer_seconds": visualizer_seconds,
+                    "critic_seconds": critic_seconds,
+                }
+            )
+            iterations.append(iteration_record)
+
+            if self.settings.save_iterations:
+                iter_dir = ensure_dir(run_dir / f"iter_{iter_num}")
+                save_json(
+                    {
+                        "description": current_description,
+                        "critique": critique.model_dump(),
+                        "user_feedback": user_feedback,
+                    },
+                    iter_dir / "details.json",
+                )
+
+            if critique.needs_revision and critique.revised_description:
+                logger.info(
+                    "Revision needed",
+                    iteration=iter_num,
+                    summary=critique.summary,
+                )
+                current_description = critique.revised_description
+            else:
+                logger.info(
+                    "No further revision needed",
+                    iteration=iter_num,
+                    summary=critique.summary,
+                )
+                break
+
+        # Final output
+        final_image = iterations[-1].image_path
+        output_format = getattr(self.settings, "output_format", "png").lower()
+        ext = "jpg" if output_format == "jpeg" else output_format
+        final_output_path = str(run_dir / f"final_output.{ext}")
+
+        img = load_image(final_image)
+        save_image(img, final_output_path, format=output_format)
+
+        total_seconds = time.perf_counter() - total_start
+        logger.info(
+            "Continue run complete",
+            run_id=self.run_id,
+            total_seconds=total_seconds,
+            new_iterations=len(iterations),
+        )
+
+        # Update metadata
+        metadata = RunMetadata(
+            run_id=self.run_id,
+            timestamp=datetime.datetime.now().isoformat(),
+            vlm_provider=getattr(self._vlm, "name", "custom"),
+            vlm_model=getattr(self._vlm, "model_name", "custom"),
+            image_provider=getattr(self._image_gen, "name", "custom"),
+            image_model=getattr(self._image_gen, "model_name", "custom"),
+            refinement_iterations=start_iter + len(iterations),
+            config_snapshot=self.settings.model_dump(
+                exclude={"google_api_key", "openai_api_key", "openrouter_api_key"}
+            ),
+        )
+
+        metadata_dict = metadata.model_dump()
+        metadata_dict["timing"] = {
+            "continue_total_seconds": total_seconds,
+            "iterations": iteration_timings,
+        }
+        metadata_dict["continued_from_iteration"] = start_iter
+        if user_feedback:
+            metadata_dict["user_feedback"] = user_feedback
+
+        if self.settings.save_iterations:
+            save_json(metadata_dict, run_dir / "metadata_continued.json")
+
+        output = GenerationOutput(
+            image_path=final_output_path,
+            description=current_description,
+            iterations=iterations,
+            metadata=metadata_dict,
         )
 
         return output

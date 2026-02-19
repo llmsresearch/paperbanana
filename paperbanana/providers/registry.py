@@ -26,6 +26,13 @@ _API_KEY_HINTS = {
         "  2. Set the environment variable:\n\n"
         "  export OPENROUTER_API_KEY=your-key-here"
     ),
+    "OPENAI_API_KEY": (
+        "OPENAI_API_KEY not found.\n\n"
+        "To fix this:\n"
+        "  1. Get an API key at: https://platform.openai.com/api-keys\n"
+        "  2. Set the environment variable:\n\n"
+        "  export OPENAI_API_KEY=your-key-here"
+    ),
 }
 
 
@@ -61,8 +68,19 @@ class ProviderRegistry:
                 api_key=settings.openrouter_api_key,
                 model=settings.vlm_model,
             )
+        elif provider == "openai":
+            _validate_api_key(settings.openai_api_key, "OPENAI_API_KEY")
+            from paperbanana.providers.vlm.openai import OpenAIVLM
+
+            return OpenAIVLM(
+                api_key=settings.openai_api_key,
+                model=settings.openai_vlm_model or settings.vlm_model,
+                base_url=settings.openai_base_url,
+            )
         else:
-            raise ValueError(f"Unknown VLM provider: {provider}. Available: gemini, openrouter")
+            raise ValueError(
+                f"Unknown VLM provider: {provider}. Available: gemini, openrouter, openai"
+            )
 
     @staticmethod
     def create_image_gen(settings: Settings) -> ImageGenProvider:
@@ -88,7 +106,17 @@ class ProviderRegistry:
                 api_key=settings.openrouter_api_key,
                 model=settings.image_model,
             )
+        elif provider == "openai_imagen":
+            _validate_api_key(settings.openai_api_key, "OPENAI_API_KEY")
+            from paperbanana.providers.image_gen.openai_imagen import OpenAIImageGen
+
+            return OpenAIImageGen(
+                api_key=settings.openai_api_key,
+                model=settings.openai_image_model or settings.image_model,
+                base_url=settings.openai_base_url,
+            )
         else:
             raise ValueError(
-                f"Unknown image provider: {provider}. Available: google_imagen, openrouter_imagen"
+                f"Unknown image provider: {provider}. "
+                f"Available: google_imagen, openrouter_imagen, openai_imagen"
             )

@@ -56,14 +56,17 @@ class Settings(BaseSettings):
     """Main PaperBanana settings, loaded from env vars and config files."""
 
     # Provider settings
-    vlm_provider: str = "gemini"
-    vlm_model: str = "gemini-2.0-flash"
-    image_provider: str = "google_imagen"
-    image_model: str = "gemini-3-pro-image-preview"
+    vlm_provider: str = Field(default="gemini", alias="VLM_PROVIDER")
+    vlm_model: str = Field(default="gemini-2.0-flash", alias="VLM_MODEL")
+    image_provider: str = Field(default="google_imagen", alias="IMAGE_PROVIDER")
+    image_model: str = Field(default="gemini-3-pro-image-preview", alias="IMAGE_MODEL")
 
     # Pipeline settings
     num_retrieval_examples: int = 10
     refinement_iterations: int = 3
+    auto_refine: bool = False
+    max_iterations: int = 30
+    optimize_inputs: bool = False
     output_resolution: str = "2k"
 
     # Reference settings
@@ -78,6 +81,24 @@ class Settings(BaseSettings):
     # API Keys (loaded from environment)
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
+    openai_vlm_model: Optional[str] = Field(default=None, alias="OPENAI_VLM_MODEL")
+    openai_image_model: Optional[str] = Field(default=None, alias="OPENAI_IMAGE_MODEL")
+
+    @property
+    def effective_vlm_model(self) -> str:
+        """Return the VLM model for the active provider."""
+        if self.vlm_provider == "openai" and self.openai_vlm_model:
+            return self.openai_vlm_model
+        return self.vlm_model
+
+    @property
+    def effective_image_model(self) -> str:
+        """Return the image model for the active provider."""
+        if self.image_provider == "openai_imagen" and self.openai_image_model:
+            return self.openai_image_model
+        return self.image_model
 
     # SSL
     skip_ssl_verification: bool = Field(default=False, alias="SKIP_SSL_VERIFICATION")
@@ -125,6 +146,9 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "image.model": "image_model",
         "pipeline.num_retrieval_examples": "num_retrieval_examples",
         "pipeline.refinement_iterations": "refinement_iterations",
+        "pipeline.auto_refine": "auto_refine",
+        "pipeline.max_iterations": "max_iterations",
+        "pipeline.optimize_inputs": "optimize_inputs",
         "pipeline.output_resolution": "output_resolution",
         "reference.path": "reference_set_path",
         "reference.guidelines_path": "guidelines_path",
