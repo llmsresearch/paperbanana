@@ -1,4 +1,6 @@
 """PaperBanana CLI — Generate publication-quality academic illustrations."""
+import platform
+import importlib.metadata
 
 from __future__ import annotations
 
@@ -524,6 +526,32 @@ def evaluate(
         if result.reasoning:
             console.print(f"\n[bold]{dim}[/bold]: {result.reasoning}")
 
+def version_callback(value: bool):
+    """
+    Callback function to print the version of paperbanana and Python.
+    """
+    if value:
+        pkg_version = importlib.metadata.version("paperbanana")
+        py_version = platform.python_version()
+        print(f"paperbanana version: {pkg_version}")
+        print(f"Python version: {py_version}")
+        raise typer.Exit()
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-v",
+        callback=version_callback,
+        is_eager=True,
+        help="Show the version and exit.",
+    ),
+):
+    """
+    PaperBanana CLI – Generate publication-quality academic figures.
+    """
+    pass
 
 if __name__ == "__main__":
     app()
