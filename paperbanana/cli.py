@@ -11,7 +11,6 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.table import Table
 
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
@@ -166,7 +165,7 @@ def generate(
                 return result
 
             async def _critic_run(*a, **kw):
-                console.print(f"  [dim]●[/dim] Critic reviewing...", end="")
+                console.print("  [dim]●[/dim] Critic reviewing...", end="")
                 t = time.perf_counter()
                 result = await orig_critic_run(*a, **kw)
                 elapsed = time.perf_counter() - t
@@ -178,7 +177,7 @@ def generate(
                     )
                 else:
                     console.print(
-                        f"    [green]✓[/green] [bold green]Critic satisfied[/bold green]"
+                        "    [green]✓[/green] [bold green]Critic satisfied[/bold green]"
                     )
                 return result
 
@@ -239,7 +238,6 @@ def generate(
     )
 
     # Run pipeline
-    from paperbanana.core.pipeline import PaperBananaPipeline
 
     console.print()
     total_start = time.perf_counter()
@@ -307,7 +305,7 @@ def generate(
             return result
 
         async def _critic_run(*a, **kw):
-            console.print(f"  [dim]●[/dim] Critic reviewing...", end="")
+            console.print("  [dim]●[/dim] Critic reviewing...", end="")
             t = time.perf_counter()
             result = await orig_critic_run(*a, **kw)
             elapsed = time.perf_counter() - t
@@ -317,7 +315,7 @@ def generate(
                     console.print(f"    [yellow]↻[/yellow] [dim]{s}[/dim]")
             else:
                 console.print(
-                    f"    [green]✓[/green] [bold green]Critic satisfied[/bold green]"
+                    "    [green]✓[/green] [bold green]Critic satisfied[/bold green]"
                 )
             return result
 

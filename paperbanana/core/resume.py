@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from paperbanana.core.types import DiagramType
 

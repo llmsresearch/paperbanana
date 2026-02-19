@@ -464,7 +464,6 @@ class PaperBananaPipeline:
         Returns:
             GenerationOutput with final image and metadata.
         """
-        from paperbanana.core.resume import ResumeState
 
         total_start = time.perf_counter()
 

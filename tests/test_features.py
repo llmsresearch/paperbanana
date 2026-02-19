@@ -5,14 +5,12 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from paperbanana.core.config import Settings
-from paperbanana.core.resume import ResumeState, load_resume_state
+from paperbanana.core.resume import load_resume_state
 from paperbanana.core.types import CritiqueResult, DiagramType
-
 
 # ── Settings tests ───────────────────────────────────────────────
 
@@ -169,10 +167,10 @@ def test_load_resume_state_missing_dir():
 
 def test_critic_agent_accepts_user_feedback():
     """CriticAgent.run() accepts user_feedback parameter."""
-    from paperbanana.agents.critic import CriticAgent
-
     # Verify the parameter exists in the signature
     import inspect
+
+    from paperbanana.agents.critic import CriticAgent
 
     sig = inspect.signature(CriticAgent.run)
     assert "user_feedback" in sig.parameters
@@ -197,9 +195,9 @@ def test_optimize_inputs_override():
 
 def test_optimizer_agent_signature():
     """InputOptimizerAgent.run() accepts expected parameters."""
-    from paperbanana.agents.optimizer import InputOptimizerAgent
-
     import inspect
+
+    from paperbanana.agents.optimizer import InputOptimizerAgent
 
     sig = inspect.signature(InputOptimizerAgent.run)
     params = list(sig.parameters.keys())
