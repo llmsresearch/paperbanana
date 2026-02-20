@@ -143,12 +143,18 @@ class VisualizerAgent(BaseAgent):
         """Extract Python code from a VLM response."""
         # Look for code blocks
         if "```python" in response:
-            start = response.index("```python") + len("```python")
-            end = response.index("```", start)
+            start = response.find("```python") + len("```python")
+            end = response.find("```", start)
+            if end == -1:
+                logger.warning("Plot code block is missing closing fence; using remaining response")
+                return response[start:].strip()
             return response[start:end].strip()
         elif "```" in response:
-            start = response.index("```") + 3
-            end = response.index("```", start)
+            start = response.find("```") + 3
+            end = response.find("```", start)
+            if end == -1:
+                logger.warning("Plot code block is missing closing fence; using remaining response")
+                return response[start:].strip()
             return response[start:end].strip()
         return response.strip()
 

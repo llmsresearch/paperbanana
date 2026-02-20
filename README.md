@@ -32,10 +32,12 @@
 > This project is **not affiliated with or endorsed by** the original authors or Google Research.
 > The implementation is based on the publicly available paper and may differ from the original system.
 
-An agentic framework for generating publication-quality academic diagrams and statistical plots from text descriptions. Uses Google Gemini for both VLM and image generation.
+An agentic framework for generating publication-quality academic diagrams and statistical plots from text descriptions. Supports OpenAI (GPT-5.2 + GPT-Image-1.5), Azure OpenAI / Foundry, and Google Gemini providers.
 
 - Two-phase multi-agent pipeline with iterative refinement
-- Gemini-based VLM planning and image generation
+- Multiple VLM and image generation providers (OpenAI, Azure, Gemini)
+- Input optimization layer for better generation quality
+- Auto-refine mode and run continuation with user feedback
 - CLI, Python API, and MCP server for IDE integration
 - Claude Code skills for `/generate-diagram`, `/generate-plot`, and `/evaluate-diagram`
 
@@ -50,7 +52,8 @@ An agentic framework for generating publication-quality academic diagrams and st
 ### Prerequisites
 
 - Python 3.10+
-- A Google Gemini API key (available at no cost from [Google AI Studio](https://makersuite.google.com/app/apikey))
+- An OpenAI API key ([platform.openai.com](https://platform.openai.com/api-keys)) or Azure OpenAI / Foundry endpoint
+- Or a Google Gemini API key (free, [Google AI Studio](https://makersuite.google.com/app/apikey))
 
 ### Step 1: Install
 
@@ -63,49 +66,41 @@ Or install from source for development:
 ```bash
 git clone https://github.com/llmsresearch/paperbanana.git
 cd paperbanana
-pip install -e ".[dev,google]"
+pip install -e ".[dev,openai,google]"
 ```
 
 ### Step 2: Get Your API Key
 
-Run the interactive setup wizard:
+```bash
+cp .env.example .env
+# Edit .env and add your API key:
+#   OPENAI_API_KEY=your-key-here
+#
+# For Azure OpenAI / Foundry:
+#   OPENAI_BASE_URL=https://<resource>.openai.azure.com/openai/v1
+```
+
+Or use the setup wizard for Gemini:
 
 ```bash
 paperbanana setup
 ```
 
-This opens your browser to get a Google Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey) and saves it to `.env`.
-
-Or set it up manually:
-
-```bash
-cp .env.example .env
-# Edit .env and add: GOOGLE_API_KEY=your-key-here
-```
-
 ### Step 3: Generate a Diagram
 
 ```bash
-# Using the included sample input
 paperbanana generate \
   --input examples/sample_inputs/transformer_method.txt \
   --caption "Overview of our encoder-decoder architecture with sparse routing"
 ```
 
-Or write your own methodology text:
+With input optimization and auto-refine:
 
 ```bash
-cat > my_method.txt << 'EOF'
-Our framework consists of an encoder that processes input sequences
-through multi-head self-attention layers, followed by a decoder that
-generates output tokens auto-regressively using cross-attention to
-the encoder representations. We add a novel routing mechanism that
-selects relevant encoder states for each decoder step.
-EOF
-
 paperbanana generate \
   --input my_method.txt \
-  --caption "Overview of our encoder-decoder framework"
+  --caption "Overview of our encoder-decoder framework" \
+  --optimize --auto
 ```
 
 Output is saved to `outputs/run_<timestamp>/final_output.png` along with all intermediate iterations and metadata.
@@ -114,7 +109,13 @@ Output is saved to `outputs/run_<timestamp>/final_output.png` along with all int
 
 ## How It Works
 
-PaperBanana implements a two-phase multi-agent pipeline with 5 specialized agents:
+PaperBanana implements a multi-agent pipeline with up to 7 specialized agents:
+
+**Phase 0 -- Input Optimization (optional, `--optimize`):**
+
+0. **Input Optimizer** runs two parallel VLM calls:
+   - **Context Enricher** structures raw methodology text into diagram-ready format (components, flows, groupings, I/O)
+   - **Caption Sharpener** transforms vague captions into precise visual specifications
 
 **Phase 1 -- Linear Planning:**
 
@@ -122,18 +123,25 @@ PaperBanana implements a two-phase multi-agent pipeline with 5 specialized agent
 2. **Planner** generates a detailed textual description of the target diagram via in-context learning from the retrieved examples
 3. **Stylist** refines the description for visual aesthetics using NeurIPS-style guidelines (color palette, layout, typography)
 
-**Phase 2 -- Iterative Refinement (3 rounds):**
+**Phase 2 -- Iterative Refinement:**
 
-4. **Visualizer** renders the description into an image (Gemini 3 Pro for diagrams, Matplotlib code for plots)
+4. **Visualizer** renders the description into an image
 5. **Critic** evaluates the generated image against the source context and provides a revised description addressing any issues
-6. Steps 4-5 repeat for up to 3 iterations
+6. Steps 4-5 repeat for a fixed number of iterations (default 3), or until the critic is satisfied (`--auto`)
 
 ## Providers
 
-| Component | Provider | Model |
-|-----------|----------|-------|
-| VLM (planning, critique) | Google Gemini | `gemini-2.0-flash` |
-| Image Generation | Google Gemini | `gemini-3-pro-image-preview` |
+PaperBanana supports multiple VLM and image generation providers:
+
+| Component | Provider | Model | Notes |
+|-----------|----------|-------|-------|
+| VLM (planning, critique) | OpenAI | `gpt-5.2` | Default |
+| Image Generation | OpenAI | `gpt-image-1.5` | Default |
+| VLM | Google Gemini | `gemini-2.0-flash` | Free tier |
+| Image Generation | Google Gemini | `gemini-3-pro-image-preview` | Free tier |
+| VLM / Image | OpenRouter | Any supported model | Flexible routing |
+
+Azure OpenAI / Foundry endpoints are auto-detected — set `OPENAI_BASE_URL` to your endpoint.
 
 ---
 
@@ -142,24 +150,45 @@ PaperBanana implements a two-phase multi-agent pipeline with 5 specialized agent
 ### `paperbanana generate` -- Methodology Diagrams
 
 ```bash
+# Basic generation
+paperbanana generate \
+  --input method.txt \
+  --caption "Overview of our framework"
+
+# With input optimization and auto-refine
 paperbanana generate \
   --input method.txt \
   --caption "Overview of our framework" \
-  --output diagram.png \
+  --optimize --auto
+
+# Continue the latest run with user feedback
+paperbanana generate --continue \
+  --feedback "Make arrows thicker and colors more distinct"
+
+# Continue a specific run
+paperbanana generate --continue-run run_20260218_125448_e7b876 \
   --iterations 3
 ```
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--input` | `-i` | Path to methodology text file (required) |
-| `--caption` | `-c` | Figure caption / communicative intent (required) |
+| `--input` | `-i` | Path to methodology text file (required for new runs) |
+| `--caption` | `-c` | Figure caption / communicative intent (required for new runs) |
 | `--output` | `-o` | Output image path (default: auto-generated in `outputs/`) |
-| `--iterations` | `-n` | Number of Visualizer-Critic refinement rounds |
-| `--vlm-provider` | | VLM provider name (default: `gemini`) |
-| `--vlm-model` | | VLM model name (default: `gemini-2.0-flash`) |
-| `--image-provider` | | Image gen provider (default: `google_imagen`) |
-| `--image-model` | | Image gen model (default: `gemini-3-pro-image-preview`) |
+| `--iterations` | `-n` | Number of Visualizer-Critic refinement rounds (default: 3) |
+| `--auto` | | Loop until critic is satisfied (with `--max-iterations` safety cap) |
+| `--max-iterations` | | Safety cap for `--auto` mode (default: 30) |
+| `--optimize` | | Preprocess inputs with parallel context enrichment and caption sharpening |
+| `--continue` | | Continue from the latest run in `outputs/` |
+| `--continue-run` | | Continue from a specific run ID |
+| `--feedback` | | User feedback for the critic when continuing a run |
+| `--vlm-provider` | | VLM provider name (default: `openai`) |
+| `--vlm-model` | | VLM model name (default: `gpt-5.2`) |
+| `--image-provider` | | Image gen provider (default: `openai_imagen`) |
+| `--image-model` | | Image gen model (default: `gpt-image-1.5`) |
+| `--format` | `-f` | Output format: `png`, `jpeg`, or `webp` (default: `png`) |
 | `--config` | | Path to YAML config file (see `configs/config.yaml`) |
+| `--verbose` | `-v` | Show detailed agent progress and timing |
 
 ### `paperbanana plot` -- Statistical Plots
 
@@ -217,9 +246,12 @@ from paperbanana import PaperBananaPipeline, GenerationInput, DiagramType
 from paperbanana.core.config import Settings
 
 settings = Settings(
-    vlm_provider="gemini",
-    image_provider="google_imagen",
-    refinement_iterations=3,
+    vlm_provider="openai",
+    vlm_model="gpt-5.2",
+    image_provider="openai_imagen",
+    image_model="gpt-image-1.5",
+    optimize_inputs=True,   # Enable input optimization
+    auto_refine=True,       # Loop until critic is satisfied
 )
 
 pipeline = PaperBananaPipeline(settings=settings)
@@ -233,6 +265,19 @@ result = asyncio.run(pipeline.generate(
 ))
 
 print(f"Output: {result.image_path}")
+```
+
+To continue a previous run:
+
+```python
+from paperbanana.core.resume import load_resume_state
+
+state = load_resume_state("outputs", "run_20260218_125448_e7b876")
+result = asyncio.run(pipeline.continue_run(
+    resume_state=state,
+    additional_iterations=3,
+    user_feedback="Make the encoder block more prominent",
+))
 ```
 
 See `examples/generate_diagram.py` and `examples/generate_plot.py` for complete working examples.
@@ -281,16 +326,19 @@ Key settings:
 
 ```yaml
 vlm:
-  provider: gemini
-  model: gemini-2.0-flash
+  provider: openai           # openai, gemini, or openrouter
+  model: gpt-5.2
 
 image:
-  provider: google_imagen
-  model: gemini-3-pro-image-preview
+  provider: openai_imagen    # openai_imagen, google_imagen, or openrouter_imagen
+  model: gpt-image-1.5
 
 pipeline:
   num_retrieval_examples: 10
   refinement_iterations: 3
+  # auto_refine: true        # Loop until critic is satisfied
+  # max_iterations: 30       # Safety cap for auto_refine mode
+  # optimize_inputs: true    # Preprocess inputs for better generation
   output_resolution: "2k"
 
 reference:
@@ -302,6 +350,19 @@ output:
   save_metadata: true
 ```
 
+Environment variables (`.env`):
+
+```bash
+# OpenAI (default)
+OPENAI_API_KEY=your-key
+OPENAI_BASE_URL=https://api.openai.com/v1    # or Azure endpoint
+OPENAI_VLM_MODEL=gpt-5.2                      # override model
+OPENAI_IMAGE_MODEL=gpt-image-1.5              # override model
+
+# Google Gemini (alternative, free)
+GOOGLE_API_KEY=your-key
+```
+
 ---
 
 ## Project Structure
@@ -309,25 +370,25 @@ output:
 ```
 paperbanana/
 ├── paperbanana/
-│   ├── core/          # Pipeline orchestration, types, config, utilities
-│   ├── agents/        # Retriever, Planner, Stylist, Visualizer, Critic
+│   ├── core/          # Pipeline orchestration, types, config, resume, utilities
+│   ├── agents/        # Optimizer, Retriever, Planner, Stylist, Visualizer, Critic
 │   ├── providers/     # VLM and image gen provider implementations
-│   │   ├── vlm/       # Gemini VLM provider
-│   │   └── image_gen/ # Gemini 3 Pro Image provider
+│   │   ├── vlm/       # OpenAI, Gemini, OpenRouter VLM providers
+│   │   └── image_gen/ # OpenAI, Gemini, OpenRouter image gen providers
 │   ├── reference/     # Reference set management (13 curated examples)
 │   ├── guidelines/    # Style guidelines loader
 │   └── evaluation/    # VLM-as-Judge evaluation system
 ├── configs/           # YAML configuration files
-├── prompts/           # Prompt templates for all 5 agents + evaluation
-│   ├── diagram/       # retriever, planner, stylist, visualizer, critic
+├── prompts/           # Prompt templates for all agents + evaluation
+│   ├── diagram/       # context_enricher, caption_sharpener, retriever, planner, stylist, visualizer, critic
 │   ├── plot/          # plot-specific prompt variants
 │   └── evaluation/    # faithfulness, conciseness, readability, aesthetics
 ├── data/
 │   ├── reference_sets/  # 13 verified methodology diagrams
-│   └── guidelines/              # NeurIPS-style aesthetic guidelines
+│   └── guidelines/      # NeurIPS-style aesthetic guidelines
 ├── examples/          # Working example scripts + sample inputs
 ├── scripts/           # Data curation and build scripts
-├── tests/             # Test suite (34 tests)
+├── tests/             # Test suite
 ├── mcp_server/        # MCP server for IDE integration
 └── .claude/skills/    # Claude Code skills (generate-diagram, generate-plot, evaluate-diagram)
 ```
@@ -336,7 +397,7 @@ paperbanana/
 
 ```bash
 # Install with dev dependencies
-pip install -e ".[dev,google]"
+pip install -e ".[dev,openai,google]"
 
 # Run tests
 pytest tests/ -v

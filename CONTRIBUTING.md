@@ -98,7 +98,7 @@ ruff format paperbanana/ mcp_server/ tests/ scripts/
 
 ### Areas where code contributions are welcome
 
-- **Provider support**: Adding backends beyond Gemini (OpenAI, Anthropic, local models via Ollama)
+- **Provider support**: Adding backends beyond OpenAI and Gemini (Anthropic, local models via Ollama)
 - **Reference set tooling**: Improving the automated extraction pipeline in `scripts/`
 - **Evaluation**: Expanding the VLM-as-Judge evaluation with additional metrics or human correlation studies
 - **MCP server**: Additional tools, better error handling, support for more IDE clients

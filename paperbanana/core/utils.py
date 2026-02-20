@@ -48,11 +48,21 @@ def load_image(path: str | Path) -> Image.Image:
     return Image.open(path).convert("RGB")
 
 
-def save_image(image: Image.Image, path: str | Path) -> Path:
+def save_image(
+    image: Image.Image,
+    path: str | Path,
+    format: str | None = None,
+) -> Path:
     """Save a PIL Image to a file path."""
     path = Path(path)
     ensure_dir(path.parent)
-    image.save(path)
+
+    if format is not None:
+        if format == "jpeg" and image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGB")
+        image.save(path, format=format.upper())
+    else:
+        image.save(path)
     return path
 
 

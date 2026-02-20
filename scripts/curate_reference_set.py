@@ -43,9 +43,7 @@ def _fig(h: str) -> str:
 
 PAPER_SELECTIONS = {
     "2404.15806v1": {
-        "title": (
-            "Where to Mask: Structure-Guided Masking " "for Graph Masked Autoencoders"
-        ),
+        "title": ("Where to Mask: Structure-Guided Masking " "for Graph Masked Autoencoders"),
         "selected_figure": _fig(
             "9da89b3f6897112272256431dcad41239" "009c826b5da14efdb95deaeb0e38199"
         ),
@@ -59,10 +57,7 @@ PAPER_SELECTIONS = {
         "method_sections": [4],
     },
     "2601.03570v1": {
-        "title": (
-            "How Do Large Language Models Learn Concepts "
-            "During Continual Pre-Training?"
-        ),
+        "title": ("How Do Large Language Models Learn Concepts " "During Continual Pre-Training?"),
         "selected_figure": _fig(
             "6167e9ed1ed7500b7a76ba5fb813cabf" "b897d526c1f6d1c18981d3d41ba07a2e"
         ),
@@ -79,8 +74,7 @@ PAPER_SELECTIONS = {
     },
     "2601.05110v1": {
         "title": (
-            "GlimpRouter: Efficient Collaborative "
-            "Inference by Glimpsing One Token of Thoughts"
+            "GlimpRouter: Efficient Collaborative " "Inference by Glimpsing One Token of Thoughts"
         ),
         "selected_figure": _fig(
             "7b79ff05f01bf6cc8e5fdaeb95c92e3b" "c667deae618b1f2a821c482827489943"
@@ -206,9 +200,7 @@ PAPER_SELECTIONS = {
         "method_sections": [2],
     },
     "2601.09708v1": {
-        "title": (
-            "Fast-ThinkAct: Efficient VLA Reasoning " "via Verbalizable Latent Planning"
-        ),
+        "title": ("Fast-ThinkAct: Efficient VLA Reasoning " "via Verbalizable Latent Planning"),
         "selected_figure": _fig(
             "9daba4ee7c2e20f2e82e35d6a390779a" "cfe09bbf703f9f30e11ab4167f1a0a73"
         ),
@@ -226,10 +218,7 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.14724v2": {
-        "title": (
-            "HERMES: KV Cache as Hierarchical Memory "
-            "for Streaming Video Understanding"
-        ),
+        "title": ("HERMES: KV Cache as Hierarchical Memory " "for Streaming Video Understanding"),
         "selected_figure": _fig(
             "813dda147e6b461cfaca5a3b170fe31f" "f051726459d57ba73017edb93890cfb4"
         ),
@@ -267,8 +256,7 @@ PAPER_SELECTIONS = {
     },
     "2601.15892v2": {
         "title": (
-            "Stable-DiffCoder: Pushing the Frontier "
-            "of Code Diffusion Large Language Model"
+            "Stable-DiffCoder: Pushing the Frontier " "of Code Diffusion Large Language Model"
         ),
         "selected_figure": _fig(
             "449ee807689da1a7aa8d341c5d9b078d" "466858e306b8a8bb413498ebf7c601d0"
@@ -379,9 +367,7 @@ def main():
         print(f"\n--- {paper_id} ---")
 
         # Load content list
-        content_path = (
-            INPUT_DIR / paper_id / "hybrid_auto" / f"{paper_id}_content_list.json"
-        )
+        content_path = INPUT_DIR / paper_id / "hybrid_auto" / f"{paper_id}_content_list.json"
         if not content_path.exists():
             print(f"  ERROR: Content list not found: {content_path}")
             continue
@@ -392,9 +378,7 @@ def main():
         # Extract methodology text
         method_text = extract_methodology_text(content_list, sel["method_sections"])
         if not method_text:
-            print(
-                f"  WARNING: No methodology text extracted for sections {sel['method_sections']}"
-            )
+            print(f"  WARNING: No methodology text extracted for sections {sel['method_sections']}")
             # Try to show what sections exist
             continue
 

@@ -420,9 +420,7 @@ def identify_methodology_figures(
         candidates.append({**fig, "is_method_figure": is_method})
 
     # Sort: methodology figures first, then by aspect ratio closeness to 2.0
-    candidates.sort(
-        key=lambda x: (not x["is_method_figure"], abs(x["aspect_ratio"] - 2.0))
-    )
+    candidates.sort(key=lambda x: (not x["is_method_figure"], abs(x["aspect_ratio"] - 2.0)))
 
     return candidates
 
@@ -505,10 +503,7 @@ def guess_category(title: str, methodology_text: str) -> str:
         ],
     }
 
-    scores = {
-        cat: sum(1 for kw in kws if kw in combined)
-        for cat, kws in category_keywords.items()
-    }
+    scores = {cat: sum(1 for kw in kws if kw in combined) for cat, kws in category_keywords.items()}
 
     best = max(scores, key=scores.get)
     return best if scores[best] > 0 else "science_applications"
@@ -528,9 +523,7 @@ def process_paper(
 
     # Derive paper ID from directory name
     # Structure: output/{paper_id}/hybrid_auto/ → paper_id is grandparent
-    dir_name = (
-        paper_dir.parent.name if paper_dir.name.endswith("auto") else paper_dir.name
-    )
+    dir_name = paper_dir.parent.name if paper_dir.name.endswith("auto") else paper_dir.name
 
     print(f"\nProcessing: {dir_name}")
     print(f"  Source: {content_list}")
@@ -556,9 +549,7 @@ def process_paper(
     if not candidates:
         # Take the first captioned figure within aspect ratio range
         in_range = [
-            f
-            for f in figures
-            if f["caption"] and min_ratio <= f["aspect_ratio"] <= max_ratio
+            f for f in figures if f["caption"] and min_ratio <= f["aspect_ratio"] <= max_ratio
         ]
         if in_range:
             print("  Falling back to first captioned figure in ratio range")

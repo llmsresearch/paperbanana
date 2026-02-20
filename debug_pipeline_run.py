@@ -17,9 +17,7 @@ class FakeVLM:
 
 # -------- Fake Image Generator --------
 class FakeImageGen:
-    async def generate(
-        self, prompt=None, output_path=None, iteration=None, seed=None, **kwargs
-    ):
+    async def generate(self, prompt=None, output_path=None, iteration=None, seed=None, **kwargs):
         iteration = iteration or 1  # fallback to 1 if None
         img = Image.new("RGB", (256, 256), color=(iteration * 40 % 256, 100, 150))
         return img
