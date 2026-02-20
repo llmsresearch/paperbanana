@@ -15,6 +15,7 @@ from rich.prompt import Prompt
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
 from paperbanana.core.types import DiagramType, GenerationInput
+from paperbanana.core.utils import generate_run_id
 
 app = typer.Typer(
     name="paperbanana",
@@ -67,6 +68,10 @@ def generate(
         help="Output image format (png, jpeg, or webp)",
     ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Validate inputs and show what would happen without making API calls",
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
     ),
@@ -215,6 +220,25 @@ def generate(
         diagram_type=DiagramType.METHODOLOGY,
     )
 
+    if dry_run:
+        expected_output = (
+            Path(output)
+            if output
+            else Path(settings.output_dir) / generate_run_id() / "final_output.png"
+        )
+        console.print(
+            Panel.fit(
+                "[bold]PaperBanana[/bold] - Dry Run\n\n"
+                f"Input: {input_path}\n"
+                f"Caption: {caption}\n"
+                f"VLM: {settings.vlm_provider} / {settings.vlm_model}\n"
+                f"Image: {settings.image_provider} / {settings.image_model}\n"
+                f"Iterations: {settings.refinement_iterations}\n"
+                f"Output: {expected_output}",
+                border_style="yellow",
+            )
+        )
+        return
     if auto:
         iter_label = f"auto (max {settings.max_iterations})"
     else:
