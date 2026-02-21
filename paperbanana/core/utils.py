@@ -53,14 +53,37 @@ def save_image(
     path: str | Path,
     format: str | None = None,
 ) -> Path:
-    """Save a PIL Image to a file path."""
+    """Save a PIL Image to a file path.
+
+    When *format* is not given explicitly, the target format is inferred from
+    the file extension so that the on-disk bytes always match the extension.
+    Without this, PIL may fall back to the image's original format (e.g. JPEG
+    data written to a ``.png`` file) when the Image object was opened from a
+    byte stream whose format differs from the extension.
+    """
     path = Path(path)
     ensure_dir(path.parent)
 
+    if format is None:
+        # Infer the target format from the file extension.
+        ext_to_format: dict[str, str] = {
+            ".png": "PNG",
+            ".jpg": "JPEG",
+            ".jpeg": "JPEG",
+            ".webp": "WEBP",
+            ".bmp": "BMP",
+            ".gif": "GIF",
+            ".tiff": "TIFF",
+            ".tif": "TIFF",
+        }
+        format = ext_to_format.get(path.suffix.lower())
+
     if format is not None:
-        if format == "jpeg" and image.mode in ("RGBA", "LA", "P"):
+        fmt = format.upper()
+        # JPEG does not support alpha channels.
+        if fmt == "JPEG" and image.mode in ("RGBA", "LA", "P"):
             image = image.convert("RGB")
-        image.save(path, format=format.upper())
+        image.save(path, format=fmt)
     else:
         image.save(path)
     return path
@@ -93,3 +116,28 @@ def truncate_text(text: str, max_chars: int = 2000) -> str:
 def hash_content(content: str) -> str:
     """Generate a short hash of content for deduplication."""
     return hashlib.sha256(content.encode()).hexdigest()[:12]
+
+
+def detect_image_mime_type(path: str | Path) -> str:
+    """Detect the actual image MIME type from file header bytes.
+
+    Uses magic-byte detection rather than file extension, so the result
+    reflects the true encoding of the file on disk.
+    """
+    with open(path, "rb") as f:
+        header = f.read(12)
+    if header[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if header[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    if header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return "image/webp"
+    if header[:4] == b"GIF8":
+        return "image/gif"
+    if header[:2] in (b"BM",):
+        return "image/bmp"
+    if header[:4] in (b"II\x2a\x00", b"MM\x00\x2a"):
+        return "image/tiff"
+    # Fall back to extension-based guess.
+    mime, _ = __import__("mimetypes").guess_type(str(path))
+    return mime or "application/octet-stream"

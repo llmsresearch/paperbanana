@@ -22,6 +22,7 @@ from fastmcp.utilities.types import Image
 from paperbanana.core.config import Settings
 from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.types import DiagramType, GenerationInput
+from paperbanana.core.utils import detect_image_mime_type
 from paperbanana.evaluation.judge import VLMJudge
 from paperbanana.providers.registry import ProviderRegistry
 
@@ -54,7 +55,11 @@ async def generate_diagram(
     )
 
     result = await pipeline.generate(gen_input)
-    return Image(path=result.image_path)
+    # Detect actual MIME type from file content (not extension) to avoid
+    # mismatch when upstream image providers return e.g. JPEG bytes.
+    mime = detect_image_mime_type(result.image_path)
+    fmt = mime.split("/")[1]  # e.g. "png", "jpeg"
+    return Image(path=result.image_path, format=fmt)
 
 
 @mcp.tool
@@ -87,7 +92,9 @@ async def generate_plot(
     )
 
     result = await pipeline.generate(gen_input)
-    return Image(path=result.image_path)
+    mime = detect_image_mime_type(result.image_path)
+    fmt = mime.split("/")[1]
+    return Image(path=result.image_path, format=fmt)
 
 
 @mcp.tool
