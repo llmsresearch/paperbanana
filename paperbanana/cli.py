@@ -67,6 +67,9 @@ def generate(
         help="Output image format (png, jpeg, or webp)",
     ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Validate inputs and show config without making API calls"
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
     ),
@@ -111,6 +114,74 @@ def generate(
 
         load_dotenv()
         settings = Settings(**overrides)
+
+    # ── Dry-run mode ────────────────────────────────────────────
+    if dry_run:
+        import platform as _platform
+
+        console.print(
+            Panel.fit(
+                "[bold]PaperBanana[/bold] — Dry Run\n\n"
+                f"VLM provider:   {settings.vlm_provider}\n"
+                f"VLM model:      {settings.effective_vlm_model}\n"
+                f"Image provider: {settings.image_provider}\n"
+                f"Image model:    {settings.effective_image_model}\n"
+                f"Iterations:     {'auto' if settings.auto_refine else settings.refinement_iterations}\n"
+                f"Output format:  {settings.output_format}\n"
+                f"Output dir:     {settings.output_dir}\n"
+                f"Reference set:  {settings.reference_set_path}\n"
+                f"\nEnvironment\n"
+                f"Python:         {_platform.python_version()}\n"
+                f"Platform:       {_platform.platform()}",
+                border_style="yellow",
+            )
+        )
+
+        # Validate inputs if provided
+        issues: list[str] = []
+        if input:
+            input_path = Path(input)
+            if input_path.exists():
+                text = input_path.read_text(encoding="utf-8")
+                console.print(f"\n[green]✓[/green] Input file: {input_path} ({len(text)} chars)")
+            else:
+                issues.append(f"Input file not found: {input}")
+                console.print(f"\n[red]✗[/red] Input file not found: {input}")
+        else:
+            console.print("\n[yellow]![/yellow] No --input provided (required for generation)")
+
+        if caption:
+            console.print(f"[green]✓[/green] Caption: {caption[:80]}{'...' if len(caption) > 80 else ''}")
+        else:
+            console.print("[yellow]![/yellow] No --caption provided (required for generation)")
+
+        # Check API keys
+        if settings.vlm_provider == "gemini" and settings.google_api_key:
+            console.print(f"[green]✓[/green] GOOGLE_API_KEY: configured")
+        elif settings.vlm_provider == "gemini":
+            issues.append("GOOGLE_API_KEY not set")
+            console.print(f"[red]✗[/red] GOOGLE_API_KEY: not set")
+
+        if settings.vlm_provider == "openai" and settings.openai_api_key:
+            console.print(f"[green]✓[/green] OPENAI_API_KEY: configured")
+        elif settings.vlm_provider == "openai":
+            issues.append("OPENAI_API_KEY not set")
+            console.print(f"[red]✗[/red] OPENAI_API_KEY: not set")
+
+        # Check reference set
+        ref_path = Path(settings.reference_set_path)
+        if ref_path.exists():
+            examples = [d for d in ref_path.iterdir() if d.is_dir()]
+            console.print(f"[green]✓[/green] Reference set: {len(examples)} examples")
+        else:
+            console.print(f"[yellow]![/yellow] Reference set path not found: {ref_path}")
+
+        if issues:
+            console.print(f"\n[red]✗ {len(issues)} issue(s) found[/red]")
+            raise typer.Exit(1)
+        else:
+            console.print("\n[green]✓ All checks passed — ready to generate[/green]")
+        return
 
     from paperbanana.core.pipeline import PaperBananaPipeline
 
