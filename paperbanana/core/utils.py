@@ -48,12 +48,37 @@ def load_image(path: str | Path) -> Image.Image:
     return Image.open(path).convert("RGB")
 
 
+def _ensure_pil_image(image: Any) -> Image.Image:
+    """Coerce *image* to a PIL ``Image.Image``.
+
+    Provider-specific image objects (e.g. ``google.genai.types.Image``) carry
+    raw bytes but do not support PIL's ``save(format=...)`` interface.  This
+    helper transparently converts them so that downstream callers can always
+    rely on PIL semantics.
+    """
+    if isinstance(image, Image.Image):
+        return image
+
+    # google-genai Image and similar wrappers expose ``image_bytes``.
+    raw: bytes | None = getattr(image, "image_bytes", None)
+    if raw is not None:
+        return Image.open(BytesIO(raw))
+
+    raise TypeError(
+        f"Expected a PIL Image or an object with image_bytes, got {type(image).__qualname__}"
+    )
+
+
 def save_image(
     image: Image.Image,
     path: str | Path,
     format: str | None = None,
 ) -> Path:
-    """Save a PIL Image to a file path.
+    """Save an image to a file path.
+
+    Accepts PIL ``Image.Image`` objects as well as provider-specific wrappers
+    (e.g. ``google.genai.types.Image``) which are transparently converted to
+    PIL before saving.
 
     When *format* is not given explicitly, the target format is inferred from
     the file extension so that the on-disk bytes always match the extension.
@@ -61,6 +86,7 @@ def save_image(
     data written to a ``.png`` file) when the Image object was opened from a
     byte stream whose format differs from the extension.
     """
+    image = _ensure_pil_image(image)
     path = Path(path)
     ensure_dir(path.parent)
 
