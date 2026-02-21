@@ -137,7 +137,7 @@ PaperBanana supports multiple VLM and image generation providers:
 |-----------|----------|-------|-------|
 | VLM (planning, critique) | OpenAI | `gpt-5.2` | Default |
 | Image Generation | OpenAI | `gpt-image-1.5` | Default |
-| VLM | Google Gemini | `gemini-2.0-flash` | Free tier |
+| VLM | Google Gemini | `gemini-2.5-flash` | Free tier |
 | Image Generation | Google Gemini | `gemini-3-pro-image-preview` | Free tier |
 | VLM / Image | OpenRouter | Any supported model | Flexible routing |
 
