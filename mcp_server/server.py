@@ -15,9 +15,14 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
+from io import BytesIO
+from pathlib import Path
 
+import structlog
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
+from PIL import Image as PILImage
 
 from paperbanana.core.config import Settings
 from paperbanana.core.pipeline import PaperBananaPipeline
@@ -25,6 +30,75 @@ from paperbanana.core.types import DiagramType, GenerationInput
 from paperbanana.core.utils import detect_image_mime_type
 from paperbanana.evaluation.judge import VLMJudge
 from paperbanana.providers.registry import ProviderRegistry
+
+logger = structlog.get_logger()
+
+# Claude API enforces a 5 MB limit on base64-encoded images in tool results.
+# Base64 inflates raw bytes by ~4/3, so we cap the raw file at 3.75 MB to
+# stay safely under the wire.
+_MAX_IMAGE_BYTES = int(os.environ.get("PAPERBANANA_MAX_IMAGE_BYTES", 3_750_000))
+
+
+def _compress_for_api(image_path: str) -> tuple[str, str]:
+    """Return *(effective_path, format)* for an image that fits the API limit.
+
+    If the file at *image_path* already fits, returns it as-is.  Otherwise the
+    image is re-saved as optimised JPEG (which is dramatically smaller for the
+    photographic output typical of AI image generators) next to the original.
+    """
+    raw_size = Path(image_path).stat().st_size
+    mime = detect_image_mime_type(image_path)
+    fmt = mime.split("/")[1]  # e.g. "png", "jpeg"
+
+    if raw_size <= _MAX_IMAGE_BYTES:
+        return image_path, fmt
+
+    logger.info(
+        "Image exceeds API size limit, compressing to JPEG",
+        original_bytes=raw_size,
+        limit=_MAX_IMAGE_BYTES,
+    )
+
+    img = PILImage.open(image_path)
+    if img.mode in ("RGBA", "LA", "P"):
+        img = img.convert("RGB")
+
+    compressed_path = str(Path(image_path).with_suffix(".mcp.jpg"))
+
+    # Try quality 85 first; fall back to progressively lower quality.
+    for quality in (85, 70, 50):
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        if buf.tell() <= _MAX_IMAGE_BYTES:
+            Path(compressed_path).write_bytes(buf.getvalue())
+            logger.info(
+                "Compressed image saved",
+                quality=quality,
+                compressed_bytes=buf.tell(),
+            )
+            return compressed_path, "jpeg"
+
+    # Last resort: scale down.
+    for scale in (0.75, 0.5):
+        resized = img.resize(
+            (int(img.width * scale), int(img.height * scale)),
+            PILImage.LANCZOS,
+        )
+        buf = BytesIO()
+        resized.save(buf, format="JPEG", quality=70, optimize=True)
+        if buf.tell() <= _MAX_IMAGE_BYTES:
+            Path(compressed_path).write_bytes(buf.getvalue())
+            logger.info(
+                "Resized and compressed image saved",
+                scale=scale,
+                compressed_bytes=buf.tell(),
+            )
+            return compressed_path, "jpeg"
+
+    # Give up gracefully — return whatever we have.
+    Path(compressed_path).write_bytes(buf.getvalue())
+    return compressed_path, "jpeg"
+
 
 mcp = FastMCP("PaperBanana")
 
@@ -55,11 +129,8 @@ async def generate_diagram(
     )
 
     result = await pipeline.generate(gen_input)
-    # Detect actual MIME type from file content (not extension) to avoid
-    # mismatch when upstream image providers return e.g. JPEG bytes.
-    mime = detect_image_mime_type(result.image_path)
-    fmt = mime.split("/")[1]  # e.g. "png", "jpeg"
-    return Image(path=result.image_path, format=fmt)
+    effective_path, fmt = _compress_for_api(result.image_path)
+    return Image(path=effective_path, format=fmt)
 
 
 @mcp.tool
@@ -92,9 +163,8 @@ async def generate_plot(
     )
 
     result = await pipeline.generate(gen_input)
-    mime = detect_image_mime_type(result.image_path)
-    fmt = mime.split("/")[1]
-    return Image(path=result.image_path, format=fmt)
+    effective_path, fmt = _compress_for_api(result.image_path)
+    return Image(path=effective_path, format=fmt)
 
 
 @mcp.tool
