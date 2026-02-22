@@ -469,6 +469,7 @@ def evaluate(
 ):
     """Evaluate a generated diagram vs human reference (comparative)."""
     configure_logging(verbose=verbose)
+    from paperbanana.core.utils import find_prompt_dir
     from paperbanana.evaluation.judge import VLMJudge
 
     generated_path = Path(generated)
@@ -492,7 +493,7 @@ def evaluate(
 
     vlm = ProviderRegistry.create_vlm(settings)
 
-    judge = VLMJudge(vlm)
+    judge = VLMJudge(vlm, prompt_dir=find_prompt_dir())
 
     async def _run():
         return await judge.evaluate(

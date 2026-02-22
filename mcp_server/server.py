@@ -27,7 +27,7 @@ from PIL import Image as PILImage
 from paperbanana.core.config import Settings
 from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.types import DiagramType, GenerationInput
-from paperbanana.core.utils import detect_image_mime_type
+from paperbanana.core.utils import detect_image_mime_type, find_prompt_dir
 from paperbanana.evaluation.judge import VLMJudge
 from paperbanana.providers.registry import ProviderRegistry
 
@@ -191,7 +191,7 @@ async def evaluate_diagram(
     """
     settings = Settings()
     vlm = ProviderRegistry.create_vlm(settings)
-    judge = VLMJudge(vlm_provider=vlm)
+    judge = VLMJudge(vlm_provider=vlm, prompt_dir=find_prompt_dir())
 
     scores = await judge.evaluate(
         image_path=generated_path,
