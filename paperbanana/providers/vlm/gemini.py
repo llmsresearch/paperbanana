@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 import structlog
@@ -12,6 +13,11 @@ from paperbanana.core.utils import image_to_base64
 from paperbanana.providers.base import VLMProvider
 
 logger = structlog.get_logger()
+
+# Gemini 2.5+ models use "thinking" tokens counted within max_output_tokens.
+_THINKING_MODEL_RE = re.compile(r"gemini-(?:[3-9]|[1-9]\d|2\.[5-9]|2\.\d{2,})")
+
+_DEFAULT_THINKING_BUDGET = 8192
 
 
 class GeminiVLM(VLMProvider):
@@ -45,6 +51,9 @@ class GeminiVLM(VLMProvider):
                     "Install with: pip install 'paperbanana[google]'"
                 )
         return self._client
+
+    def _is_thinking_model(self) -> bool:
+        return bool(_THINKING_MODEL_RE.search(self._model.lower()))
 
     def is_available(self) -> bool:
         return self._api_key is not None
@@ -83,6 +92,21 @@ class GeminiVLM(VLMProvider):
             config.system_instruction = system_prompt
         if response_format == "json":
             config.response_mime_type = "application/json"
+
+        # Thinking models (Gemini 2.5+): thinking tokens share the
+        # max_output_tokens budget, starving actual content.  Cap thinking
+        # and scale the total so callers get the full max_tokens for content.
+        if self._is_thinking_model():
+            thinking_budget = _DEFAULT_THINKING_BUDGET
+            config.thinking_config = types.ThinkingConfig(
+                thinking_budget=thinking_budget,
+            )
+            config.max_output_tokens = max_tokens + thinking_budget
+            logger.debug(
+                "Thinking model detected, adjusted token budget",
+                model=self._model,
+                max_output_tokens=config.max_output_tokens,
+            )
 
         response = client.models.generate_content(
             model=self._model,

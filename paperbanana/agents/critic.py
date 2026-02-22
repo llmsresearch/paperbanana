@@ -87,7 +87,6 @@ class CriticAgent(BaseAgent):
         return critique
 
     def _parse_response(self, response: str) -> CritiqueResult:
-        """Parse the VLM response into a CritiqueResult."""
         try:
             data = json.loads(response)
             return CritiqueResult(
@@ -95,9 +94,44 @@ class CriticAgent(BaseAgent):
                 revised_description=data.get("revised_description"),
             )
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning("Failed to parse critic response", error=str(e))
-            # Conservative fallback: empty suggestions means no revision needed
+            logger.warning("Failed to parse critic response, attempting repair", error=str(e))
+            repaired = self._repair_truncated_json(response)
+            if repaired is not None:
+                logger.info("Repaired truncated critic JSON")
+                return CritiqueResult(
+                    critic_suggestions=repaired.get("critic_suggestions", []),
+                    revised_description=repaired.get("revised_description"),
+                )
+            logger.warning("JSON repair failed, falling back to empty critique")
             return CritiqueResult(
                 critic_suggestions=[],
                 revised_description=None,
             )
+
+    @staticmethod
+    def _repair_truncated_json(text: str) -> Optional[dict]:
+        bracket_closers = ['"]}', '"}', '"]}', 'null}', '"]', '}']
+        for suffix in bracket_closers:
+            try:
+                data = json.loads(text + suffix)
+                if isinstance(data, dict):
+                    return data
+            except json.JSONDecodeError:
+                continue
+
+        # Last resort: regex-extract critic_suggestions even when
+        # revised_description is unrecoverably truncated.
+        try:
+            import re
+
+            m = re.search(
+                r'"critic_suggestions"\s*:\s*(\[.*?\])', text, re.DOTALL
+            )
+            if m:
+                suggestions = json.loads(m.group(1))
+                if isinstance(suggestions, list) and suggestions:
+                    return {"critic_suggestions": suggestions, "revised_description": None}
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        return None

@@ -23,7 +23,14 @@ from paperbanana.core.types import (
     IterationRecord,
     RunMetadata,
 )
-from paperbanana.core.utils import ensure_dir, generate_run_id, load_image, save_image, save_json
+from paperbanana.core.utils import (
+    ensure_dir,
+    find_prompt_dir,
+    generate_run_id,
+    load_image,
+    save_image,
+    save_json,
+)
 from paperbanana.guidelines.methodology import load_methodology_guidelines
 from paperbanana.guidelines.plots import load_plot_guidelines
 from paperbanana.providers.registry import ProviderRegistry
@@ -153,16 +160,7 @@ class PaperBananaPipeline:
 
     def _find_prompt_dir(self) -> str:
         """Find the prompts directory relative to the package."""
-        # Check common locations
-        candidates = [
-            Path("prompts"),
-            Path(__file__).parent.parent.parent / "prompts",
-        ]
-        for p in candidates:
-            if p.exists():
-                return str(p)
-        # Default
-        return "prompts"
+        return find_prompt_dir()
 
     async def generate(self, input: GenerationInput) -> GenerationOutput:
         """Run the full generation pipeline.
