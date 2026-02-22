@@ -95,7 +95,6 @@ class GoogleImagenGen(ImageGenProvider):
             response_modalities=["IMAGE"],
             image_config=types.ImageConfig(
                 aspect_ratio=self._aspect_ratio(width, height),
-                image_size=self._image_size(width, height),
             ),
         )
 
