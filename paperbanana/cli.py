@@ -100,6 +100,9 @@ def generate(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
     ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Validate inputs and show config without making API calls"
+    ),
 ):
     """Generate a methodology diagram from a text description."""
     if format not in ("png", "jpeg", "webp"):
@@ -141,6 +144,46 @@ def generate(
 
         load_dotenv()
         settings = Settings(**overrides)
+
+    # ── Dry-run mode ────────────────────────────────────────────
+    if dry_run:
+        console.print(
+            Panel.fit(
+                "[bold]PaperBanana[/bold] — Dry Run\n\n"
+                f"VLM provider:   {settings.vlm_provider}\n"
+                f"VLM model:      {settings.vlm_model}\n"
+                f"Image provider: {settings.image_provider}\n"
+                f"Image model:    {settings.image_model}\n"
+                f"Iterations:     {iterations or settings.refinement_iterations}\n"
+                f"Auto-refine:    {auto}\n"
+                f"Optimize:       {optimize}\n"
+                f"Output format:  {format}\n"
+                f"Output dir:     {settings.output_dir}\n"
+                f"Input file:     {input or '(interactive prompt)'}\n"
+                f"Caption:        {caption or '(none)'}",
+                border_style="cyan",
+            )
+        )
+
+        # Validate input file exists if specified
+        if input:
+            p = Path(input)
+            if p.exists():
+                console.print(f"  [green]✓[/green] Input file exists ({p.stat().st_size} bytes)")
+            else:
+                console.print(f"  [red]✗[/red] Input file not found: {input}")
+                raise typer.Exit(1)
+
+        # Check API key availability
+        if settings.vlm_provider == "gemini":
+            key = settings.google_api_key
+            if key:
+                console.print(f"  [green]✓[/green] Google API key configured ({key[:4]}...)")
+            else:
+                console.print("  [red]✗[/red] Google API key not set (GOOGLE_API_KEY)")
+
+        console.print("\n[dim]Dry run complete — no API calls were made.[/dim]")
+        raise typer.Exit()
 
     from paperbanana.core.pipeline import PaperBananaPipeline
 
