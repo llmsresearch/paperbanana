@@ -7,14 +7,30 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import platform
+import sys
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+import paperbanana
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
 from paperbanana.core.types import DiagramType, GenerationInput
+
+
+def _version_callback(value: bool) -> None:
+    """Print version info and exit."""
+    if value:
+        typer.echo(
+            f"paperbanana {paperbanana.__version__}\n"
+            f"Python {sys.version.split()[0]}\n"
+            f"Platform: {platform.platform()}"
+        )
+        raise typer.Exit()
+
 
 app = typer.Typer(
     name="paperbanana",
@@ -22,6 +38,20 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-V",
+        help="Show version, Python, and platform info.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """PaperBanana CLI."""
 
 
 @app.command()
