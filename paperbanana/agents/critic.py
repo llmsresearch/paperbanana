@@ -86,18 +86,47 @@ class CriticAgent(BaseAgent):
         )
         return critique
 
+    @staticmethod
+    def _extract_json(text: str) -> Optional[dict]:
+        """Try to extract a JSON object from text that may contain markdown fences or extra content."""
+        import re
+
+        # Try direct parse first
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # Try extracting from markdown code fences
+        fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+        if fence_match:
+            try:
+                return json.loads(fence_match.group(1).strip())
+            except json.JSONDecodeError:
+                pass
+
+        # Try finding the first { ... } block
+        brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+        if brace_match:
+            try:
+                return json.loads(brace_match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        return None
+
     def _parse_response(self, response: str) -> CritiqueResult:
         """Parse the VLM response into a CritiqueResult."""
-        try:
-            data = json.loads(response)
+        data = self._extract_json(response)
+        if data is not None:
             return CritiqueResult(
                 critic_suggestions=data.get("critic_suggestions", []),
                 revised_description=data.get("revised_description"),
             )
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.warning("Failed to parse critic response", error=str(e))
-            # Conservative fallback: empty suggestions means no revision needed
-            return CritiqueResult(
-                critic_suggestions=[],
-                revised_description=None,
-            )
+
+        logger.warning("Failed to parse critic response", error="no valid JSON found in response")
+        # Conservative fallback: empty suggestions means no revision needed
+        return CritiqueResult(
+            critic_suggestions=[],
+            revised_description=None,
+        )
