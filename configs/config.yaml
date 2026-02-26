@@ -4,7 +4,7 @@
 # Provider settings
 vlm:
   provider: gemini
-  model: gemini-2.0-flash
+  model: gemini-3-flash-preview
 
 image:
   provider: google_imagen
@@ -14,7 +14,7 @@ image:
 pipeline:
   num_retrieval_examples: 10
   refinement_iterations: 3
-  output_resolution: "2k"   # 1k, 2k, 4k
+  output_resolution: "4k"   # 1k, 2k, 4k
   diagram_type: methodology  # methodology, statistical_plot
 
 # Reference set

@@ -6,7 +6,7 @@ Generate complete, executable Python code using matplotlib and/or seaborn to cre
 {description}
 
 ## Requirements
-- Set OUTPUT_PATH variable at the top of the code
+- OUTPUT_PATH is pre-defined — do NOT redefine it, just use it in plt.savefig()
 - Use plt.savefig(OUTPUT_PATH, dpi=300, bbox_inches='tight')
 - Do NOT include plt.show() calls
 - Publication-quality figure suitable for NeurIPS/ICML/ICLR
@@ -15,4 +15,6 @@ Generate complete, executable Python code using matplotlib and/or seaborn to cre
 - Clear axis labels with appropriate font sizes
 - Legend that does not obstruct data
 - High resolution (300 DPI minimum)
+- Do NOT pass a string to legend(prop=...) — use FontProperties object or omit prop entirely
+- Avoid custom coordinate systems; prefer matplotlib's built-in polar=True for radar charts
 - Only output the Python code, nothing else

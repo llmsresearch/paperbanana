@@ -43,14 +43,20 @@ dependencies = [
 
 [project.optional-dependencies]
 google = ["google-genai>=1.0"]
-all-providers = ["google-genai>=1.0"]
 mcp = ["fastmcp>=2.0"]
+demo = ["streamlit>=1.35"]
+bench = ["numpy>=1.26", "tqdm>=4.65"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
 ]
 pdf = ["pymupdf>=1.24"]
+all = [
+    "google-genai>=1.0",
+    "streamlit>=1.35",
+    "json-repair>=0.30",
+]
 
 [project.scripts]
 paperbanana = "paperbanana.cli:app"

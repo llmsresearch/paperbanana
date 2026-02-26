@@ -34,7 +34,7 @@ class VLMProvider(ABC):
         images: Optional[list[Image.Image]] = None,
         system_prompt: Optional[str] = None,
         temperature: float = 1.0,
-        max_tokens: int = 4096,
+        max_tokens: int = 16384,
         response_format: Optional[str] = None,
     ) -> str:
         """Generate text from a prompt, optionally with images.

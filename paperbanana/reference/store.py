@@ -35,7 +35,7 @@ class ReferenceStore:
             self._loaded = True
             return
 
-        with open(index_file) as f:
+        with open(index_file, encoding="utf-8") as f:
             data = json.load(f)
 
         for item in data.get("examples", []):
@@ -105,7 +105,7 @@ class ReferenceStore:
             "examples": [e.model_dump() for e in examples],
         }
 
-        with open(path / "index.json", "w") as f:
+        with open(path / "index.json", "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
         logger.info("Created reference store", path=str(path), count=len(examples))

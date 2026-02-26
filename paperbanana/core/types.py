@@ -118,6 +118,14 @@ class EvaluationScore(BaseModel):
     )
 
 
+class PolishResult(BaseModel):
+    """Output from the Polish agent."""
+
+    suggestions: str = Field(description="Style guide improvement suggestions")
+    polished_image_path: str = Field(description="Path to the polished image")
+    changed: bool = Field(default=True, description="Whether changes were applied")
+
+
 class RunMetadata(BaseModel):
     """Metadata for a single pipeline run, for reproducibility."""
 

@@ -20,7 +20,7 @@ class GeminiVLM(VLMProvider):
     Free tier: https://makersuite.google.com/app/apikey
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3-flash-preview"):
         self._api_key = api_key
         self._model = model
         self._client = None
@@ -56,7 +56,7 @@ class GeminiVLM(VLMProvider):
         images: Optional[list[Image.Image]] = None,
         system_prompt: Optional[str] = None,
         temperature: float = 1.0,
-        max_tokens: int = 4096,
+        max_tokens: int = 16384,
         response_format: Optional[str] = None,
     ) -> str:
         from google.genai import types
@@ -78,6 +78,7 @@ class GeminiVLM(VLMProvider):
         config = types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=4096),
         )
         if system_prompt:
             config.system_instruction = system_prompt

@@ -3,8 +3,10 @@
 from paperbanana.agents.base import BaseAgent
 from paperbanana.agents.critic import CriticAgent
 from paperbanana.agents.planner import PlannerAgent
+from paperbanana.agents.polish import PolishAgent
 from paperbanana.agents.retriever import RetrieverAgent
 from paperbanana.agents.stylist import StylistAgent
+from paperbanana.agents.vanilla import VanillaAgent
 from paperbanana.agents.visualizer import VisualizerAgent
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "StylistAgent",
     "VisualizerAgent",
     "CriticAgent",
+    "VanillaAgent",
+    "PolishAgent",
 ]

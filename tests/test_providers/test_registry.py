@@ -30,9 +30,20 @@ def test_create_google_imagen_gen():
     assert gen.name == "google_imagen"
 
 
+def test_create_deferred_vlm():
+    """Test that vlm_model='auto' creates a DeferredVLMProvider."""
+    settings = Settings(
+        vlm_model="auto",
+        google_api_key="test-key",
+    )
+    vlm = ProviderRegistry.create_vlm(settings)
+    assert vlm.name == "gemini"
+    assert "auto" in vlm.model_name
+
+
 def test_unknown_vlm_provider_raises():
     """Test that unknown VLM provider raises ValueError."""
-    settings = Settings(vlm_provider="nonexistent")
+    settings = Settings(vlm_provider="nonexistent", vlm_model="some-model")
     with pytest.raises(ValueError, match="Unknown VLM provider"):
         ProviderRegistry.create_vlm(settings)
 

@@ -40,6 +40,14 @@ data/reference_sets/mineru_exports/
 # Copyrighted paper text
 paper.md
 
+# Temp test inputs
+temp_*.txt
+test_input*.txt
+temp_*.json
+
+# Large benchmark dataset (296MB)
+data/PaperBananaBench/
+
 # Credentials
 *.pem
 *.p12

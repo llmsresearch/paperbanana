@@ -15,9 +15,18 @@ class ProviderRegistry:
 
     @staticmethod
     def create_vlm(settings: Settings) -> VLMProvider:
-        """Create a VLM provider based on settings."""
+        """Create a VLM provider based on settings.
+
+        When ``vlm_model`` is ``"auto"``, returns a :class:`DeferredVLMProvider`
+        that selects Flash or Pro at runtime based on input complexity.
+        """
         provider = settings.vlm_provider.lower()
         logger.info("Creating VLM provider", provider=provider, model=settings.vlm_model)
+
+        if settings.vlm_model == "auto":
+            from paperbanana.providers.vlm.deferred import DeferredVLMProvider
+
+            return DeferredVLMProvider(settings)
 
         if provider == "gemini":
             from paperbanana.providers.vlm.gemini import GeminiVLM
@@ -52,3 +61,17 @@ class ProviderRegistry:
                 f"Unknown image provider: {provider}. "
                 f"Available: google_imagen"
             )
+
+    @staticmethod
+    def create_polish_image_gen(settings: Settings) -> ImageGenProvider:
+        """Create an image gen provider for polish mode (requires image editing support)."""
+        logger.info(
+            "Creating polish image gen provider",
+            model=settings.polish_image_model,
+        )
+        from paperbanana.providers.image_gen.google_imagen import GoogleImagenGen
+
+        return GoogleImagenGen(
+            api_key=settings.google_api_key,
+            model=settings.polish_image_model,
+        )

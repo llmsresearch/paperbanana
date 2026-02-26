@@ -118,7 +118,7 @@ class VisualizerAgent(BaseAgent):
         code_response = await self.vlm.generate(
             prompt=code_prompt,
             temperature=0.3,
-            max_tokens=4096,
+            max_tokens=16384,
         )
 
         # Extract code from response
@@ -126,6 +126,9 @@ class VisualizerAgent(BaseAgent):
 
         if output_path is None:
             output_path = str(self.output_dir / f"plot_iter_{iteration}.png")
+
+        # Log generated code for debugging
+        logger.debug("Generated plot code", code=code[:2000])
 
         # Execute the code
         success = self._execute_plot_code(code, output_path)
@@ -142,18 +145,30 @@ class VisualizerAgent(BaseAgent):
         # Look for code blocks
         if "```python" in response:
             start = response.index("```python") + len("```python")
-            end = response.index("```", start)
+            try:
+                end = response.index("```", start)
+            except ValueError:
+                end = len(response)
             return response[start:end].strip()
         elif "```" in response:
             start = response.index("```") + 3
-            end = response.index("```", start)
+            try:
+                end = response.index("```", start)
+            except ValueError:
+                end = len(response)
             return response[start:end].strip()
         return response.strip()
 
     def _execute_plot_code(self, code: str, output_path: str) -> bool:
         """Execute matplotlib code in a subprocess to generate a plot."""
-        # Inject the output path
-        full_code = f'OUTPUT_PATH = "{output_path}"\n{code}'
+        import re
+
+        # Strip any OUTPUT_PATH assignments from generated code to prevent override
+        code = re.sub(r'^OUTPUT_PATH\s*=\s*.*$', '', code, flags=re.MULTILINE)
+
+        # Inject the output path at the top (use forward slashes to avoid Windows escape issues)
+        safe_path = output_path.replace("\\", "/")
+        full_code = f'OUTPUT_PATH = "{safe_path}"\n{code}'
 
         # Ensure output directory exists
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -170,9 +185,13 @@ class VisualizerAgent(BaseAgent):
                 timeout=60,
             )
             if result.returncode != 0:
-                logger.error("Plot code error", stderr=result.stderr[:500])
+                logger.error("Plot code error", stderr=result.stderr[:2000])
                 return False
-            return Path(output_path).exists()
+            if not Path(output_path).exists():
+                logger.error("Plot code ran but output file not found",
+                             stdout=result.stdout[:300], stderr=result.stderr[:300])
+                return False
+            return True
         except subprocess.TimeoutExpired:
             logger.error("Plot code timed out")
             return False

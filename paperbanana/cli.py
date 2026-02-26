@@ -34,6 +34,10 @@ def generate(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output image path"
     ),
+    mode: str = typer.Option(
+        "full", "--mode", "-m",
+        help="Pipeline mode: vanilla, planner, planner_stylist, planner_critic, full, polish",
+    ),
     vlm_provider: Optional[str] = typer.Option(
         None, "--vlm-provider", help="VLM provider (gemini)"
     ),
@@ -41,13 +45,13 @@ def generate(
         None, "--vlm-model", help="VLM model name"
     ),
     image_provider: Optional[str] = typer.Option(
-        None, "--image-provider", help="Image gen provider"
+        None, "--image-provider", help="Image gen provider (google_imagen)"
     ),
     image_model: Optional[str] = typer.Option(
         None, "--image-model", help="Image gen model name"
     ),
     iterations: Optional[int] = typer.Option(
-        None, "--iterations", "-n", help="Refinement iterations"
+        None, "--iterations", "-n", help="Max critic rounds"
     ),
     config: Optional[str] = typer.Option(
         None, "--config", help="Path to config YAML file"
@@ -63,7 +67,7 @@ def generate(
     source_context = input_path.read_text(encoding="utf-8")
 
     # Build settings — only override values explicitly passed via CLI
-    overrides = {}
+    overrides = {"exp_mode": mode}
     if vlm_provider:
         overrides["vlm_provider"] = vlm_provider
     if vlm_model:
@@ -73,7 +77,7 @@ def generate(
     if image_model:
         overrides["image_model"] = image_model
     if iterations is not None:
-        overrides["refinement_iterations"] = iterations
+        overrides["max_critic_rounds"] = iterations
     if output:
         overrides["output_dir"] = str(Path(output).parent)
 
@@ -91,11 +95,17 @@ def generate(
         diagram_type=DiagramType.METHODOLOGY,
     )
 
+    vlm_display = settings.vlm_model
+    if vlm_display == "auto":
+        vlm_display = f"auto (flash={settings.vlm_model_flash}, pro={settings.vlm_model_pro})"
+
     console.print(Panel.fit(
         f"[bold]PaperBanana[/bold] - Generating Methodology Diagram\n\n"
-        f"VLM: {settings.vlm_provider} / {settings.vlm_model}\n"
+        f"Mode: {settings.exp_mode}\n"
+        f"VLM: {settings.vlm_provider} / {vlm_display}\n"
         f"Image: {settings.image_provider} / {settings.image_model}\n"
-        f"Iterations: {settings.refinement_iterations}",
+        f"Polish Image: {settings.polish_image_model}\n"
+        f"Max critic rounds: {settings.max_critic_rounds}",
         border_style="blue",
     ))
 
@@ -107,9 +117,9 @@ def generate(
         return await pipeline.generate(gen_input)
 
     with Progress(
-        SpinnerColumn(),
+        SpinnerColumn(spinner_name="line"),
         TextColumn("[progress.description]{task.description}"),
-        console=console,
+        console=Console(force_terminal=True),
     ) as progress:
         progress.add_task("Generating diagram...", total=None)
         result = asyncio.run(_run())
@@ -125,6 +135,7 @@ def plot(
     intent: str = typer.Option(..., "--intent", help="Communicative intent for the plot"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output image path"),
     vlm_provider: str = typer.Option("gemini", "--vlm-provider", help="VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
     iterations: int = typer.Option(3, "--iterations", "-n", help="Number of refinement iterations"),
 ):
     """Generate a statistical plot from data."""
@@ -144,17 +155,20 @@ def plot(
             f"Rows: {len(df)}\nSample:\n{df.head().to_string()}"
         )
     else:
-        with open(data_path) as f:
+        with open(data_path, encoding="utf-8") as f:
             raw_data = json_mod.load(f)
         source_context = f"JSON data:\n{json_mod.dumps(raw_data, indent=2)[:2000]}"
 
     from dotenv import load_dotenv
     load_dotenv()
 
-    settings = Settings(
+    overrides = dict(
         vlm_provider=vlm_provider,
         refinement_iterations=iterations,
     )
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    settings = Settings(**overrides)
 
     gen_input = GenerationInput(
         source_context=source_context,
@@ -287,6 +301,148 @@ def evaluate(
         result = getattr(scores, dim)
         if result.reasoning:
             console.print(f"\n[bold]{dim}[/bold]: {result.reasoning}")
+
+
+@app.command()
+def bench(
+    dataset: str = typer.Option(
+        ..., "--dataset", "-d", help="Path to PaperBananaBench directory"
+    ),
+    task: str = typer.Option(
+        "diagram", "--task", "-t", help="Task type: diagram or plot"
+    ),
+    split: str = typer.Option(
+        "test", "--split", "-s", help="Dataset split (test or custom JSON filename)"
+    ),
+    mode: str = typer.Option(
+        "full", "--mode", "-m", help="Pipeline mode"
+    ),
+    max_samples: Optional[int] = typer.Option(
+        None, "--max-samples", help="Limit number of samples to process"
+    ),
+    vlm_provider: str = typer.Option(
+        "gemini", "--vlm-provider", help="VLM provider"
+    ),
+    concurrent: int = typer.Option(
+        1, "--concurrent", help="Max concurrent batch processing"
+    ),
+):
+    """Run PaperBananaBench evaluation."""
+    import json as json_mod
+
+    dataset_path = Path(dataset) / task
+    if not dataset_path.exists():
+        console.print(f"[red]Error: Dataset path not found: {dataset_path}[/red]")
+        raise typer.Exit(1)
+
+    # Load test data
+    test_file = dataset_path / f"{split}.json"
+    if not test_file.exists():
+        console.print(f"[red]Error: Test file not found: {test_file}[/red]")
+        raise typer.Exit(1)
+
+    with open(test_file, encoding="utf-8") as f:
+        test_data = json_mod.load(f)
+
+    if max_samples:
+        test_data = test_data[:max_samples]
+
+    console.print(Panel.fit(
+        f"[bold]PaperBananaBench[/bold]\n\n"
+        f"Task: {task} | Mode: {mode} | Samples: {len(test_data)}\n"
+        f"Dataset: {dataset_path}",
+        border_style="magenta",
+    ))
+
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    settings = Settings(
+        exp_mode=mode,
+        vlm_provider=vlm_provider,
+        batch_concurrent=concurrent,
+        paperbananabench_path=str(dataset),
+    )
+
+    diagram_type = DiagramType.METHODOLOGY if task == "diagram" else DiagramType.STATISTICAL_PLOT
+
+    # Build inputs
+    inputs = []
+    for item in test_data:
+        content = item.get("content", "")
+        if isinstance(content, (dict, list)):
+            import json as jmod
+            content = jmod.dumps(content)
+        inputs.append(GenerationInput(
+            source_context=content,
+            communicative_intent=item.get("visual_intent", ""),
+            diagram_type=diagram_type,
+            raw_data={"data": item.get("content")} if task == "plot" else None,
+        ))
+
+    from paperbanana.core.pipeline import PaperBananaPipeline
+
+    async def _run():
+        pipeline = PaperBananaPipeline(settings=settings)
+        results = []
+        async for result in pipeline.batch_generate(inputs, max_concurrent=concurrent):
+            results.append(result)
+            console.print(f"  [{len(results)}/{len(inputs)}] {result.image_path}")
+        return results
+
+    results = asyncio.run(_run())
+    console.print(f"\n[green]Bench complete![/green] Processed {len(results)} samples.")
+
+
+@app.command(name="polish")
+def polish_cmd(
+    image: str = typer.Option(
+        ..., "--image", help="Path to ground truth image to polish"
+    ),
+    task: str = typer.Option(
+        "diagram", "--task", "-t", help="Task type: diagram or plot"
+    ),
+    style_guide: Optional[str] = typer.Option(
+        None, "--style-guide", help="Path to custom style guide"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output image path"
+    ),
+):
+    """Polish an existing image using style guide analysis."""
+    image_path = Path(image)
+    if not image_path.exists():
+        console.print(f"[red]Error: Image not found: {image}[/red]")
+        raise typer.Exit(1)
+
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    settings = Settings(exp_mode="polish")
+    diagram_type = DiagramType.METHODOLOGY if task == "diagram" else DiagramType.STATISTICAL_PLOT
+
+    gen_input = GenerationInput(
+        source_context="",
+        communicative_intent="Polish existing image",
+        diagram_type=diagram_type,
+        raw_data={"gt_image_path": str(image_path)},
+    )
+
+    console.print(Panel.fit(
+        f"[bold]PaperBanana Polish[/bold]\n\n"
+        f"Image: {image_path.name}\n"
+        f"Task: {task}",
+        border_style="yellow",
+    ))
+
+    from paperbanana.core.pipeline import PaperBananaPipeline
+
+    async def _run():
+        pipeline = PaperBananaPipeline(settings=settings)
+        return await pipeline.generate(gen_input)
+
+    result = asyncio.run(_run())
+    console.print(f"\n[green]Done![/green] Polished image: [bold]{result.image_path}[/bold]")
 
 
 if __name__ == "__main__":

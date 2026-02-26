@@ -1,4 +1,4 @@
-"""Google Gemini 3 Pro image generation provider."""
+"""Google image generation provider — supports both Gemini and Imagen models."""
 
 from __future__ import annotations
 
@@ -15,17 +15,23 @@ from paperbanana.providers.base import ImageGenProvider
 logger = structlog.get_logger()
 
 
-class GoogleImagenGen(ImageGenProvider):
-    """Google Gemini 3 Pro Image generation via google-genai SDK.
+def _is_imagen_model(model: str) -> bool:
+    """Check if the model uses the Imagen API (generate_images) vs Gemini (generate_content)."""
+    return model.startswith("imagen-")
 
-    Uses the gemini-3-pro-image-preview model with response_modalities=["IMAGE"].
-    Requires a Google API key (free tier available).
+
+class GoogleImagenGen(ImageGenProvider):
+    """Google image generation via google-genai SDK.
+
+    Supports two API paths:
+    - Gemini models (gemini-3-pro-image-preview): generate_content with response_modalities=["IMAGE"]
+    - Imagen models (imagen-4.0-*): generate_images dedicated endpoint
     """
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gemini-3-pro-image-preview",
+        model: str = "imagen-4.0-generate-001",
     ):
         self._api_key = api_key
         self._model = model
@@ -84,9 +90,64 @@ class GoogleImagenGen(ImageGenProvider):
         height: int = 1024,
         seed: Optional[int] = None,
     ) -> Image.Image:
+        self._get_client()
+
+        if _is_imagen_model(self._model):
+            return await self._generate_imagen(prompt, negative_prompt, width, height)
+        else:
+            return await self._generate_gemini(prompt, negative_prompt, width, height)
+
+    async def _generate_imagen(
+        self,
+        prompt: str,
+        negative_prompt: Optional[str],
+        width: int,
+        height: int,
+    ) -> Image.Image:
+        """Generate image using Imagen API (generate_images)."""
         from google.genai import types
 
-        self._get_client()
+        if negative_prompt:
+            prompt = f"{prompt}\n\nAvoid: {negative_prompt}"
+
+        config = types.GenerateImagesConfig(
+            number_of_images=1,
+            aspect_ratio=self._aspect_ratio(width, height),
+        )
+
+        logger.info("Calling Imagen API", model=self._model)
+
+        response = self._client.models.generate_images(
+            model=self._model,
+            prompt=prompt,
+            config=config,
+        )
+
+        if not response.generated_images:
+            raise ValueError(f"Imagen API returned no images (model={self._model})")
+
+        # generated_images[0].image is a google.genai.types.Image with .image_bytes
+        gen_image = response.generated_images[0].image
+
+        # The SDK's Image object has .image_bytes property
+        if hasattr(gen_image, "image_bytes") and gen_image.image_bytes:
+            return Image.open(BytesIO(gen_image.image_bytes))
+
+        # Fallback: try ._pil_image or show()
+        if hasattr(gen_image, "_pil_image") and gen_image._pil_image:
+            return gen_image._pil_image
+
+        raise ValueError("Imagen response did not contain extractable image data.")
+
+    async def _generate_gemini(
+        self,
+        prompt: str,
+        negative_prompt: Optional[str],
+        width: int,
+        height: int,
+    ) -> Image.Image:
+        """Generate image using Gemini API (generate_content with IMAGE modality)."""
+        from google.genai import types
 
         if negative_prompt:
             prompt = f"{prompt}\n\nAvoid: {negative_prompt}"
@@ -98,6 +159,8 @@ class GoogleImagenGen(ImageGenProvider):
                 image_size=self._image_size(width, height),
             ),
         )
+
+        logger.info("Calling Gemini image API", model=self._model)
 
         response = self._client.models.generate_content(
             model=self._model,
