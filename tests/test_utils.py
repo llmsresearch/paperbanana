@@ -223,26 +223,38 @@ class TestCompressForApi:
 
         p = tmp_path / "small.png"
         _write_png(p)
-        path, fmt = _compress_for_api(str(p))
-        assert path == str(p)
+        data, fmt = _compress_for_api(str(p))
         assert fmt == "png"
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def test_jpeg_in_png_detected(self, tmp_path: Path):
+        """A .png file containing JPEG data must be returned as format=jpeg."""
+        from mcp_server.server import _compress_for_api
+
+        # Write JPEG bytes into a .png file (the exact scenario from #58).
+        p = tmp_path / "misleading.png"
+        buf = BytesIO()
+        Image.new("RGB", (10, 10), "red").save(buf, format="JPEG")
+        p.write_bytes(buf.getvalue())
+
+        data, fmt = _compress_for_api(str(p))
+        assert fmt == "jpeg"
+        assert data[:2] == b"\xff\xd8"
 
     def test_large_image_compressed(self, tmp_path: Path, monkeypatch):
         from mcp_server import server
         from mcp_server.server import _compress_for_api
 
-        # Set a very low limit so our test image exceeds it.
-        monkeypatch.setattr(server, "_MAX_IMAGE_BYTES", 100)
+        # Use a limit that the PNG will exceed but JPEG can satisfy.
+        monkeypatch.setattr(server, "_MAX_IMAGE_BYTES", 500)
 
         p = tmp_path / "big.png"
         Image.new("RGB", (200, 200), color=(128, 64, 32)).save(p, format="PNG")
-        assert p.stat().st_size > 100
+        assert p.stat().st_size > 500
 
-        path, fmt = _compress_for_api(str(p))
+        data, fmt = _compress_for_api(str(p))
         assert fmt == "jpeg"
-        assert path.endswith(".mcp.jpg")
-        # Compressed file should actually exist
-        assert Path(path).exists()
+        assert data[:2] == b"\xff\xd8"
 
     def test_uncompressible_raises(self, tmp_path: Path, monkeypatch):
         from mcp_server import server

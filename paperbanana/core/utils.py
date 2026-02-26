@@ -162,6 +162,27 @@ def find_prompt_dir() -> str:
     return "prompts"
 
 
+def detect_format_from_bytes(data: bytes) -> str:
+    """Detect short image format name from raw bytes using magic-byte signatures.
+
+    Returns a short format string such as ``"png"``, ``"jpeg"``, ``"webp"``,
+    or ``"gif"``.
+
+    Raises ``ValueError`` when the magic bytes do not match any known format.
+    """
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if data[:2] == b"\xff\xd8":
+        return "jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    if data[:4] == b"GIF8":
+        return "gif"
+    raise ValueError(
+        f"Unrecognised image format (header bytes: {data[:12]!r})"
+    )
+
+
 def detect_image_mime_type(path: str | Path) -> str:
     """Detect the actual image MIME type from file header bytes.
 

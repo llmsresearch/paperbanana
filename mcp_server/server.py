@@ -27,7 +27,7 @@ from PIL import Image as PILImage
 from paperbanana.core.config import Settings
 from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.types import DiagramType, GenerationInput
-from paperbanana.core.utils import detect_image_mime_type, find_prompt_dir
+from paperbanana.core.utils import detect_format_from_bytes, find_prompt_dir
 from paperbanana.evaluation.judge import VLMJudge
 from paperbanana.providers.registry import ProviderRegistry
 
@@ -39,47 +39,47 @@ logger = structlog.get_logger()
 _MAX_IMAGE_BYTES = int(os.environ.get("PAPERBANANA_MAX_IMAGE_BYTES", 3_750_000))
 
 
-def _compress_for_api(image_path: str) -> tuple[str, str]:
-    """Return *(effective_path, format)* for an image that fits the API limit.
+def _compress_for_api(image_path: str) -> tuple[bytes, str]:
+    """Return *(image_bytes, format)* for an image that fits the API limit.
 
-    If the file at *image_path* already fits, returns it as-is.  Otherwise the
-    image is re-saved as optimised JPEG (which is dramatically smaller for the
-    photographic output typical of AI image generators) next to the original.
+    Reads the file, detects its true format from magic bytes, and returns
+    the raw bytes paired with the matching format string.  This guarantees
+    that the declared MIME type always matches the actual image encoding.
+
+    If the file exceeds the API size limit the image is re-encoded as
+    optimised JPEG (dramatically smaller for photographic AI output).
 
     Raises ``ValueError`` if the image cannot be compressed below the limit
     after all quality and resize attempts.
     """
-    raw_size = Path(image_path).stat().st_size
-    mime = detect_image_mime_type(image_path)
-    fmt = mime.split("/")[1]  # e.g. "png", "jpeg"
+    raw_data = Path(image_path).read_bytes()
+    fmt = detect_format_from_bytes(raw_data)
 
-    if raw_size <= _MAX_IMAGE_BYTES:
-        return image_path, fmt
+    if len(raw_data) <= _MAX_IMAGE_BYTES:
+        return raw_data, fmt
 
     logger.info(
         "Image exceeds API size limit, compressing to JPEG",
-        original_bytes=raw_size,
+        original_bytes=len(raw_data),
         limit=_MAX_IMAGE_BYTES,
     )
 
-    img = PILImage.open(image_path)
+    img = PILImage.open(BytesIO(raw_data))
     if img.mode in ("RGBA", "LA", "P"):
         img = img.convert("RGB")
-
-    compressed_path = str(Path(image_path).with_suffix(".mcp.jpg"))
 
     # Try quality 85 first; fall back to progressively lower quality.
     for quality in (85, 70, 50):
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=quality, optimize=True)
         if buf.tell() <= _MAX_IMAGE_BYTES:
-            Path(compressed_path).write_bytes(buf.getvalue())
+            compressed = buf.getvalue()
             logger.info(
-                "Compressed image saved",
+                "Compressed image",
                 quality=quality,
-                compressed_bytes=buf.tell(),
+                compressed_bytes=len(compressed),
             )
-            return compressed_path, "jpeg"
+            return compressed, "jpeg"
 
     # Last resort: scale down.
     for scale in (0.75, 0.5, 0.25):
@@ -90,16 +90,16 @@ def _compress_for_api(image_path: str) -> tuple[str, str]:
         buf = BytesIO()
         resized.save(buf, format="JPEG", quality=70, optimize=True)
         if buf.tell() <= _MAX_IMAGE_BYTES:
-            Path(compressed_path).write_bytes(buf.getvalue())
+            compressed = buf.getvalue()
             logger.info(
-                "Resized and compressed image saved",
+                "Resized and compressed image",
                 scale=scale,
-                compressed_bytes=buf.tell(),
+                compressed_bytes=len(compressed),
             )
-            return compressed_path, "jpeg"
+            return compressed, "jpeg"
 
     raise ValueError(
-        f"Image at {image_path} ({raw_size} bytes) could not be "
+        f"Image at {image_path} ({len(raw_data)} bytes) could not be "
         f"compressed below the {_MAX_IMAGE_BYTES} byte API limit."
     )
 
@@ -133,8 +133,8 @@ async def generate_diagram(
     )
 
     result = await pipeline.generate(gen_input)
-    effective_path, fmt = _compress_for_api(result.image_path)
-    return Image(path=effective_path, format=fmt)
+    data, fmt = _compress_for_api(result.image_path)
+    return Image(data=data, format=fmt)
 
 
 @mcp.tool
@@ -167,8 +167,8 @@ async def generate_plot(
     )
 
     result = await pipeline.generate(gen_input)
-    effective_path, fmt = _compress_for_api(result.image_path)
-    return Image(path=effective_path, format=fmt)
+    data, fmt = _compress_for_api(result.image_path)
+    return Image(data=data, format=fmt)
 
 
 @mcp.tool
