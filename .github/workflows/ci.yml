@@ -19,8 +19,8 @@ jobs:
         run: pip install ruff
       - name: Lint
         run: |
-          ruff check paperbanana/ mcp_server/ tests/
-          ruff format --check paperbanana/ mcp_server/ tests/
+          ruff check paperbanana/ mcp_server/ tests/ scripts/
+          ruff format --check paperbanana/ mcp_server/ tests/ scripts/
 
   test:
     runs-on: ${{ matrix.os }}
