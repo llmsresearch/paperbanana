@@ -51,6 +51,8 @@ class VisualizerAgent(BaseAgent):
         iteration: int = 0,
         seed: Optional[int] = None,
         aspect_ratio: Optional[str] = None,
+        width: int = 1792,
+        height: int = 1024,
     ) -> str:
         """Generate an image from a description.
 
@@ -62,6 +64,8 @@ class VisualizerAgent(BaseAgent):
             iteration: Current iteration number (for naming).
             seed: Random seed for reproducibility.
             aspect_ratio: Target aspect ratio (e.g., '16:9', '1:1').
+            width: Output image width in pixels.
+            height: Output image height in pixels.
 
         Returns:
             Path to the generated image.
@@ -70,6 +74,8 @@ class VisualizerAgent(BaseAgent):
             return await self._generate_plot(
                 description, raw_data, output_path, iteration, aspect_ratio
             )
+        elif diagram_type == DiagramType.SLIDE:
+            return await self._generate_slide(description, output_path, iteration, seed, width, height)
         else:
             return await self._generate_diagram(
                 description,
@@ -77,6 +83,8 @@ class VisualizerAgent(BaseAgent):
                 iteration,
                 seed,
                 aspect_ratio,
+                width,
+                height,
             )
 
     async def _generate_diagram(
@@ -86,6 +94,8 @@ class VisualizerAgent(BaseAgent):
         iteration: int,
         seed: Optional[int],
         aspect_ratio: Optional[str] = None,
+        width: int = 1792,
+        height: int = 1024,
     ) -> str:
         """Generate a methodology diagram using the image generation model."""
         template = self.load_prompt("diagram")
@@ -93,8 +103,11 @@ class VisualizerAgent(BaseAgent):
 
         logger.info("Generating diagram image", iteration=iteration)
 
-        # Determine dimensions from aspect ratio or use defaults
-        w, h = self._ratio_to_dimensions(aspect_ratio) if aspect_ratio else (1792, 1024)
+        # Determine dimensions from aspect ratio or use provided width/height
+        if aspect_ratio:
+            w, h = self._ratio_to_dimensions(aspect_ratio)
+        else:
+            w, h = width, height
 
         image = await self.image_gen.generate(
             prompt=prompt,
@@ -125,6 +138,35 @@ class VisualizerAgent(BaseAgent):
             "9:16": (1024, 1792),
         }
         return mapping.get(ratio, (1792, 1024))
+
+    async def _generate_slide(
+        self,
+        description: str,
+        output_path: Optional[str],
+        iteration: int,
+        seed: Optional[int],
+        width: int = 3840,
+        height: int = 2160,
+    ) -> str:
+        """Generate a presentation slide using the image generation model."""
+        template = self.load_prompt("slide")
+        prompt = self.format_prompt(template, description=description)
+
+        logger.info("Generating slide image", iteration=iteration, width=width, height=height)
+
+        image = await self.image_gen.generate(
+            prompt=prompt,
+            width=width,
+            height=height,
+            seed=seed,
+        )
+
+        if output_path is None:
+            output_path = str(self.output_dir / f"slide_iter_{iteration}.png")
+
+        save_image(image, output_path)
+        logger.info("Slide saved", path=output_path)
+        return output_path
 
     async def _generate_plot(
         self,

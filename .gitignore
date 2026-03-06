@@ -79,3 +79,4 @@ CLAUDE.md
 .venv/
 .env
 uv.lock
+.gitnexus

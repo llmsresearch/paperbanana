@@ -34,6 +34,7 @@ from paperbanana.core.utils import (
 )
 from paperbanana.guidelines.methodology import load_methodology_guidelines
 from paperbanana.guidelines.plots import load_plot_guidelines
+from paperbanana.guidelines.slides import load_slide_guidelines
 from paperbanana.providers.registry import ProviderRegistry
 from paperbanana.reference.exemplar_retrieval import (
     ExemplarRetrievalError,
@@ -142,6 +143,7 @@ class PaperBananaPipeline:
         guidelines_path = self.settings.guidelines_path
         self._methodology_guidelines = load_methodology_guidelines(guidelines_path)
         self._plot_guidelines = load_plot_guidelines(guidelines_path)
+        self._slide_guidelines = load_slide_guidelines()
 
         # Initialize agents
         prompt_dir = self._find_prompt_dir()
@@ -244,13 +246,6 @@ class PaperBananaPipeline:
             context_length=len(input.source_context),
         )
 
-        # Select guidelines based on diagram type
-        guidelines = (
-            self._methodology_guidelines
-            if input.diagram_type == DiagramType.METHODOLOGY
-            else self._plot_guidelines
-        )
-
         # ── Phase 0: Input Optimization (optional) ───────────────────
         optimize_seconds = 0.0
         if self.settings.optimize_inputs:
@@ -287,7 +282,194 @@ class PaperBananaPipeline:
                 aspect_ratio=input.aspect_ratio,
             )
 
-        # ── Phase 1: Linear Planning ─────────────────────────────────
+        # ── Mode dispatch ─────────────────────────────────────────────
+        mode = self.settings.exp_mode
+
+        # Slide type always routes to _run_slide regardless of mode
+        if input.diagram_type == DiagramType.SLIDE:
+            return await self._run_slide(input)
+
+        if mode == "vanilla":
+            return await self._run_vanilla(input)
+        elif mode == "planner":
+            return await self._run_planner(input)
+        elif mode == "planner_stylist":
+            return await self._run_planner_stylist(input)
+        elif mode == "planner_critic":
+            return await self._run_planner_critic(input)
+        elif mode == "polish":
+            return await self._run_polish(input)
+        elif mode == "full":
+            return await self._run_full(input)
+        else:
+            return await self._run_full(input)
+
+    async def batch_generate(
+        self,
+        inputs: list[GenerationInput],
+        max_concurrent: Optional[int] = None,
+    ):
+        """Process multiple inputs with concurrency control.
+
+        Args:
+            inputs: List of generation inputs.
+            max_concurrent: Max concurrent tasks (defaults to settings.batch_concurrent).
+
+        Yields:
+            GenerationOutput for each completed input (in completion order).
+        """
+        import asyncio as _asyncio
+
+        concurrent = max_concurrent or self.settings.batch_concurrent
+        semaphore = _asyncio.Semaphore(concurrent)
+
+        async def _process_one(inp: GenerationInput) -> GenerationOutput:
+            async with semaphore:
+                # Each batch item gets its own run_id
+                saved = self.run_id
+                self.run_id = generate_run_id()
+                try:
+                    return await self.generate(inp)
+                finally:
+                    self.run_id = saved
+
+        tasks = [_asyncio.create_task(_process_one(inp)) for inp in inputs]
+
+        for future in _asyncio.as_completed(tasks):
+            result = await future
+            yield result
+
+    # ── Mode implementations ──────────────────────────────────────────
+
+    async def _run_vanilla(self, input: GenerationInput) -> GenerationOutput:
+        """Vanilla mode: direct generation without retrieval or planning."""
+        import shutil
+
+        vanilla = self._get_vanilla_agent()
+
+        image_path = await vanilla.run(
+            source_context=input.source_context,
+            visual_intent=input.communicative_intent,
+            diagram_type=input.diagram_type,
+            raw_data=input.raw_data,
+            output_path=str(self._run_dir / "vanilla_output.png"),
+        )
+
+        final_path = str(self._run_dir / "final_output.png")
+        shutil.copy2(image_path, final_path)
+
+        return self._build_output(
+            final_path=final_path,
+            description=input.communicative_intent,
+            iterations=[IterationRecord(
+                iteration=1,
+                description=input.communicative_intent,
+                image_path=image_path,
+            )],
+        )
+
+    async def _run_planner(self, input: GenerationInput) -> GenerationOutput:
+        """Planner mode: Retriever -> Planner -> Visualizer."""
+        import shutil
+
+        examples, description = await self._phase1_retrieve_and_plan(input)
+        w, h = self.settings.output_width_height
+
+        image_path = await self.visualizer.run(
+            description=description,
+            diagram_type=input.diagram_type,
+            raw_data=input.raw_data,
+            iteration=1,
+            width=w,
+            height=h,
+        )
+
+        final_path = str(self._run_dir / "final_output.png")
+        shutil.copy2(image_path, final_path)
+
+        if self.settings.save_iterations:
+            save_json(
+                {"retrieved_examples": [e.id for e in examples],
+                 "description": description},
+                self._run_dir / "planning.json",
+            )
+
+        return self._build_output(
+            final_path=final_path,
+            description=description,
+            iterations=[IterationRecord(
+                iteration=1, description=description, image_path=image_path,
+            )],
+        )
+
+    async def _run_planner_stylist(self, input: GenerationInput) -> GenerationOutput:
+        """Planner+Stylist mode: Retriever -> Planner -> Stylist -> Visualizer."""
+        import shutil
+
+        examples, description = await self._phase1_retrieve_and_plan(input)
+        guidelines = self._get_guidelines(input.diagram_type)
+        w, h = self.settings.output_width_height
+
+        optimized = await self.stylist.run(
+            description=description,
+            guidelines=guidelines,
+            source_context=input.source_context,
+            caption=input.communicative_intent,
+            diagram_type=input.diagram_type,
+        )
+
+        image_path = await self.visualizer.run(
+            description=optimized,
+            diagram_type=input.diagram_type,
+            raw_data=input.raw_data,
+            iteration=1,
+            width=w,
+            height=h,
+        )
+
+        final_path = str(self._run_dir / "final_output.png")
+        shutil.copy2(image_path, final_path)
+
+        if self.settings.save_iterations:
+            save_json(
+                {"retrieved_examples": [e.id for e in examples],
+                 "initial_description": description,
+                 "optimized_description": optimized},
+                self._run_dir / "planning.json",
+            )
+
+        return self._build_output(
+            final_path=final_path,
+            description=optimized,
+            iterations=[IterationRecord(
+                iteration=1, description=optimized, image_path=image_path,
+            )],
+        )
+
+    async def _run_planner_critic(self, input: GenerationInput) -> GenerationOutput:
+        """Planner+Critic mode: Retriever -> Planner -> Visualizer -> Critic loop."""
+        examples, description = await self._phase1_retrieve_and_plan(input)
+
+        if self.settings.save_iterations:
+            save_json(
+                {"retrieved_examples": [e.id for e in examples],
+                 "description": description},
+                self._run_dir / "planning.json",
+            )
+
+        # Critic iteration loop with rollback
+        return await self._critic_iteration_loop(input, description)
+
+    async def _run_full(self, input: GenerationInput) -> GenerationOutput:
+        """Full mode: Retriever -> Planner -> Stylist -> Visualizer -> Critic loop.
+
+        This is the most complete pipeline mode, incorporating external exemplar
+        retrieval, dynamic aspect ratio from planner, and detailed timing metadata.
+        """
+        total_start = time.perf_counter()
+
+        # Select guidelines based on diagram type
+        guidelines = self._get_guidelines(input.diagram_type)
 
         # Step 1: Retriever — find relevant examples (timer includes external call when enabled)
         logger.info("Phase 1: Retrieval")
@@ -467,7 +649,7 @@ class PaperBananaPipeline:
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(self._run_dir / f"final_output.{ext}")
 
-        # Load and save in desired format (handles PNG→JPEG/WebP conversion)
+        # Load and save in desired format (handles PNG->JPEG/WebP conversion)
         img = load_image(final_image)
         save_image(img, final_output_path, format=output_format)
 
@@ -523,6 +705,257 @@ class PaperBananaPipeline:
             "Generation complete",
             run_id=self.run_id,
             output=final_output_path,
+            total_iterations=len(iterations),
+        )
+
+        return output
+
+    async def _run_polish(self, input: GenerationInput) -> GenerationOutput:
+        """Polish mode: apply post-processing to an existing image."""
+        import shutil
+
+        polish = self._get_polish_agent()
+        gt_path = input.raw_data.get("ground_truth_path") if input.raw_data else None
+
+        result = await polish.run(
+            image=gt_path,
+            diagram_type=input.diagram_type,
+            output_path=str(self._run_dir / "polished.png"),
+        )
+
+        final_path = str(self._run_dir / "final_output.png")
+        shutil.copy2(result.polished_image_path, final_path)
+
+        return self._build_output(
+            final_path=final_path,
+            description=f"Polished: {result.suggestions[:200]}",
+            iterations=[IterationRecord(
+                iteration=1,
+                description=result.suggestions,
+                image_path=result.polished_image_path,
+            )],
+            extra_metadata={"changed": result.changed, "suggestions": result.suggestions},
+        )
+
+    async def _run_slide(self, input: GenerationInput) -> GenerationOutput:
+        """Slide mode: prompt (already complete) -> Visualizer -> Critic loop.
+
+        Slides skip Retriever/Planner/Stylist since the prompt is already a
+        complete image generation specification from baoyu-slide-deck.
+        """
+        description = input.source_context  # The slide prompt IS the description
+
+        if self.settings.save_iterations:
+            save_json(
+                {"mode": "slide", "description_length": len(description)},
+                self._run_dir / "planning.json",
+            )
+
+        return await self._critic_iteration_loop(input, description)
+
+    # ── Shared helpers ────────────────────────────────────────────────
+
+    async def _phase1_retrieve_and_plan(self, input: GenerationInput):
+        """Run retrieval + planning (shared by planner/planner_stylist/planner_critic)."""
+        logger.info("Phase 1: Retrieval")
+        candidates = self.reference_store.get_all()
+        examples = await self.retriever.run(
+            source_context=input.source_context,
+            caption=input.communicative_intent,
+            candidates=candidates,
+            num_examples=self.settings.num_retrieval_examples,
+            diagram_type=input.diagram_type,
+        )
+
+        logger.info("Phase 1: Planning")
+        description = await self.planner.run(
+            source_context=input.source_context,
+            caption=input.communicative_intent,
+            examples=examples,
+            diagram_type=input.diagram_type,
+        )
+
+        return examples, description
+
+    async def _critic_iteration_loop(
+        self,
+        input: GenerationInput,
+        initial_description: str,
+    ) -> GenerationOutput:
+        """Run Visualizer <-> Critic loop with rollback on generation failure.
+
+        Tracks `current_best_image_path` across iterations. If the Visualizer
+        fails to produce a valid image in a round, we roll back to the
+        previous best instead of crashing.
+        """
+        total_start = time.perf_counter()
+        max_rounds = self.settings.max_critic_rounds
+        current_description = initial_description
+        iterations: list[IterationRecord] = []
+        iteration_timings = []
+
+        total_iters = min(max_rounds, self.settings.max_iterations)
+
+        w, h = self.settings.output_width_height
+
+        for i in range(total_iters):
+            logger.info(f"Critic loop: Iteration {i + 1}/{total_iters}")
+
+            # Visualizer: generate image
+            visualizer_start = time.perf_counter()
+            try:
+                image_path = await self.visualizer.run(
+                    description=current_description,
+                    diagram_type=input.diagram_type,
+                    raw_data=input.raw_data,
+                    iteration=i + 1,
+                    seed=self.settings.seed,
+                    width=w,
+                    height=h,
+                )
+            except Exception as e:
+                logger.error("Visualizer failed", iteration=i + 1, error=str(e))
+                if iterations:
+                    logger.warning("Rolling back to previous best image")
+                    break
+                raise
+            visualizer_seconds = time.perf_counter() - visualizer_start
+            logger.info(
+                f"[Visualizer] Iteration {i + 1}/{total_iters} done",
+                seconds=round(visualizer_seconds, 1),
+            )
+
+            # Critic: evaluate and provide feedback
+            critic_start = time.perf_counter()
+            critique = await self.critic.run(
+                image_path=image_path,
+                description=current_description,
+                source_context=input.source_context,
+                caption=input.communicative_intent,
+                diagram_type=input.diagram_type,
+            )
+            critic_seconds = time.perf_counter() - critic_start
+            logger.info(
+                "[Critic] done",
+                seconds=round(critic_seconds, 1),
+                needs_revision=critique.needs_revision,
+            )
+
+            iteration_record = IterationRecord(
+                iteration=i + 1,
+                description=current_description,
+                image_path=image_path,
+                critique=critique,
+            )
+            iteration_timings.append(
+                {
+                    "iteration": i + 1,
+                    "visualizer_seconds": visualizer_seconds,
+                    "critic_seconds": critic_seconds,
+                }
+            )
+            iterations.append(iteration_record)
+
+            # Save iteration artifacts
+            if self.settings.save_iterations:
+                iter_dir = ensure_dir(self._run_dir / f"iter_{i + 1}")
+                save_json(
+                    {
+                        "description": current_description,
+                        "critique": critique.model_dump(),
+                    },
+                    iter_dir / "details.json",
+                )
+
+            # Check if revision needed
+            if critique.needs_revision and critique.revised_description:
+                logger.info(
+                    "Revision needed",
+                    iteration=i + 1,
+                    summary=critique.summary,
+                )
+                current_description = critique.revised_description
+            else:
+                logger.info(
+                    "No further revision needed",
+                    iteration=i + 1,
+                    summary=critique.summary,
+                )
+                break
+
+        # Final output
+        final_image = iterations[-1].image_path
+        output_format = getattr(self.settings, "output_format", "png").lower()
+        ext = "jpg" if output_format == "jpeg" else output_format
+        final_output_path = str(self._run_dir / f"final_output.{ext}")
+
+        img = load_image(final_image)
+        save_image(img, final_output_path, format=output_format)
+
+        total_seconds = time.perf_counter() - total_start
+
+        return self._build_output(
+            final_path=final_output_path,
+            description=current_description,
+            iterations=iterations,
+            extra_metadata={
+                "timing": {
+                    "total_seconds": total_seconds,
+                    "iterations": iteration_timings,
+                },
+            },
+        )
+
+    def _get_guidelines(self, diagram_type: DiagramType) -> str:
+        """Get guidelines text for the given diagram type."""
+        if diagram_type == DiagramType.SLIDE:
+            return self._slide_guidelines
+        return (
+            self._methodology_guidelines
+            if diagram_type == DiagramType.METHODOLOGY
+            else self._plot_guidelines
+        )
+
+    def _build_output(
+        self,
+        final_path: str,
+        description: str,
+        iterations: list[IterationRecord],
+        extra_metadata: Optional[dict] = None,
+    ) -> GenerationOutput:
+        """Build the final GenerationOutput with metadata."""
+        metadata = RunMetadata(
+            run_id=self.run_id,
+            timestamp=datetime.datetime.now().isoformat(),
+            vlm_provider=getattr(self._vlm, "name", "custom"),
+            vlm_model=getattr(self._vlm, "model_name", "custom"),
+            image_provider=getattr(self._image_gen, "name", "custom"),
+            image_model=getattr(self._image_gen, "model_name", "custom"),
+            refinement_iterations=len(iterations),
+            seed=self.settings.seed,
+            config_snapshot=self.settings.model_dump(
+                exclude={"google_api_key", "openai_api_key", "openrouter_api_key"}
+            ),
+        )
+
+        metadata_dict = metadata.model_dump()
+        if extra_metadata:
+            metadata_dict.update(extra_metadata)
+
+        if self.settings.save_iterations:
+            save_json(metadata_dict, self._run_dir / "metadata.json")
+
+        output = GenerationOutput(
+            image_path=final_path,
+            description=description,
+            iterations=iterations,
+            metadata=metadata_dict,
+        )
+
+        logger.info(
+            "Generation complete",
+            run_id=self.run_id,
+            output=final_path,
             total_iterations=len(iterations),
         )
 

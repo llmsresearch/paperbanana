@@ -206,8 +206,8 @@ class PolishAgent(BaseAgent):
         # Use image generation provider to create polished version
         polished_image = await self.image_gen.generate(
             prompt=prompt,
-            width=1792,
-            height=1024,
+            width=getattr(self, '_width', 1792),
+            height=getattr(self, '_height', 1024),
         )
 
         if output_path is None:

@@ -54,7 +54,11 @@ class CriticAgent(BaseAgent):
         # Load the image
         image = load_image(image_path)
 
-        prompt_type = "diagram" if diagram_type == DiagramType.METHODOLOGY else "plot"
+        prompt_type = {
+            DiagramType.METHODOLOGY: "diagram",
+            DiagramType.STATISTICAL_PLOT: "plot",
+            DiagramType.SLIDE: "slide",
+        }.get(diagram_type, "diagram")
         template = self.load_prompt(prompt_type)
         prompt = self.format_prompt(
             template,

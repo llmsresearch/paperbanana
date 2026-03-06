@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 from pathlib import Path
 from typing import Optional
 
+# Ensure UTF-8 output on Windows (avoids GBK encoding errors with Unicode)
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
 
 from paperbanana.core.config import Settings
@@ -901,6 +908,182 @@ def clear():
 
     dm.clear()
     console.print("[green]Cached reference set cleared.[/green]")
+
+
+@app.command()
+def slide(
+    input: str = typer.Option(
+        ..., "--input", "-i", help="Path to slide prompt markdown file"
+    ),
+    caption: str = typer.Option(
+        "Generate presentation slide", "--caption", "-c", help="Slide intent description"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output image path"
+    ),
+    image_model: Optional[str] = typer.Option(
+        None, "--image-model", help="Image gen model (default: gemini-3.1-flash-image-preview)"
+    ),
+    vlm_model: Optional[str] = typer.Option(
+        None, "--vlm-model", help="VLM model name"
+    ),
+    iterations: int = typer.Option(
+        3, "--iterations", "-n", help="Max critic rounds"
+    ),
+    resolution: str = typer.Option(
+        "4k", "--resolution", "-r", help="Output resolution: 1k, 2k, 4k"
+    ),
+    config: Optional[str] = typer.Option(
+        None, "--config", help="Path to config YAML file"
+    ),
+):
+    """Generate a presentation slide from a prompt file with Critic loop."""
+    input_path = Path(input)
+    if not input_path.exists():
+        console.print(f"[red]Error: Input file not found: {input}[/red]")
+        raise typer.Exit(1)
+
+    source_context = input_path.read_text(encoding="utf-8")
+
+    overrides: dict = {
+        "exp_mode": "full",
+        "max_critic_rounds": iterations,
+        "output_resolution": resolution,
+    }
+    if image_model:
+        overrides["image_model"] = image_model
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if output:
+        overrides["output_dir"] = str(Path(output).parent)
+
+    if config:
+        settings = Settings.from_yaml(config, **overrides)
+    else:
+        from dotenv import load_dotenv
+        load_dotenv()
+        settings = Settings(**overrides)
+
+    gen_input = GenerationInput(
+        source_context=source_context,
+        communicative_intent=caption,
+        diagram_type=DiagramType.SLIDE,
+    )
+
+    console.print(Panel.fit(
+        f"[bold]PaperBanana[/bold] - Generating Slide\n\n"
+        f"Input: {input_path.name}\n"
+        f"Image model: {settings.image_model}\n"
+        f"Resolution: {resolution}\n"
+        f"Max critic rounds: {iterations}",
+        border_style="cyan",
+    ))
+
+    from paperbanana.core.pipeline import PaperBananaPipeline
+
+    async def _run():
+        pipeline = PaperBananaPipeline(settings=settings)
+        return await pipeline.generate(gen_input)
+
+    with Progress(
+        SpinnerColumn(spinner_name="line"),
+        TextColumn("[progress.description]{task.description}"),
+        console=Console(force_terminal=True),
+    ) as progress:
+        progress.add_task("Generating slide...", total=None)
+        result = asyncio.run(_run())
+
+    console.print(f"\n[green]Done![/green] Slide saved to: [bold]{result.image_path}[/bold]")
+    console.print(f"Run ID: {result.metadata.get('run_id', 'unknown')}")
+    console.print(f"Total iterations: {len(result.iterations)}")
+
+    # Copy to custom output path if specified
+    if output:
+        import shutil
+        shutil.copy2(result.image_path, output)
+        console.print(f"Copied to: [bold]{output}[/bold]")
+
+
+@app.command(name="slide-batch")
+def slide_batch(
+    prompts_dir: str = typer.Option(
+        ..., "--prompts-dir", help="Directory containing slide prompt markdown files"
+    ),
+    output_dir: Optional[str] = typer.Option(
+        None, "--output-dir", help="Output directory for generated slides"
+    ),
+    image_model: Optional[str] = typer.Option(
+        None, "--image-model", help="Image gen model"
+    ),
+    iterations: int = typer.Option(
+        3, "--iterations", "-n", help="Max critic rounds per slide"
+    ),
+    resolution: str = typer.Option(
+        "4k", "--resolution", "-r", help="Output resolution: 1k, 2k, 4k"
+    ),
+):
+    """Batch generate all slides from a prompts directory."""
+    prompts_path = Path(prompts_dir)
+    if not prompts_path.exists():
+        console.print(f"[red]Error: Prompts directory not found: {prompts_dir}[/red]")
+        raise typer.Exit(1)
+
+    prompt_files = sorted(prompts_path.glob("*.md"))
+    if not prompt_files:
+        console.print(f"[red]No .md files found in {prompts_dir}[/red]")
+        raise typer.Exit(1)
+
+    out_path = Path(output_dir) if output_dir else prompts_path.parent / "output_paperbanana"
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    overrides: dict = {
+        "exp_mode": "full",
+        "max_critic_rounds": iterations,
+        "output_resolution": resolution,
+    }
+    if image_model:
+        overrides["image_model"] = image_model
+    settings = Settings(**overrides)
+
+    console.print(Panel.fit(
+        f"[bold]PaperBanana Slide Batch[/bold]\n\n"
+        f"Prompts: {len(prompt_files)} files in {prompts_path.name}/\n"
+        f"Output: {out_path}\n"
+        f"Image model: {settings.image_model}\n"
+        f"Resolution: {resolution} | Critic rounds: {iterations}",
+        border_style="cyan",
+    ))
+
+    from paperbanana.core.pipeline import PaperBananaPipeline
+    import shutil
+
+    async def _run():
+        success = failed = 0
+        for i, pf in enumerate(prompt_files, 1):
+            console.print(f"\n[bold][{i}/{len(prompt_files)}] {pf.name}[/bold]")
+            source_context = pf.read_text(encoding="utf-8")
+            gen_input = GenerationInput(
+                source_context=source_context,
+                communicative_intent=f"Generate slide: {pf.stem}",
+                diagram_type=DiagramType.SLIDE,
+            )
+            try:
+                pipeline = PaperBananaPipeline(settings=settings)
+                result = await pipeline.generate(gen_input)
+                out_file = out_path / f"{pf.stem}.png"
+                shutil.copy2(result.image_path, str(out_file))
+                console.print(f"  [green]Saved:[/green] {out_file.name} ({len(result.iterations)} iterations)")
+                success += 1
+            except Exception as e:
+                console.print(f"  [red]Failed:[/red] {e}")
+                failed += 1
+
+        console.print(f"\n[bold]Batch complete![/bold] {success} succeeded, {failed} failed.")
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

@@ -136,8 +136,8 @@ class VanillaAgent(BaseAgent):
 
         image = await self.image_gen.generate(
             prompt=prompt,
-            width=1792,
-            height=1024,
+            width=getattr(self, '_width', 1792),
+            height=getattr(self, '_height', 1024),
             seed=seed,
         )
 

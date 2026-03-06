@@ -53,6 +53,13 @@ class OutputConfig(BaseSettings):
     save_metadata: bool = True
 
 
+RESOLUTION_MAP: dict[str, tuple[int, int]] = {
+    "1k": (1792, 1024),
+    "2k": (2560, 1440),
+    "4k": (3840, 2160),
+}
+
+
 class Settings(BaseSettings):
     """Main PaperBanana settings, loaded from env vars and config files."""
 
@@ -70,6 +77,9 @@ class Settings(BaseSettings):
     optimize_inputs: bool = False
     output_resolution: str = "2k"
     seed: Optional[int] = None
+    exp_mode: str = "full"
+    max_critic_rounds: int = 5
+    batch_concurrent: int = 2
     exemplar_retrieval_enabled: bool = False
     exemplar_retrieval_endpoint: Optional[str] = None
     exemplar_retrieval_mode: ExemplarRetrievalMode = "external_then_rerank"
@@ -124,6 +134,11 @@ class Settings(BaseSettings):
 
     # SSL
     skip_ssl_verification: bool = Field(default=False, alias="SKIP_SSL_VERIFICATION")
+
+    @property
+    def output_width_height(self) -> tuple[int, int]:
+        """Convert output_resolution string to (width, height) pixel dimensions."""
+        return RESOLUTION_MAP.get(self.output_resolution.lower(), (1792, 1024))
 
     model_config = {
         "env_file": ".env",

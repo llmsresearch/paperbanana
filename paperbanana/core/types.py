@@ -13,6 +13,7 @@ class DiagramType(str, Enum):
 
     METHODOLOGY = "methodology"
     STATISTICAL_PLOT = "statistical_plot"
+    SLIDE = "slide"
 
 
 class GenerationInput(BaseModel):
