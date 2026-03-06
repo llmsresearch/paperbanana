@@ -49,16 +49,25 @@ def test_get_by_category():
         data = {
             "examples": [
                 {
-                    "id": "r1", "source_context": "c1",
-                    "caption": "c1", "image_path": "i1", "category": "agent",
+                    "id": "r1",
+                    "source_context": "c1",
+                    "caption": "c1",
+                    "image_path": "i1",
+                    "category": "agent",
                 },
                 {
-                    "id": "r2", "source_context": "c2",
-                    "caption": "c2", "image_path": "i2", "category": "vision",
+                    "id": "r2",
+                    "source_context": "c2",
+                    "caption": "c2",
+                    "image_path": "i2",
+                    "category": "vision",
                 },
                 {
-                    "id": "r3", "source_context": "c3",
-                    "caption": "c3", "image_path": "i3", "category": "agent",
+                    "id": "r3",
+                    "source_context": "c3",
+                    "caption": "c3",
+                    "image_path": "i3",
+                    "category": "agent",
                 },
             ],
         }
@@ -74,7 +83,12 @@ def test_get_by_id():
     with tempfile.TemporaryDirectory() as tmpdir:
         data = {
             "examples": [
-                {"id": "r1", "source_context": "c1", "caption": "c1", "image_path": "i1"},
+                {
+                    "id": "r1",
+                    "source_context": "c1",
+                    "caption": "c1",
+                    "image_path": "i1",
+                },
             ],
         }
         Path(tmpdir, "index.json").write_text(json.dumps(data))

@@ -1,7 +1,6 @@
 """Example: Generate a methodology diagram from text."""
 
 import asyncio
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -33,7 +32,10 @@ async def main():
     6. Steps 4-5 repeat for up to 3 iterations until quality is satisfactory.
     """
 
-    caption = "Overview of the PaperBanana multi-agent framework for automated academic illustration generation."
+    caption = (
+        "Overview of the PaperBanana multi-agent framework for automated "
+        "academic illustration generation."
+    )
 
     settings = Settings(
         vlm_provider="gemini",

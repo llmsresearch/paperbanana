@@ -19,8 +19,15 @@ class MockVLM:
     def __init__(self, response: str = ""):
         self._response = response
 
-    async def generate(self, prompt, images=None, system_prompt=None,
-                       temperature=1.0, max_tokens=4096, response_format=None):
+    async def generate(
+        self,
+        prompt,
+        images=None,
+        system_prompt=None,
+        temperature=1.0,
+        max_tokens=4096,
+        response_format=None,
+    ):
         return self._response
 
     def is_available(self):
@@ -76,13 +83,15 @@ async def test_retriever_empty_candidates():
 @pytest.mark.asyncio
 async def test_retriever_parses_vlm_response():
     """Test that retriever correctly parses VLM JSON response."""
-    response = json.dumps({
-        "selected_ids": ["ref_001", "ref_003"],
-        "reasoning": {
-            "ref_001": "Relevant because...",
-            "ref_003": "Relevant because...",
+    response = json.dumps(
+        {
+            "selected_ids": ["ref_001", "ref_003"],
+            "reasoning": {
+                "ref_001": "Relevant because...",
+                "ref_003": "Relevant because...",
+            },
         }
-    })
+    )
 
     vlm = MockVLM(response=response)
     agent = RetrieverAgent(vlm)

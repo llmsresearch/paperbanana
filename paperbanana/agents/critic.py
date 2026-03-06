@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import re
+from typing import Optional
 
 import structlog
 
@@ -36,6 +36,7 @@ class CriticAgent(BaseAgent):
         source_context: str,
         caption: str,
         diagram_type: DiagramType = DiagramType.METHODOLOGY,
+        user_feedback: Optional[str] = None,
     ) -> CritiqueResult:
         """Evaluate a generated image and provide revision feedback.
 
@@ -45,6 +46,7 @@ class CriticAgent(BaseAgent):
             source_context: Original methodology text.
             caption: Figure caption / communicative intent.
             diagram_type: Type of diagram.
+            user_feedback: Optional user comments for the critic to consider.
 
         Returns:
             CritiqueResult with evaluation and optional revised description.
@@ -60,6 +62,11 @@ class CriticAgent(BaseAgent):
             caption=caption,
             description=description,
         )
+
+        if user_feedback:
+            prompt += (
+                f"\n\nAdditional user feedback to consider in your evaluation:\n{user_feedback}"
+            )
 
         logger.info("Running critic agent", image_path=image_path)
 
@@ -80,95 +87,17 @@ class CriticAgent(BaseAgent):
         return critique
 
     def _parse_response(self, response: str) -> CritiqueResult:
-        """Parse the VLM response into a CritiqueResult.
-
-        Uses a multi-layer fallback strategy:
-        1. Standard json.loads
-        2. json-repair library (handles unterminated strings, trailing commas, etc.)
-        3. Regex extraction of key fields
-        4. Conservative default (no revision)
-        """
-        data = self._try_parse_json(response)
-
-        if data is not None:
-            suggestions = data.get("critic_suggestions", [])
-            # Normalize: sometimes returned as a single string instead of list
-            if isinstance(suggestions, str):
-                suggestions = [s.strip() for s in suggestions.split(";") if s.strip()]
-            revised = data.get("revised_description")
-            # "No changes needed." means no revision
-            if revised and "no changes needed" in revised.lower():
-                revised = None
-            return CritiqueResult(
-                critic_suggestions=suggestions,
-                revised_description=revised,
-            )
-
-        # Layer 3: Regex extraction
-        logger.warning("All JSON parsers failed, attempting regex extraction")
-        return self._regex_extract(response)
-
-    def _try_parse_json(self, response: str) -> dict | None:
-        """Try parsing JSON with standard lib, then json-repair."""
-        # Layer 1: Standard json.loads
+        """Parse the VLM response into a CritiqueResult."""
         try:
             data = json.loads(response)
-            if isinstance(data, list) and len(data) > 0:
-                data = data[0]
-            if isinstance(data, dict):
-                return data
-        except (json.JSONDecodeError, KeyError, AttributeError):
-            pass
-
-        # Layer 2: json-repair
-        try:
-            from json_repair import repair_json
-
-            repaired = repair_json(response, return_objects=True)
-            if isinstance(repaired, list) and len(repaired) > 0:
-                repaired = repaired[0]
-            if isinstance(repaired, dict):
-                logger.debug("JSON repaired successfully by json-repair")
-                return repaired
-        except Exception as e:
-            logger.debug("json-repair also failed", error=str(e))
-
-        return None
-
-    def _regex_extract(self, response: str) -> CritiqueResult:
-        """Last-resort extraction using regex patterns."""
-        suggestions = []
-        revised = None
-
-        # Try to find critic_suggestions content
-        sugg_match = re.search(
-            r'"critic_suggestions"\s*:\s*\[([^\]]*)',
-            response,
-            re.DOTALL,
-        )
-        if sugg_match:
-            raw = sugg_match.group(1)
-            suggestions = [
-                s.strip().strip('"').strip("'")
-                for s in raw.split(",")
-                if s.strip().strip('"').strip("'")
-            ]
-
-        # Try to find revised_description
-        rev_match = re.search(
-            r'"revised_description"\s*:\s*"((?:[^"\\]|\\.)*)',
-            response,
-            re.DOTALL,
-        )
-        if rev_match:
-            revised = rev_match.group(1)
-            if "no changes needed" in revised.lower():
-                revised = None
-
-        if not suggestions and revised is None:
-            logger.warning("Regex extraction found nothing, defaulting to no-revision")
-
-        return CritiqueResult(
-            critic_suggestions=suggestions,
-            revised_description=revised,
-        )
+            return CritiqueResult(
+                critic_suggestions=data.get("critic_suggestions", []),
+                revised_description=data.get("revised_description"),
+            )
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("Failed to parse critic response", error=str(e))
+            # Conservative fallback: empty suggestions means no revision needed
+            return CritiqueResult(
+                critic_suggestions=[],
+                revised_description=None,
+            )

@@ -11,13 +11,13 @@ Your task is to refine and enrich this description based on the provided [NeurIP
 
 1. **Enrich Details:** Focus on specifying visual attributes (colors, fonts, line styles, layout adjustments) defined in the guidelines.
 2. **Preserve Content:** Do NOT alter the semantic content, logic, or quantitative results of the plot. Your job is purely aesthetic refinement, not content editing.
-3. **Context Awareness:** Use the provided "Source Context" and "Figure Caption" to understand the emphasis of the plot, ensuring the style supports the content effectively.
+3. **Context Awareness:** Use the provided "Raw Data" and "Figure Caption" to understand the emphasis of the plot, ensuring the style supports the content effectively.
 
 ## INPUT DATA
 
 - **Detailed Description**: {description}
 - **Style Guidelines**: {guidelines}
-- **Source Context**: {source_context}
+- **Raw Data**: {source_context}
 - **Figure Caption**: {caption}
 
 ## OUTPUT

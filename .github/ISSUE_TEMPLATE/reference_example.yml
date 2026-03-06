@@ -1,0 +1,56 @@
+name: Reference Example Submission
+description: Submit a paper with a good methodology diagram for the reference dataset
+title: "[Reference]: "
+labels: ["reference-dataset"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the reference dataset. Better reference examples directly improve output quality.
+  - type: input
+    id: paper_url
+    attributes:
+      label: Paper URL
+      description: arXiv link or other publicly accessible URL.
+      placeholder: "https://arxiv.org/abs/..."
+    validations:
+      required: true
+  - type: input
+    id: figure
+    attributes:
+      label: Figure number
+      description: Which figure contains the methodology diagram?
+      placeholder: "e.g. Figure 2"
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Diagram category
+      description: Which category best fits this diagram?
+      options:
+        - Agent & Reasoning
+        - Vision & Perception
+        - Generative & Learning
+        - Science & Applications
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is this a good reference example?
+      description: What makes this diagram clear, well-designed, or representative of its category?
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: The paper is publicly available
+          required: true
+        - label: The diagram is a methodology/architecture diagram (not a results plot or data visualization)
+          required: true
+        - label: The diagram has a landscape aspect ratio (roughly 1.5 to 2.5 width/height)
+          required: true

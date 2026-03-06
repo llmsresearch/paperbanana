@@ -19,8 +19,13 @@ class MockVLM:
         self._call_count = 0
 
     async def generate(
-        self, prompt, images=None, system_prompt=None,
-        temperature=1.0, max_tokens=4096, response_format=None,
+        self,
+        prompt,
+        images=None,
+        system_prompt=None,
+        temperature=1.0,
+        max_tokens=4096,
+        response_format=None,
     ):
         self._call_count += 1
         # Return responses in order of dimensions
@@ -28,10 +33,12 @@ class MockVLM:
         idx = self._call_count - 1
         if idx < len(dims) and dims[idx] in self._responses:
             return self._responses[dims[idx]]
-        return json.dumps({
-            "comparison_reasoning": "Default tie.",
-            "winner": "Both are good",
-        })
+        return json.dumps(
+            {
+                "comparison_reasoning": "Default tie.",
+                "winner": "Both are good",
+            }
+        )
 
     def is_available(self):
         return True
@@ -46,10 +53,12 @@ def test_parse_result_model_wins():
     """Test parsing a Model wins response."""
     judge = _make_judge()
     result = judge._parse_result(
-        json.dumps({
-            "comparison_reasoning": "Model is better.",
-            "winner": "Model",
-        }),
+        json.dumps(
+            {
+                "comparison_reasoning": "Model is better.",
+                "winner": "Model",
+            }
+        ),
         "faithfulness",
     )
     assert result.winner == "Model"
@@ -60,10 +69,12 @@ def test_parse_result_human_wins():
     """Test parsing a Human wins response."""
     judge = _make_judge()
     result = judge._parse_result(
-        json.dumps({
-            "comparison_reasoning": "Human is better.",
-            "winner": "Human",
-        }),
+        json.dumps(
+            {
+                "comparison_reasoning": "Human is better.",
+                "winner": "Human",
+            }
+        ),
         "faithfulness",
     )
     assert result.winner == "Human"
@@ -74,10 +85,12 @@ def test_parse_result_tie():
     """Test parsing a tie response."""
     judge = _make_judge()
     result = judge._parse_result(
-        json.dumps({
-            "comparison_reasoning": "Both good.",
-            "winner": "Both are good",
-        }),
+        json.dumps(
+            {
+                "comparison_reasoning": "Both good.",
+                "winner": "Both are good",
+            }
+        ),
         "readability",
     )
     assert result.winner == "Both are good"
@@ -104,8 +117,10 @@ def test_parse_result_invalid_winner():
 
 # --- Hierarchical aggregation tests ---
 
+
 def _dim(winner: str) -> DimensionResult:
     from paperbanana.core.types import WINNER_SCORE_MAP
+
     return DimensionResult(
         winner=winner,
         score=WINNER_SCORE_MAP.get(winner, 50.0),

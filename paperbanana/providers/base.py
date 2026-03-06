@@ -76,6 +76,11 @@ class ImageGenProvider(ABC):
         """Model identifier being used."""
         ...
 
+    @property
+    def supported_ratios(self) -> list[str]:
+        """Aspect ratios this provider supports. Override in subclasses."""
+        return ["1:1", "16:9"]  # conservative default
+
     @abstractmethod
     async def generate(
         self,
@@ -84,6 +89,7 @@ class ImageGenProvider(ABC):
         width: int = 1024,
         height: int = 1024,
         seed: Optional[int] = None,
+        aspect_ratio: Optional[str] = None,
     ) -> Image.Image:
         """Generate an image from a text prompt.
 
@@ -93,6 +99,8 @@ class ImageGenProvider(ABC):
             width: Output image width in pixels.
             height: Output image height in pixels.
             seed: Random seed for reproducibility.
+            aspect_ratio: Target aspect ratio (1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9).
+                takes precedence over width/height for providers that support it.
 
         Returns:
             Generated PIL Image.

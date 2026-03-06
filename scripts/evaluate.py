@@ -59,19 +59,24 @@ def main():
         description="Evaluate generated diagrams via comparative VLM-as-Judge"
     )
     parser.add_argument(
-        "--generated", required=True, nargs="+",
+        "--generated",
+        required=True,
+        nargs="+",
         help="Paths to generated images (supports glob)",
     )
     parser.add_argument(
-        "--reference", required=True,
+        "--reference",
+        required=True,
         help="Path to human-drawn reference image",
     )
     parser.add_argument(
-        "--context", required=True,
+        "--context",
+        required=True,
         help="Path to source context text file",
     )
     parser.add_argument(
-        "--caption", required=True,
+        "--caption",
+        required=True,
         help="Figure caption",
     )
     args = parser.parse_args()

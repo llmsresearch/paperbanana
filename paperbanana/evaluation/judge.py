@@ -94,9 +94,7 @@ class VLMJudge:
             overall_score=overall_score,
         )
 
-    def _load_eval_prompt(
-        self, dimension: str, source_context: str, caption: str
-    ) -> str:
+    def _load_eval_prompt(self, dimension: str, source_context: str, caption: str) -> str:
         """Load evaluation prompt for a specific dimension."""
         prompt_path = self.prompt_dir / "evaluation" / f"{dimension}.txt"
         if not prompt_path.exists():
@@ -122,9 +120,7 @@ class VLMJudge:
                 winner = "Both are good"
 
             score = WINNER_SCORE_MAP.get(winner, 50.0)
-            return DimensionResult(
-                winner=winner, score=score, reasoning=reasoning
-            )
+            return DimensionResult(winner=winner, score=score, reasoning=reasoning)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             logger.warning(
                 "Failed to parse evaluation response",
@@ -137,9 +133,7 @@ class VLMJudge:
                 reasoning="Could not parse evaluation response.",
             )
 
-    def _hierarchical_aggregate(
-        self, results: dict[str, DimensionResult]
-    ) -> str:
+    def _hierarchical_aggregate(self, results: dict[str, DimensionResult]) -> str:
         """Apply hierarchical aggregation per paper Section 4.2.
 
         Primary dimensions (Faithfulness + Readability) take precedence.

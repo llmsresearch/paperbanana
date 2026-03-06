@@ -24,6 +24,14 @@ class GenerationInput(BaseModel):
     raw_data: Optional[dict[str, Any]] = Field(
         default=None, description="Raw data for statistical plots (CSV path or dict)"
     )
+    aspect_ratio: Optional[str] = Field(
+        default=None,
+        description=(
+            "Target aspect ratio. "
+            "Supported: 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9. "
+            "If None, uses provider default."
+        ),
+    )
 
 
 class ReferenceExample(BaseModel):
@@ -34,6 +42,8 @@ class ReferenceExample(BaseModel):
     caption: str
     image_path: str
     category: Optional[str] = None
+    aspect_ratio: Optional[float] = None
+    structure_hints: Optional[dict[str, Any] | list[Any] | str] = None
 
 
 class CritiqueResult(BaseModel):
@@ -90,7 +100,8 @@ class DimensionResult(BaseModel):
 
     winner: str = Field(description="Model | Human | Both are good | Both are bad")
     score: float = Field(
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="100 (Model wins), 0 (Human wins), 50 (Tie)",
     )
     reasoning: str = Field(default="", description="Comparison reasoning")
@@ -109,11 +120,10 @@ class EvaluationScore(BaseModel):
     conciseness: DimensionResult
     readability: DimensionResult
     aesthetics: DimensionResult
-    overall_winner: str = Field(
-        description="Hierarchical aggregation result"
-    )
+    overall_winner: str = Field(description="Hierarchical aggregation result")
     overall_score: float = Field(
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="100 (Model wins), 0 (Human wins), 50 (Tie)",
     )
 

@@ -61,16 +61,30 @@ class GoogleImagenGen(ImageGenProvider):
     def is_available(self) -> bool:
         return self._api_key is not None
 
+    @property
+    def supported_ratios(self) -> list[str]:
+        return ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"]
+
+    # All aspect ratios supported by Google Imagen API
+    _SUPPORTED_RATIOS = {"1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"}
+
     def _aspect_ratio(self, width: int, height: int) -> str:
+        """Infer aspect ratio from pixel dimensions."""
         ratio = width / height
+        if ratio > 2.0:
+            return "21:9"
         if ratio > 1.5:
             return "16:9"
         if ratio > 1.2:
-            return "3:2"
-        if ratio < 0.67:
+            return "4:3"
+        if ratio > 1.05:
+            return "3:2"  # not a standard ratio but close to 4:3
+        if ratio < 0.5:
             return "9:16"
+        if ratio < 0.67:
+            return "2:3"  # not a standard ratio but close to 3:4
         if ratio < 0.83:
-            return "2:3"
+            return "3:4"
         return "1:1"
 
     def _image_size(self, width: int, height: int) -> str:
@@ -89,6 +103,7 @@ class GoogleImagenGen(ImageGenProvider):
         width: int = 1024,
         height: int = 1024,
         seed: Optional[int] = None,
+        aspect_ratio: Optional[str] = None,
     ) -> Image.Image:
         self._get_client()
 
@@ -155,7 +170,7 @@ class GoogleImagenGen(ImageGenProvider):
         config = types.GenerateContentConfig(
             response_modalities=["IMAGE"],
             image_config=types.ImageConfig(
-                aspect_ratio=self._aspect_ratio(width, height),
+                aspect_ratio=aspect_ratio or self._aspect_ratio(width, height),
                 image_size=self._image_size(width, height),
             ),
         )

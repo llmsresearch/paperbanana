@@ -1,0 +1,21 @@
+Mamba is a linear-time sequence modeling architecture built on selective state space models (SSMs).
+Problem: prior structured SSMs are time-invariant, which makes them efficient but weak at content-based reasoning for dense, discrete data such as text.
+
+Selection mechanism:
+- Make SSM parameters input-dependent by projecting the current token into per-step parameters (Δ, B, C).
+- This lets the model selectively remember or forget information along the sequence, enabling content-aware routing.
+
+Efficient computation:
+- Input-dependent parameters break convolutional efficiency, so the model is computed in recurrent mode.
+- Use a hardware-aware selective scan that avoids materializing large intermediate states.
+- Apply kernel fusion, parallel scan, and recomputation to keep memory and IO costs low.
+
+Architecture (Mamba block):
+- Combine the selective SSM with gated linear projections into a single block.
+- Stack identical blocks with normalization and residual connections to form the model.
+- No attention or separate MLP blocks are required.
+
+Empirical evaluation:
+- Strong performance on selective copying and induction heads tasks.
+- Competitive language modeling quality with linear scaling in sequence length.
+- Benefits in genomics and audio tasks, especially at long context lengths.

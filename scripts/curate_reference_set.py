@@ -43,14 +43,8 @@ def _fig(h: str) -> str:
 
 PAPER_SELECTIONS = {
     "2404.15806v1": {
-        "title": (
-            "Where to Mask: Structure-Guided Masking "
-            "for Graph Masked Autoencoders"
-        ),
-        "selected_figure": _fig(
-            "9da89b3f6897112272256431dcad41239"
-            "009c826b5da14efdb95deaeb0e38199"
-        ),
+        "title": ("Where to Mask: Structure-Guided Masking for Graph Masked Autoencoders"),
+        "selected_figure": _fig("9da89b3f6897112272256431dcad41239009c826b5da14efdb95deaeb0e38199"),
         "caption": (
             "Overview of StructMAE. (a) The overall pipeline: Input Graph -> SBS (Structure-based "
             "Scoring) -> SGM (Structure-guided Masking) -> Enc -> Dec -> Reconstructed Nodes. "
@@ -61,14 +55,8 @@ PAPER_SELECTIONS = {
         "method_sections": [4],
     },
     "2601.03570v1": {
-        "title": (
-            "How Do Large Language Models Learn Concepts "
-            "During Continual Pre-Training?"
-        ),
-        "selected_figure": _fig(
-            "6167e9ed1ed7500b7a76ba5fb813cabf"
-            "b897d526c1f6d1c18981d3d41ba07a2e"
-        ),
+        "title": ("How Do Large Language Models Learn Concepts During Continual Pre-Training?"),
+        "selected_figure": _fig("6167e9ed1ed7500b7a76ba5fb813cabfb897d526c1f6d1c18981d3d41ba07a2e"),
         "caption": (
             "Concept Circuits: A transformer block "
             "(Attention, FFN, Add&Norm layers) maps to "
@@ -82,13 +70,9 @@ PAPER_SELECTIONS = {
     },
     "2601.05110v1": {
         "title": (
-            "GlimpRouter: Efficient Collaborative "
-            "Inference by Glimpsing One Token of Thoughts"
+            "GlimpRouter: Efficient Collaborative Inference by Glimpsing One Token of Thoughts"
         ),
-        "selected_figure": _fig(
-            "7b79ff05f01bf6cc8e5fdaeb95c92e3b"
-            "c667deae618b1f2a821c482827489943"
-        ),
+        "selected_figure": _fig("7b79ff05f01bf6cc8e5fdaeb95c92e3bc667deae618b1f2a821c482827489943"),
         "caption": (
             "Overview of GlimpRouter. The framework "
             "coordinates three layers: LLM (generates "
@@ -108,10 +92,7 @@ PAPER_SELECTIONS = {
             "the Answer: A Principle Semantic Guided "
             "Watermark for Large Reasoning LLMs"
         ),
-        "selected_figure": _fig(
-            "222b8921a57bd4baf5ca6f251ff2081e"
-            "fb7d3b764b17015fe5a02e427dd28c23"
-        ),
+        "selected_figure": _fig("222b8921a57bd4baf5ca6f251ff2081efb7d3b764b17015fe5a02e427dd28c23"),
         "caption": (
             "ReasonMark pipeline: A prompt is processed "
             "by RLLM with <think> reasoning. "
@@ -126,10 +107,7 @@ PAPER_SELECTIONS = {
     },
     "2601.06411v1": {
         "title": "Structured Episodic Event Memory",
-        "selected_figure": _fig(
-            "d72791f8835f57030107137b3aa96990"
-            "8fa785393b58d0d4d2afb91a7dce0204"
-        ),
+        "selected_figure": _fig("d72791f8835f57030107137b3aa969908fa785393b58d0d4d2afb91a7dce0204"),
         "caption": (
             "SEEM architecture overview. Sequential "
             "passages are processed by Memory Generation "
@@ -145,14 +123,8 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.06953v2": {
-        "title": (
-            "X-Coder: Fully Synthetic Training "
-            "for Competitive Programming"
-        ),
-        "selected_figure": _fig(
-            "5a0097931425808d877b1ccdb7cabc36"
-            "8545e988513d5344f181d168b61d21d5"
-        ),
+        "title": ("X-Coder: Fully Synthetic Training for Competitive Programming"),
+        "selected_figure": _fig("5a0097931425808d877b1ccdb7cabc368545e988513d5344f181d168b61d21d5"),
         "caption": (
             "Task Generation pipeline for X-Coder. "
             "Code Snippets undergo Feature Extraction "
@@ -165,14 +137,8 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.07033v1": {
-        "title": (
-            "Codified Foreshadowing-Payoff "
-            "Text Generation"
-        ),
-        "selected_figure": _fig(
-            "4c72a4be8084b767765f79246c6615dd"
-            "2788558e43724d1ed7da56ac04503e68"
-        ),
+        "title": ("Codified Foreshadowing-Payoff Text Generation"),
+        "selected_figure": _fig("4c72a4be8084b767765f79246c6615dd2788558e43724d1ed7da56ac04503e68"),
         "caption": (
             "The Codified Foreshadow-Payoff Generation "
             "loop. Story Prefix X_t feeds into Codified "
@@ -186,14 +152,8 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.07055v1": {
-        "title": (
-            "Dr. Zero: Self-Evolving Search Agents "
-            "without Training Data"
-        ),
-        "selected_figure": _fig(
-            "1852b8683cae159e96fea0bc3e3f4736"
-            "71975b10aea5a021abda1ffd88c60b1e"
-        ),
+        "title": ("Dr. Zero: Self-Evolving Search Agents without Training Data"),
+        "selected_figure": _fig("1852b8683cae159e96fea0bc3e3f473671975b10aea5a021abda1ffd88c60b1e"),
         "caption": (
             "Self-Evolution Feedback Loop in Dr. Zero. "
             "The Proposer generates QA Pairs via "
@@ -207,14 +167,8 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.09259v1": {
-        "title": (
-            "MAXS: Meta-Adaptive Exploration "
-            "with LLM Agents"
-        ),
-        "selected_figure": _fig(
-            "812e3007cb785627d953fdd256f5396e"
-            "d2a3cdd921805d0783e913f899f4d1c1"
-        ),
+        "title": ("MAXS: Meta-Adaptive Exploration with LLM Agents"),
+        "selected_figure": _fig("812e3007cb785627d953fdd256f5396ed2a3cdd921805d0783e913f899f4d1c1"),
         "caption": (
             "MAXS architecture. An LLM Agent with "
             "Code and Search tools processes inputs "
@@ -228,14 +182,8 @@ PAPER_SELECTIONS = {
         "method_sections": [2],
     },
     "2601.09708v1": {
-        "title": (
-            "Fast-ThinkAct: Efficient VLA Reasoning "
-            "via Verbalizable Latent Planning"
-        ),
-        "selected_figure": _fig(
-            "9daba4ee7c2e20f2e82e35d6a390779a"
-            "cfe09bbf703f9f30e11ab4167f1a0a73"
-        ),
+        "title": ("Fast-ThinkAct: Efficient VLA Reasoning via Verbalizable Latent Planning"),
+        "selected_figure": _fig("9daba4ee7c2e20f2e82e35d6a390779acfe09bbf703f9f30e11ab4167f1a0a73"),
         "caption": (
             "Fast-ThinkAct training framework. "
             "(a) A Textual Teacher generates verbose "
@@ -250,14 +198,8 @@ PAPER_SELECTIONS = {
         "method_sections": [3],
     },
     "2601.14724v2": {
-        "title": (
-            "HERMES: KV Cache as Hierarchical Memory "
-            "for Streaming Video Understanding"
-        ),
-        "selected_figure": _fig(
-            "813dda147e6b461cfaca5a3b170fe31f"
-            "f051726459d57ba73017edb93890cfb4"
-        ),
+        "title": ("HERMES: KV Cache as Hierarchical Memory for Streaming Video Understanding"),
+        "selected_figure": _fig("813dda147e6b461cfaca5a3b170fe31ff051726459d57ba73017edb93890cfb4"),
         "caption": (
             "HERMES architecture for streaming video "
             "understanding. Video chunks processed by "
@@ -276,10 +218,7 @@ PAPER_SELECTIONS = {
             "Limits Reasoning Potential in "
             "Diffusion Language Models"
         ),
-        "selected_figure": _fig(
-            "d54598fd7978964c341d00e87ed6afcb"
-            "1d373e831716075f3dd82542bd05679e"
-        ),
+        "selected_figure": _fig("d54598fd7978964c341d00e87ed6afcb1d373e831716075f3dd82542bd05679e"),
         "caption": (
             "Confronting vs. bypassing uncertainty in "
             "token generation. (a) AR Order confronts "
@@ -292,14 +231,8 @@ PAPER_SELECTIONS = {
         "method_sections": [3, 4],
     },
     "2601.15892v2": {
-        "title": (
-            "Stable-DiffCoder: Pushing the Frontier "
-            "of Code Diffusion Large Language Model"
-        ),
-        "selected_figure": _fig(
-            "449ee807689da1a7aa8d341c5d9b078d"
-            "466858e306b8a8bb413498ebf7c601d0"
-        ),
+        "title": ("Stable-DiffCoder: Pushing the Frontier of Code Diffusion Large Language Model"),
+        "selected_figure": _fig("449ee807689da1a7aa8d341c5d9b078d466858e306b8a8bb413498ebf7c601d0"),
         "caption": (
             "Stable-DiffCoder training pipeline. "
             "AR Mode Pretraining -> Code Continuous "

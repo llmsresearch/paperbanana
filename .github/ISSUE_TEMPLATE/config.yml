@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Ideas
+    url: https://github.com/llmsresearch/paperbanana/discussions
+    about: Use Discussions for questions, ideas, and general conversation. Issues are for bugs and concrete feature requests.
+  - name: Submit a Reference Example (low effort)
+    url: https://github.com/llmsresearch/paperbanana/discussions
+    about: Drop an arXiv link and figure number in Discussions and we'll handle extraction.
