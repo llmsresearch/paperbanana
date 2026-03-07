@@ -33,8 +33,9 @@ class VisualizerAgent(BaseAgent):
         vlm_provider: VLMProvider,
         prompt_dir: str = "prompts",
         output_dir: str = "outputs",
+        prompt_recorder=None,
     ):
-        super().__init__(vlm_provider, prompt_dir)
+        super().__init__(vlm_provider, prompt_dir, prompt_recorder=prompt_recorder)
         self.image_gen = image_gen
         self.output_dir = Path(output_dir)
 
@@ -89,7 +90,11 @@ class VisualizerAgent(BaseAgent):
     ) -> str:
         """Generate a methodology diagram using the image generation model."""
         template = self.load_prompt("diagram")
-        prompt = self.format_prompt(template, description=description)
+        prompt = self.format_prompt(
+            template,
+            prompt_label=f"visualizer_diagram_iter_{iteration}",
+            description=description,
+        )
 
         logger.info("Generating diagram image", iteration=iteration)
 
@@ -144,7 +149,11 @@ class VisualizerAgent(BaseAgent):
 
         # Load and format the plot visualizer prompt template
         template = self.load_prompt("plot")
-        code_prompt = self.format_prompt(template, description=full_description)
+        code_prompt = self.format_prompt(
+            template,
+            prompt_label=f"visualizer_plot_iter_{iteration}",
+            description=full_description,
+        )
 
         logger.info("Generating plot code", iteration=iteration)
 

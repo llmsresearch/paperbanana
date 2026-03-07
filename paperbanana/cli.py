@@ -82,6 +82,11 @@ def generate(
         help="Output image format (png, jpeg, or webp)",
     ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    save_prompts: Optional[bool] = typer.Option(
+        None,
+        "--save-prompts/--no-save-prompts",
+        help="Save formatted prompts into the run directory (for debugging)",
+    ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
@@ -165,6 +170,8 @@ def generate(
         overrides["max_iterations"] = max_iterations
     if optimize:
         overrides["optimize_inputs"] = True
+    if save_prompts is not None:
+        overrides["save_prompts"] = save_prompts
     if output:
         overrides["output_dir"] = str(Path(output).parent)
     overrides["output_format"] = format
@@ -488,6 +495,11 @@ def plot(
     auto: bool = typer.Option(
         False, "--auto", help="Let critic loop until satisfied (max 30 iterations)"
     ),
+    save_prompts: Optional[bool] = typer.Option(
+        None,
+        "--save-prompts/--no-save-prompts",
+        help="Save formatted prompts into the run directory (for debugging)",
+    ),
 ):
     """Generate a statistical plot from data."""
     if format not in ("png", "jpeg", "webp"):
@@ -527,6 +539,7 @@ def plot(
         output_format=format,
         optimize_inputs=optimize,
         auto_refine=auto,
+        save_prompts=True if save_prompts is None else save_prompts,
     )
 
     gen_input = GenerationInput(

@@ -20,8 +20,10 @@ class RetrieverAgent(BaseAgent):
     reference examples are most useful for generating the target diagram.
     """
 
-    def __init__(self, vlm_provider: VLMProvider, prompt_dir: str = "prompts"):
-        super().__init__(vlm_provider, prompt_dir)
+    def __init__(
+        self, vlm_provider: VLMProvider, prompt_dir: str = "prompts", prompt_recorder=None
+    ):
+        super().__init__(vlm_provider, prompt_dir, prompt_recorder=prompt_recorder)
 
     @property
     def agent_name(self) -> str:
@@ -68,6 +70,7 @@ class RetrieverAgent(BaseAgent):
         template = self.load_prompt(prompt_type)
         prompt = self.format_prompt(
             template,
+            prompt_label="retriever",
             source_context=source_context,
             caption=caption,
             candidates=candidates_text,

@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     output_dir: str = "outputs"
     output_format: OutputFormat = "png"
     save_iterations: bool = True
+    save_prompts: bool = True
 
     # API Keys (loaded from environment)
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
@@ -208,6 +209,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "output.dir": "output_dir",
         "output.format": "output_format",
         "output.save_iterations": "save_iterations",
+        "output.save_prompts": "save_prompts",
     }
 
     def _recurse(d: dict, prefix: str = "") -> None:

@@ -20,9 +20,15 @@ class BaseAgent(ABC):
     a specific role in the generation process.
     """
 
-    def __init__(self, vlm_provider: VLMProvider, prompt_dir: str = "prompts"):
+    def __init__(
+        self,
+        vlm_provider: VLMProvider,
+        prompt_dir: str = "prompts",
+        prompt_recorder: Any | None = None,
+    ):
         self.vlm = vlm_provider
         self.prompt_dir = Path(prompt_dir)
+        self._prompt_recorder = prompt_recorder
 
     @property
     @abstractmethod
@@ -50,5 +56,23 @@ class BaseAgent(ABC):
         return path.read_text(encoding="utf-8")
 
     def format_prompt(self, template: str, **kwargs: Any) -> str:
-        """Format a prompt template with the given values."""
-        return template.format(**kwargs)
+        """Format a prompt template with the given values.
+
+        If a prompt recorder is configured, this method will write the formatted
+        prompt to the active run directory.
+        """
+        # Reserved internal argument (not forwarded into template.format()).
+        prompt_label = kwargs.pop("prompt_label", None)
+
+        formatted = template.format(**kwargs)
+        if self._prompt_recorder is not None:
+            try:
+                self._prompt_recorder.record(
+                    agent_name=self.agent_name,
+                    label=str(prompt_label) if prompt_label else None,
+                    prompt=formatted,
+                )
+            except Exception:
+                # Recording is best-effort; do not break generation on I/O issues.
+                logger.warning("Prompt recording failed", agent=self.agent_name, label=prompt_label)
+        return formatted

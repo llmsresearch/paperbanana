@@ -30,8 +30,10 @@ class PlannerAgent(BaseAgent):
     can render. Matches paper equation 4: P = VLM_plan(S, C, {(S_i, C_i, I_i)}).
     """
 
-    def __init__(self, vlm_provider: VLMProvider, prompt_dir: str = "prompts"):
-        super().__init__(vlm_provider, prompt_dir)
+    def __init__(
+        self, vlm_provider: VLMProvider, prompt_dir: str = "prompts", prompt_recorder=None
+    ):
+        super().__init__(vlm_provider, prompt_dir, prompt_recorder=prompt_recorder)
 
     @property
     def agent_name(self) -> str:
@@ -70,6 +72,7 @@ class PlannerAgent(BaseAgent):
         ratios_str = ", ".join(supported_ratios) if supported_ratios else "1:1, 16:9"
         prompt = self.format_prompt(
             template,
+            prompt_label="planner",
             source_context=source_context,
             caption=caption,
             examples=examples_text,

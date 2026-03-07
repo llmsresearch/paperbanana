@@ -16,6 +16,7 @@ from paperbanana.agents.retriever import RetrieverAgent
 from paperbanana.agents.stylist import StylistAgent
 from paperbanana.agents.visualizer import VisualizerAgent
 from paperbanana.core.config import Settings
+from paperbanana.core.prompt_recorder import PromptRecorder
 from paperbanana.core.types import (
     DiagramType,
     GenerationInput,
@@ -117,6 +118,11 @@ class PaperBananaPipeline:
         if self.settings.skip_ssl_verification:
             _apply_ssl_skip()
 
+        # Prompt recorder (writes formatted prompts to outputs/<run_id>/prompts/)
+        self._prompt_recorder = None
+        if self.settings.save_prompts:
+            self._prompt_recorder = PromptRecorder(run_dir_provider=lambda: self._run_dir)
+
         # Initialize providers
         if vlm_client is not None:
             # Demo mode: use provided clients
@@ -145,19 +151,31 @@ class PaperBananaPipeline:
 
         # Initialize agents
         prompt_dir = self._find_prompt_dir()
-        self.optimizer = InputOptimizerAgent(self._vlm, prompt_dir=prompt_dir)
-        self.retriever = RetrieverAgent(self._vlm, prompt_dir=prompt_dir)
-        self.planner = PlannerAgent(self._vlm, prompt_dir=prompt_dir)
+        self.optimizer = InputOptimizerAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
+        self.retriever = RetrieverAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
+        self.planner = PlannerAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
         self.stylist = StylistAgent(
-            self._vlm, guidelines=self._methodology_guidelines, prompt_dir=prompt_dir
+            self._vlm,
+            guidelines=self._methodology_guidelines,
+            prompt_dir=prompt_dir,
+            prompt_recorder=self._prompt_recorder,
         )
         self.visualizer = VisualizerAgent(
             self._image_gen,
             self._vlm,
             prompt_dir=prompt_dir,
             output_dir=str(self._run_dir),
+            prompt_recorder=self._prompt_recorder,
         )
-        self.critic = CriticAgent(self._vlm, prompt_dir=prompt_dir)
+        self.critic = CriticAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
 
         logger.info(
             "Pipeline initialized",
