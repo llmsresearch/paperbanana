@@ -921,6 +921,13 @@ def slide(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output image path"
     ),
+    style: Optional[str] = typer.Option(
+        None, "--style", "-s",
+        help="Style preset name (e.g. blueprint, tech-keynote, scientific). Use --list-styles to see all.",
+    ),
+    list_styles: bool = typer.Option(
+        False, "--list-styles", help="List all available style presets and exit"
+    ),
     image_model: Optional[str] = typer.Option(
         None, "--image-model", help="Image gen model (default: gemini-3.1-flash-image-preview)"
     ),
@@ -938,12 +945,36 @@ def slide(
     ),
 ):
     """Generate a presentation slide from a prompt file with Critic loop."""
+    from paperbanana.guidelines.slide_styles import (
+        get_style_info,
+        get_style_prompt,
+        list_styles as _list_styles,
+    )
+
+    if list_styles:
+        console.print("\n[bold]Available Slide Style Presets:[/bold]\n")
+        for name in _list_styles():
+            info = get_style_info(name)
+            console.print(f"  [cyan]{name:<24}[/cyan] {info['feel']}  [dim]({info['source']})[/dim]")
+        console.print(f"\n  [dim]Total: {len(_list_styles())} styles[/dim]\n")
+        raise typer.Exit(0)
+
     input_path = Path(input)
     if not input_path.exists():
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
 
     source_context = input_path.read_text(encoding="utf-8")
+
+    # Prepend style instructions if --style is specified
+    if style:
+        try:
+            style_prompt = get_style_prompt(style)
+            source_context = style_prompt + "\n\n---\n\n" + source_context
+            console.print(f"[cyan]Style:[/cyan] {style}")
+        except KeyError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
 
     overrides: dict = {
         "exp_mode": "full",
@@ -1012,6 +1043,10 @@ def slide_batch(
     output_dir: Optional[str] = typer.Option(
         None, "--output-dir", help="Output directory for generated slides"
     ),
+    style: Optional[str] = typer.Option(
+        None, "--style", "-s",
+        help="Style preset applied to all slides (e.g. blueprint, tech-keynote)",
+    ),
     image_model: Optional[str] = typer.Option(
         None, "--image-model", help="Image gen model"
     ),
@@ -1023,6 +1058,15 @@ def slide_batch(
     ),
 ):
     """Batch generate all slides from a prompts directory."""
+    style_prompt = ""
+    if style:
+        from paperbanana.guidelines.slide_styles import get_style_prompt
+        try:
+            style_prompt = get_style_prompt(style)
+        except KeyError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+
     prompts_path = Path(prompts_dir)
     if not prompts_path.exists():
         console.print(f"[red]Error: Prompts directory not found: {prompts_dir}[/red]")
@@ -1048,12 +1092,13 @@ def slide_batch(
         overrides["image_model"] = image_model
     settings = Settings(**overrides)
 
+    style_info = f"\nStyle: {style}" if style else ""
     console.print(Panel.fit(
         f"[bold]PaperBanana Slide Batch[/bold]\n\n"
         f"Prompts: {len(prompt_files)} files in {prompts_path.name}/\n"
         f"Output: {out_path}\n"
         f"Image model: {settings.image_model}\n"
-        f"Resolution: {resolution} | Critic rounds: {iterations}",
+        f"Resolution: {resolution} | Critic rounds: {iterations}{style_info}",
         border_style="cyan",
     ))
 
@@ -1065,6 +1110,8 @@ def slide_batch(
         for i, pf in enumerate(prompt_files, 1):
             console.print(f"\n[bold][{i}/{len(prompt_files)}] {pf.name}[/bold]")
             source_context = pf.read_text(encoding="utf-8")
+            if style_prompt:
+                source_context = style_prompt + "\n\n---\n\n" + source_context
             gen_input = GenerationInput(
                 source_context=source_context,
                 communicative_intent=f"Generate slide: {pf.stem}",

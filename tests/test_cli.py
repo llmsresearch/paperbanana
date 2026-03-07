@@ -153,3 +153,15 @@ def test_ablate_retrieval_writes_report(monkeypatch):
     finally:
         Path(input_path).unlink(missing_ok=True)
         Path(report_path).unlink(missing_ok=True)
+
+
+def test_slide_list_styles():
+    """paperbanana slide --list-styles shows all presets."""
+    result = runner.invoke(
+        app,
+        ["slide", "--input", "dummy", "--list-styles"],
+    )
+    assert result.exit_code == 0
+    assert "blueprint" in result.output
+    assert "tech-keynote" in result.output
+    assert "23 styles" in result.output
