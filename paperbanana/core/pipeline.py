@@ -12,8 +12,10 @@ import structlog
 from paperbanana.agents.critic import CriticAgent
 from paperbanana.agents.optimizer import InputOptimizerAgent
 from paperbanana.agents.planner import PlannerAgent
+from paperbanana.agents.polish import PolishAgent
 from paperbanana.agents.retriever import RetrieverAgent
 from paperbanana.agents.stylist import StylistAgent
+from paperbanana.agents.vanilla import VanillaAgent
 from paperbanana.agents.visualizer import VisualizerAgent
 from paperbanana.core.config import Settings
 from paperbanana.core.types import (
@@ -247,6 +249,7 @@ class PaperBananaPipeline:
         )
 
         # ── Phase 0: Input Optimization (optional) ───────────────────
+        self._optimize_seconds = 0.0
         optimize_seconds = 0.0
         if self.settings.optimize_inputs:
             logger.info("Phase 0: Optimizing inputs (parallel)")
@@ -257,6 +260,7 @@ class PaperBananaPipeline:
                 diagram_type=input.diagram_type,
             )
             optimize_seconds = time.perf_counter() - optimize_start
+            self._optimize_seconds = optimize_seconds
             logger.info(
                 "[Optimizer] done",
                 seconds=round(optimize_seconds, 1),
@@ -679,7 +683,7 @@ class PaperBananaPipeline:
 
         metadata_dict["timing"] = {
             "total_seconds": total_seconds,
-            "optimize_seconds": optimize_seconds,
+            "optimize_seconds": self._optimize_seconds,
             "retrieval_seconds": retrieval_seconds,
             "planning_seconds": planning_seconds,
             "styling_seconds": styling_seconds,
@@ -904,6 +908,24 @@ class PaperBananaPipeline:
                     "iterations": iteration_timings,
                 },
             },
+        )
+
+    def _get_vanilla_agent(self) -> VanillaAgent:
+        """Create a VanillaAgent with current pipeline providers."""
+        return VanillaAgent(
+            vlm_provider=self._vlm,
+            image_gen=self._image_gen,
+            prompt_dir=str(self._find_prompt_dir()),
+            output_dir=str(self._run_dir),
+        )
+
+    def _get_polish_agent(self) -> PolishAgent:
+        """Create a PolishAgent with current pipeline providers."""
+        return PolishAgent(
+            vlm_provider=self._vlm,
+            image_gen=self._image_gen,
+            prompt_dir=str(self._find_prompt_dir()),
+            output_dir=str(self._run_dir),
         )
 
     def _get_guidelines(self, diagram_type: DiagramType) -> str:

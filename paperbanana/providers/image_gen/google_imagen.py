@@ -31,7 +31,7 @@ class GoogleImagenGen(ImageGenProvider):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "imagen-4.0-generate-001",
+        model: str = "gemini-3-pro-image-preview",
     ):
         self._api_key = api_key
         self._model = model
@@ -110,7 +110,7 @@ class GoogleImagenGen(ImageGenProvider):
         if _is_imagen_model(self._model):
             return await self._generate_imagen(prompt, negative_prompt, width, height)
         else:
-            return await self._generate_gemini(prompt, negative_prompt, width, height)
+            return await self._generate_gemini(prompt, negative_prompt, width, height, aspect_ratio)
 
     async def _generate_imagen(
         self,
@@ -160,6 +160,7 @@ class GoogleImagenGen(ImageGenProvider):
         negative_prompt: Optional[str],
         width: int,
         height: int,
+        aspect_ratio: Optional[str] = None,
     ) -> Image.Image:
         """Generate image using Gemini API (generate_content with IMAGE modality)."""
         from google.genai import types
