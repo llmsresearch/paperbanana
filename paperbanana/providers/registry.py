@@ -73,8 +73,8 @@ def _validate_bedrock_auth(region: str, profile: str | None) -> None:
         import boto3
     except ImportError:
         raise ImportError(
-         "boto3 is required for the Bedrock provider. "
-         "Install with: pip install 'paperbanana[bedrock]'"
+            "boto3 is required for the Bedrock provider. "
+            "Install with: pip install 'paperbanana[bedrock]'"
         )
     session = boto3.Session(region_name=region, profile_name=profile)
     credentials = session.get_credentials()
@@ -92,60 +92,60 @@ class ProviderRegistry:
         logger.info("Creating VLM provider", provider=provider, model=settings.vlm_model)
 
         if provider == "gemini":
-         _validate_api_key(settings.google_api_key, "GOOGLE_API_KEY")
-         from paperbanana.providers.vlm.gemini import GeminiVLM
+            _validate_api_key(settings.google_api_key, "GOOGLE_API_KEY")
+            from paperbanana.providers.vlm.gemini import GeminiVLM
 
-         return GeminiVLM(
-            api_key=settings.google_api_key,
-            model=settings.vlm_model,
-         )
+            return GeminiVLM(
+                api_key=settings.google_api_key,
+                model=settings.vlm_model,
+            )
         elif provider == "openrouter":
-         _validate_api_key(settings.openrouter_api_key, "OPENROUTER_API_KEY")
-         from paperbanana.providers.vlm.openrouter import OpenRouterVLM
+            _validate_api_key(settings.openrouter_api_key, "OPENROUTER_API_KEY")
+            from paperbanana.providers.vlm.openrouter import OpenRouterVLM
 
-         return OpenRouterVLM(
-            api_key=settings.openrouter_api_key,
-            model=settings.vlm_model,
-         )
+            return OpenRouterVLM(
+                api_key=settings.openrouter_api_key,
+                model=settings.vlm_model,
+            )
         elif provider == "novita":
-         _validate_api_key(settings.novita_api_key, "NOVITA_API_KEY")
-         from paperbanana.providers.vlm.novita import NovitaVLM
+            _validate_api_key(settings.novita_api_key, "NOVITA_API_KEY")
+            from paperbanana.providers.vlm.novita import NovitaVLM
 
-         return NovitaVLM(
-            api_key=settings.novita_api_key,
-            model=settings.vlm_model,
-         )
+            return NovitaVLM(
+                api_key=settings.novita_api_key,
+                model=settings.vlm_model,
+            )
         elif provider == "openai":
-         _validate_api_key(settings.openai_api_key, "OPENAI_API_KEY")
-         from paperbanana.providers.vlm.openai import OpenAIVLM
+            _validate_api_key(settings.openai_api_key, "OPENAI_API_KEY")
+            from paperbanana.providers.vlm.openai import OpenAIVLM
 
-         return OpenAIVLM(
-            api_key=settings.openai_api_key,
-            model=settings.openai_vlm_model or settings.vlm_model,
-            base_url=settings.openai_base_url,
-         )
+            return OpenAIVLM(
+                api_key=settings.openai_api_key,
+                model=settings.openai_vlm_model or settings.vlm_model,
+                base_url=settings.openai_base_url,
+            )
         elif provider == "bedrock":
-         _validate_bedrock_auth(settings.aws_region, settings.aws_profile)
-         from paperbanana.providers.vlm.bedrock import BedrockVLM
+            _validate_bedrock_auth(settings.aws_region, settings.aws_profile)
+            from paperbanana.providers.vlm.bedrock import BedrockVLM
 
-         return BedrockVLM(
-            model=settings.bedrock_vlm_model or settings.vlm_model,
-            region=settings.aws_region,
-            profile=settings.aws_profile,
-         )
+            return BedrockVLM(
+                model=settings.bedrock_vlm_model or settings.vlm_model,
+                region=settings.aws_region,
+                profile=settings.aws_profile,
+            )
         elif provider == "anthropic":
-         _validate_api_key(settings.anthropic_api_key, "ANTHROPIC_API_KEY")
-         from paperbanana.providers.vlm.anthropic import AnthropicVLM
+            _validate_api_key(settings.anthropic_api_key, "ANTHROPIC_API_KEY")
+            from paperbanana.providers.vlm.anthropic import AnthropicVLM
 
-         return AnthropicVLM(
-            api_key=settings.anthropic_api_key,
-            model=settings.vlm_model,
-         )
+            return AnthropicVLM(
+                api_key=settings.anthropic_api_key,
+                model=settings.vlm_model,
+            )
         else:
-         raise ValueError(
-            "Unknown VLM provider: "
-            f"{provider}. Available: gemini, openrouter, novita, openai, bedrock, anthropic"
-         )
+            raise ValueError(
+                "Unknown VLM provider: "
+                f"{provider}. Available: gemini, openrouter, novita, openai, bedrock, anthropic"
+            )
 
     @staticmethod
     def create_image_gen(settings: Settings) -> ImageGenProvider:
@@ -154,51 +154,51 @@ class ProviderRegistry:
         logger.info("Creating image gen provider", provider=provider, model=settings.image_model)
 
         if provider == "google_imagen":
-         _validate_api_key(settings.google_api_key, "GOOGLE_API_KEY")
-         from paperbanana.providers.image_gen.google_imagen import GoogleImagenGen
+            _validate_api_key(settings.google_api_key, "GOOGLE_API_KEY")
+            from paperbanana.providers.image_gen.google_imagen import GoogleImagenGen
 
-         return GoogleImagenGen(
-            api_key=settings.google_api_key,
-            model=settings.image_model,
-         )
+            return GoogleImagenGen(
+                api_key=settings.google_api_key,
+                model=settings.image_model,
+            )
         elif provider == "openrouter_imagen":
-         _validate_api_key(settings.openrouter_api_key, "OPENROUTER_API_KEY")
-         from paperbanana.providers.image_gen.openrouter_imagen import (
-            OpenRouterImageGen,
-         )
+            _validate_api_key(settings.openrouter_api_key, "OPENROUTER_API_KEY")
+            from paperbanana.providers.image_gen.openrouter_imagen import (
+                OpenRouterImageGen,
+            )
 
-         return OpenRouterImageGen(
-            api_key=settings.openrouter_api_key,
-            model=settings.image_model,
-         )
+            return OpenRouterImageGen(
+                api_key=settings.openrouter_api_key,
+                model=settings.image_model,
+            )
         elif provider == "novita_imagen":
-         _validate_api_key(settings.novita_api_key, "NOVITA_API_KEY")
-         from paperbanana.providers.image_gen.novita import NovitaImageGen
+            _validate_api_key(settings.novita_api_key, "NOVITA_API_KEY")
+            from paperbanana.providers.image_gen.novita import NovitaImageGen
 
-         return NovitaImageGen(
-             api_key=settings.novita_api_key,
-             model=settings.image_model,
-         )
+            return NovitaImageGen(
+                api_key=settings.novita_api_key,
+                model=settings.image_model,
+            )
         elif provider == "openai_imagen":
-         _validate_api_key(settings.openai_api_key, "OPENAI_API_KEY")
-         from paperbanana.providers.image_gen.openai_imagen import OpenAIImageGen
+            _validate_api_key(settings.openai_api_key, "OPENAI_API_KEY")
+            from paperbanana.providers.image_gen.openai_imagen import OpenAIImageGen
 
-         return OpenAIImageGen(
-             api_key=settings.openai_api_key,
-             model=settings.openai_image_model or settings.image_model,
-             base_url=settings.openai_base_url,
-         )
+            return OpenAIImageGen(
+                api_key=settings.openai_api_key,
+                model=settings.openai_image_model or settings.image_model,
+                base_url=settings.openai_base_url,
+            )
         elif provider == "bedrock_imagen":
-         _validate_bedrock_auth(settings.aws_region, settings.aws_profile)
-         from paperbanana.providers.image_gen.bedrock_imagen import BedrockImageGen
+            _validate_bedrock_auth(settings.aws_region, settings.aws_profile)
+            from paperbanana.providers.image_gen.bedrock_imagen import BedrockImageGen
 
-         return BedrockImageGen(
-             model=settings.bedrock_image_model or settings.image_model,
-             region=settings.aws_region,
-             profile=settings.aws_profile,
-         )
+            return BedrockImageGen(
+                model=settings.bedrock_image_model or settings.image_model,
+                region=settings.aws_region,
+                profile=settings.aws_profile,
+            )
         else:
-         raise ValueError(
-             f"Unknown image provider: {provider}. "
-             f"Available: google_imagen, openrouter_imagen, novita_imagen, openai_imagen, bedrock_imagen"
-         )
+            raise ValueError(
+                f"Unknown image provider: {provider}. "
+                f"Available: google_imagen, openrouter_imagen, novita_imagen, openai_imagen, bedrock_imagen"
+            )
