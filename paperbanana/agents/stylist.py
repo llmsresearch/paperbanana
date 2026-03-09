@@ -23,8 +23,9 @@ class StylistAgent(BaseAgent):
         vlm_provider: VLMProvider,
         guidelines: str = "",
         prompt_dir: str = "prompts",
+        prompt_recorder=None,
     ):
-        super().__init__(vlm_provider, prompt_dir)
+        super().__init__(vlm_provider, prompt_dir, prompt_recorder=prompt_recorder)
         self.guidelines = guidelines
 
     @property
@@ -59,6 +60,7 @@ class StylistAgent(BaseAgent):
         template = self.load_prompt(prompt_type)
         prompt = self.format_prompt(
             template,
+            prompt_label="stylist",
             description=description,
             guidelines=style_guidelines,
             source_context=source_context,

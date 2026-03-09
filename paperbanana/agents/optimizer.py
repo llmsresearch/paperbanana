@@ -26,8 +26,10 @@ class InputOptimizerAgent(BaseAgent):
     - Caption sharpener: converts vague intent into precise visual specification
     """
 
-    def __init__(self, vlm_provider: VLMProvider, prompt_dir: str = "prompts"):
-        super().__init__(vlm_provider, prompt_dir)
+    def __init__(
+        self, vlm_provider: VLMProvider, prompt_dir: str = "prompts", prompt_recorder=None
+    ):
+        super().__init__(vlm_provider, prompt_dir, prompt_recorder=prompt_recorder)
 
     @property
     def agent_name(self) -> str:
@@ -57,11 +59,13 @@ class InputOptimizerAgent(BaseAgent):
 
         context_prompt = self.format_prompt(
             context_template,
+            prompt_label="context_enricher",
             source_context=source_context,
             caption=caption,
         )
         caption_prompt = self.format_prompt(
             caption_template,
+            prompt_label="caption_sharpener",
             source_context=source_context,
             caption=caption,
         )
