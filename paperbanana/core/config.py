@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    novita_api_key: Optional[str] = Field(default=None, alias="NOVITA_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
     openai_vlm_model: Optional[str] = Field(default=None, alias="OPENAI_VLM_MODEL")
