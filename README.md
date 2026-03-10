@@ -38,7 +38,7 @@ An agentic framework for generating publication-quality academic diagrams and st
 - Multiple VLM and image generation providers (OpenAI, Azure, Gemini)
 - Input optimization layer for better generation quality
 - Auto-refine mode and run continuation with user feedback
-- CLI, Python API, and MCP server for IDE integration
+- CLI, Python API, **Gradio web app**, and MCP server for IDE integration
 - Claude Code skills for `/generate-diagram`, `/generate-plot`, and `/evaluate-diagram`
 
 <p align="center">
@@ -66,7 +66,7 @@ Or install from source for development:
 ```bash
 git clone https://github.com/llmsresearch/paperbanana.git
 cd paperbanana
-pip install -e ".[dev,openai,google]"
+pip install -e ".[dev,openai,google,app]"
 ```
 
 ### Step 2: Get Your API Key
@@ -238,6 +238,71 @@ Interactive wizard that walks you through obtaining a Google Gemini API key and 
 
 ---
 
+## Web Application
+
+PaperBanana ships with a full-featured **Gradio web interface** — no coding required. Bring your own API key, pick a provider, and start generating.
+
+### Install
+
+```bash
+pip install paperbanana[app]
+```
+
+Or from source:
+
+```bash
+pip install -e ".[app]"
+```
+
+### Launch
+
+```bash
+# Option 1 — CLI command
+paperbanana app
+
+# Option 2 — standalone script
+python run_app.py
+
+# With custom port and public link
+paperbanana app --port 8080 --share
+```
+
+Open `http://localhost:7860` in your browser.
+
+### Features
+
+The app provides four tabs covering the full PaperBanana pipeline:
+
+| Tab | Description |
+|-----|-------------|
+| **Diagrams** | Generate academic methodology diagrams from text. Iterative refinement with continue / refine workflow and full critique history. |
+| **Slides** | Create presentation slides with 23 style presets. Single slide or batch mode with ZIP export. |
+| **Plots** | Upload CSV/JSON data, preview it inline, and generate publication-quality statistical plots. |
+| **Evaluate** | VLM-as-Judge quality assessment: compare a generated image against a human reference across 4 dimensions (Faithfulness, Conciseness, Readability, Aesthetics). |
+
+### Multi-Provider Support
+
+The sidebar configuration panel lets you mix and match providers independently for VLM and image generation:
+
+| Component | Supported Providers |
+|-----------|-------------------|
+| VLM (planning, critique) | Gemini, OpenRouter, OpenAI, Anthropic, Bedrock |
+| Image Generation | Google Imagen, OpenRouter Imagen, OpenAI Imagen, Bedrock Imagen |
+
+- **Dual API key routing** — when VLM and image providers need different keys, a second key field appears automatically.
+- **Dynamic model defaults** — switching providers updates the model field to that provider's recommended default.
+- All keys are entered in the browser only (password-masked) and never logged or persisted.
+
+<!-- TODO: Add screenshots once the app UI is stable
+### Screenshots
+
+<p align="center">
+  <img src="assets/img/app_diagrams_tab.png" alt="Diagrams Tab" width="80%"/>
+</p>
+-->
+
+---
+
 ## Python API
 
 ```python
@@ -375,6 +440,9 @@ paperbanana/
 │   ├── providers/     # VLM and image gen provider implementations
 │   │   ├── vlm/       # OpenAI, Gemini, OpenRouter VLM providers
 │   │   └── image_gen/ # OpenAI, Gemini, OpenRouter image gen providers
+│   ├── app/           # Gradio web application
+│   │   ├── tabs/      # Diagrams, Slides, Plots, Evaluate tab modules
+│   │   └── components/ # Config panel, style picker, iteration gallery
 │   ├── reference/     # Reference set management (13 curated examples)
 │   ├── guidelines/    # Style guidelines loader
 │   └── evaluation/    # VLM-as-Judge evaluation system
@@ -396,8 +464,8 @@ paperbanana/
 ## Development
 
 ```bash
-# Install with dev dependencies
-pip install -e ".[dev,openai,google]"
+# Install with dev dependencies (includes Gradio app)
+pip install -e ".[dev,openai,google,app]"
 
 # Run tests
 pytest tests/ -v
