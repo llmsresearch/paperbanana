@@ -1146,5 +1146,27 @@ def slide_batch(
     asyncio.run(_run())
 
 
+@app.command(name="app")
+def launch_app(
+    port: int = typer.Option(7860, "--port", "-p", help="Server port"),
+    share: bool = typer.Option(False, "--share", help="Create a public Gradio link"),
+):
+    """Launch the PaperBanana web application (Gradio UI)."""
+    try:
+        import gradio  # noqa: F401
+    except ImportError:
+        console.print(
+            "[red]Gradio is not installed.[/red] "
+            "Install it with: [bold]pip install paperbanana\\[app\\][/bold]"
+        )
+        raise typer.Exit(1)
+
+    from paperbanana.app.main import create_app
+
+    console.print(f"[bold green]Launching PaperBanana app on port {port}...[/bold green]")
+    demo = create_app()
+    demo.launch(server_port=port, share=share)
+
+
 if __name__ == "__main__":
     app()

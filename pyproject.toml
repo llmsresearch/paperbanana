@@ -53,6 +53,7 @@ all-providers = [
     "boto3>=1.34",
     "anthropic>=0.83",
 ]
+app = ["gradio>=5.0"]
 mcp = ["fastmcp>=2.0"]
 dev = [
     "pytest>=8.0",

@@ -1,0 +1,1 @@
+"""PaperBanana Gradio web application."""
