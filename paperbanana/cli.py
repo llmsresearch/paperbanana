@@ -475,6 +475,189 @@ def generate(
 
 
 @app.command()
+def batch(
+    manifest: str = typer.Option(
+        ..., "--manifest", "-m", help="Path to batch manifest (YAML or JSON)"
+    ),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Parent directory for batch run (batch_<id> will be created here)",
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
+    image_provider: Optional[str] = typer.Option(
+        None, "--image-provider", help="Image gen provider"
+    ),
+    image_model: Optional[str] = typer.Option(None, "--image-model", help="Image gen model name"),
+    iterations: Optional[int] = typer.Option(
+        None, "--iterations", "-n", help="Refinement iterations"
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Loop until critic satisfied (with safety cap)"
+    ),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", help="Safety cap for --auto"
+    ),
+    optimize: bool = typer.Option(
+        False, "--optimize", help="Preprocess inputs for better generation"
+    ),
+    format: str = typer.Option(
+        "png", "--format", "-f", help="Output image format (png, jpeg, webp)"
+    ),
+    save_prompts: Optional[bool] = typer.Option(
+        None, "--save-prompts/--no-save-prompts", help="Save prompts per run"
+    ),
+    auto_download_data: bool = typer.Option(
+        False, "--auto-download-data", help="Auto-download reference set if needed"
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
+):
+    """Generate multiple methodology diagrams from a manifest file (YAML or JSON)."""
+    if format not in ("png", "jpeg", "webp"):
+        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+        raise typer.Exit(1)
+
+    configure_logging(verbose=verbose)
+    manifest_path = Path(manifest)
+    if not manifest_path.exists():
+        console.print(f"[red]Error: Manifest not found: {manifest}[/red]")
+        raise typer.Exit(1)
+
+    from paperbanana.core.batch import generate_batch_id, load_batch_manifest
+    from paperbanana.core.utils import ensure_dir, save_json
+
+    try:
+        items = load_batch_manifest(manifest_path)
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
+        console.print(f"[red]Error loading manifest: {e}[/red]")
+        raise typer.Exit(1)
+
+    batch_id = generate_batch_id()
+    batch_dir = Path(output_dir) / batch_id
+    ensure_dir(batch_dir)
+
+    overrides = {"output_dir": str(batch_dir), "output_format": format}
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if image_provider:
+        overrides["image_provider"] = image_provider
+    if image_model:
+        overrides["image_model"] = image_model
+    if iterations is not None:
+        overrides["refinement_iterations"] = iterations
+    if auto:
+        overrides["auto_refine"] = True
+    if max_iterations is not None:
+        overrides["max_iterations"] = max_iterations
+    if optimize:
+        overrides["optimize_inputs"] = True
+    if save_prompts is not None:
+        overrides["save_prompts"] = save_prompts
+
+    if config:
+        settings = Settings.from_yaml(config, **overrides)
+    else:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+        settings = Settings(**overrides)
+
+    if auto_download_data:
+        from paperbanana.data.manager import DatasetManager
+
+        dm = DatasetManager(cache_dir=settings.cache_dir)
+        if not dm.is_downloaded():
+            console.print("  [dim]Downloading expanded reference set...[/dim]")
+            try:
+                dm.download()
+            except Exception as e:
+                console.print(f"  [yellow]Download failed: {e}, using built-in set[/yellow]")
+
+    console.print(
+        Panel.fit(
+            f"[bold]PaperBanana[/bold] — Batch Generation\n\n"
+            f"Manifest: {manifest_path.name}\n"
+            f"Items: {len(items)}\n"
+            f"Output: {batch_dir}",
+            border_style="blue",
+        )
+    )
+    console.print()
+
+    from paperbanana.core.pipeline import PaperBananaPipeline
+
+    report = {"batch_id": batch_id, "manifest": str(manifest_path), "items": []}
+    total_start = time.perf_counter()
+
+    for idx, item in enumerate(items):
+        item_id = item["id"]
+        input_path = Path(item["input"])
+        if not input_path.exists():
+            console.print(f"[red]Skipping item '{item_id}': input not found: {input_path}[/red]")
+            report["items"].append(
+                {
+                    "id": item_id,
+                    "input": item["input"],
+                    "caption": item["caption"],
+                    "run_id": None,
+                    "output_path": None,
+                    "error": "input file not found",
+                }
+            )
+            continue
+        source_context = input_path.read_text(encoding="utf-8")
+        gen_input = GenerationInput(
+            source_context=source_context,
+            communicative_intent=item["caption"],
+            diagram_type=DiagramType.METHODOLOGY,
+        )
+        console.print(f"[bold]Item {idx + 1}/{len(items)}[/bold] — {item_id}")
+        pipeline = PaperBananaPipeline(settings=settings)
+        try:
+            result = asyncio.run(pipeline.generate(gen_input))
+            report["items"].append(
+                {
+                    "id": item_id,
+                    "input": item["input"],
+                    "caption": item["caption"],
+                    "run_id": result.metadata.get("run_id"),
+                    "output_path": result.image_path,
+                    "iterations": len(result.iterations),
+                }
+            )
+            console.print(f"  [green]✓[/green] [dim]{result.image_path}[/dim]\n")
+        except Exception as e:
+            console.print(f"  [red]✗[/red] {e}\n")
+            report["items"].append(
+                {
+                    "id": item_id,
+                    "input": item["input"],
+                    "caption": item["caption"],
+                    "run_id": None,
+                    "output_path": None,
+                    "error": str(e),
+                }
+            )
+
+    total_elapsed = time.perf_counter() - total_start
+    report["total_seconds"] = round(total_elapsed, 1)
+    report_path = batch_dir / "batch_report.json"
+    save_json(report, report_path)
+
+    succeeded = sum(1 for x in report["items"] if x.get("output_path"))
+    console.print(
+        f"[green]Batch complete.[/green] [dim]{total_elapsed:.1f}s · "
+        f"{succeeded}/{len(items)} succeeded[/dim]"
+    )
+    console.print(f"  Report: [bold]{report_path}[/bold]")
+
+
+@app.command()
 def plot(
     data: str = typer.Option(..., "--data", "-d", help="Path to data file (CSV or JSON)"),
     intent: str = typer.Option(..., "--intent", help="Communicative intent for the plot"),

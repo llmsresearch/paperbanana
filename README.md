@@ -39,6 +39,7 @@ An agentic framework for generating publication-quality academic diagrams and st
 - Input optimization layer for better generation quality
 - Auto-refine mode and run continuation with user feedback
 - CLI, Python API, **Gradio web app**, and MCP server for IDE integration
+- **Batch generation** from a manifest file (YAML/JSON) for multiple diagrams in one run
 - Claude Code skills for `/generate-diagram`, `/generate-plot`, and `/evaluate-diagram`
 
 <p align="center">
@@ -204,6 +205,39 @@ paperbanana plot \
 | `--intent` | | Communicative intent for the plot (required) |
 | `--output` | `-o` | Output image path |
 | `--iterations` | `-n` | Refinement iterations (default: 3) |
+
+### `paperbanana batch` -- Batch Generation
+
+Generate multiple methodology diagrams from a single manifest file (YAML or JSON). Each item runs the full pipeline; outputs are written under `outputs/batch_<id>/run_<id>/` and a `batch_report.json` summarizes all runs.
+
+```bash
+paperbanana batch --manifest examples/batch_manifest.yaml --optimize
+```
+
+Manifest format (YAML or JSON with an `items` list):
+
+```yaml
+items:
+  - input: path/to/method1.txt
+    caption: "Overview of our encoder-decoder"
+    id: fig1
+  - input: method2.txt
+    caption: "Training pipeline"
+    id: fig2
+```
+
+Paths in the manifest are resolved relative to the manifest file's directory.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--manifest` | `-m` | Path to manifest file (required) |
+| `--output-dir` | `-o` | Parent directory for batch run (default: outputs) |
+| `--config` | | Path to config YAML |
+| `--iterations` | `-n` | Refinement iterations per item |
+| `--optimize` | | Preprocess inputs for each item |
+| `--auto` | | Loop until critic satisfied per item |
+| `--format` | `-f` | Output image format (png, jpeg, webp) |
+| `--auto-download-data` | | Download expanded reference set if needed |
 
 ### `paperbanana evaluate` -- Quality Assessment
 

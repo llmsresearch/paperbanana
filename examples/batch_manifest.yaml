@@ -1,0 +1,11 @@
+# Batch manifest example: generate multiple methodology diagrams.
+# Paths are relative to this file's directory.
+# Run: paperbanana batch --manifest examples/batch_manifest.yaml
+
+items:
+  - input: sample_inputs/transformer_method.txt
+    caption: "Overview of the Transformer encoder-decoder architecture with multi-head attention"
+    id: transformer
+  - input: sample_inputs/mamba_method.txt
+    caption: "Mamba block with selective state space and gating"
+    id: mamba
