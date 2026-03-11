@@ -1278,7 +1278,10 @@ def benchmark(
                 f"mean={stats['mean_score']:.1f}"
             )
 
-    report_path = Path(report.run_dir) if report.run_dir else Path(settings.output_dir) / report.created_at.replace(":", "")
+    if report.run_dir:
+        report_path = Path(report.run_dir)
+    else:
+        report_path = Path(settings.output_dir) / report.created_at.replace(":", "")
     console.print(f"\nReport: [bold]{report_path / 'benchmark_report.json'}[/bold]")
 
 
