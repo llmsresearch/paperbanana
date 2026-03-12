@@ -169,6 +169,10 @@ class BenchmarkRunner:
         self.settings = settings
         self.pipeline_factory = pipeline_factory
         self.judge_factory = judge_factory or self._default_judge_factory
+        # Concurrency for processing benchmark entries (generation + evaluation).
+        # Defaults to 1 to preserve existing sequential behaviour unless
+        # explicitly overridden by the caller.
+        self.concurrency: int = max(1, getattr(settings, "benchmark_concurrency", 1))
 
     def _default_judge_factory(self, settings: Settings) -> VLMJudge:
         from paperbanana.core.utils import find_prompt_dir
@@ -224,20 +228,33 @@ class BenchmarkRunner:
         results: list[BenchmarkEntryResult] = []
         total_start = time.perf_counter()
 
-        for i, entry in enumerate(entries):
-            logger.info(
-                f"Benchmark entry {i + 1}/{len(entries)}",
-                id=entry.id,
-                category=entry.category,
-            )
+        # Process entries with bounded concurrency so that network-bound
+        # generation/evaluation can run in parallel without overwhelming
+        # providers or local resources.
+        import asyncio
 
-            result = await self._process_entry(
-                entry, judge=judge, run_dir=run_dir, eval_only_dir=eval_only_dir
-            )
-            results.append(result)
+        semaphore = asyncio.Semaphore(self.concurrency)
+        results_lock = asyncio.Lock()
 
-            # Save incrementally so partial runs aren't lost
-            _save_partial(results, run_dir)
+        async def _run_single(idx: int, entry: ReferenceExample) -> None:
+            async with semaphore:
+                logger.info(
+                    f"Benchmark entry {idx + 1}/{len(entries)}",
+                    id=entry.id,
+                    category=entry.category,
+                )
+                result = await self._process_entry(
+                    entry, judge=judge, run_dir=run_dir, eval_only_dir=eval_only_dir
+                )
+            # Append and save partials under a lock so that writes remain
+            # consistent even when many tasks complete at once.
+            async with results_lock:
+                results.append(result)
+                _save_partial(results, run_dir)
+
+        tasks = [_run_single(i, entry) for i, entry in enumerate(entries)]
+        if tasks:
+            await asyncio.gather(*tasks)
 
         total_seconds = time.perf_counter() - total_start
 

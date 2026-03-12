@@ -231,6 +231,61 @@ async def test_benchmark_runner_processes_entries(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_benchmark_runner_honors_concurrency(tmp_path, monkeypatch):
+    """BenchmarkRunner should respect the benchmark_concurrency setting."""
+    # Create multiple fake reference images
+    from PIL import Image
+
+    ref_paths = []
+    for i in range(4):
+        ref_img = tmp_path / f"ref_{i}.jpg"
+        Image.new("RGB", (64, 64)).save(ref_img)
+        ref_paths.append(ref_img)
+
+    entries = [
+        ReferenceExample(
+            id=f"test_{i}",
+            source_context="ctx",
+            caption="cap",
+            image_path=str(ref_paths[i]),
+            category="vision",
+        )
+        for i in range(4)
+    ]
+
+    # Settings for the runner (concurrency will be set directly on the runner)
+    settings = Settings(
+        output_dir=str(tmp_path / "outputs"),
+        reference_set_path=str(tmp_path / "refs"),
+        save_iterations=False,
+    )
+
+    runner = BenchmarkRunner(
+        settings,
+        pipeline_factory=lambda s: _FakePipeline(s),
+        judge_factory=lambda s: _FakeJudge(),
+    )
+
+    # Override concurrency on the runner instance
+    runner.concurrency = 2
+
+    # Spy on _process_entry to ensure it is invoked once per entry
+    calls = []
+
+    async def _spy_process_entry(entry, **kwargs):
+        calls.append(entry.id)
+        return await BenchmarkRunner._process_entry(runner, entry, **kwargs)
+
+    monkeypatch.setattr(runner, "_process_entry", _spy_process_entry)
+
+    report = await runner.run(entries, output_dir=tmp_path / "bench_out")
+
+    assert report.total_entries == 4
+    assert len(report.entries) == 4
+    assert sorted(calls) == sorted(e.id for e in entries)
+
+
+@pytest.mark.asyncio
 async def test_benchmark_runner_skips_missing_reference(tmp_path):
     entries = [
         ReferenceExample(

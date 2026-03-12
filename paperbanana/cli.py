@@ -1157,11 +1157,20 @@ def benchmark(
         "png", "--format", "-f", help="Output image format (png, jpeg, webp)"
     ),
     seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for reproducibility"),
+    concurrency: int = typer.Option(
+        1,
+        "--concurrency",
+        "-c",
+        help="Maximum number of benchmark entries to process in parallel",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
 ):
     """Run generation + evaluation across PaperBananaBench entries."""
     if image_format not in ("png", "jpeg", "webp"):
         console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {image_format}[/red]")
+        raise typer.Exit(1)
+    if concurrency < 1:
+        console.print("[red]Error: --concurrency must be at least 1[/red]")
         raise typer.Exit(1)
 
     configure_logging(verbose=verbose)
@@ -1170,7 +1179,7 @@ def benchmark(
 
     load_dotenv()
 
-    overrides: dict = {"output_format": image_format}
+    overrides: dict = {"output_format": image_format, "benchmark_concurrency": concurrency}
     if vlm_provider:
         overrides["vlm_provider"] = vlm_provider
     if vlm_model:
