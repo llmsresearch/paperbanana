@@ -24,6 +24,26 @@ def test_generation_input():
     assert gi.raw_data is None
 
 
+def test_generation_input_with_valid_aspect_ratio():
+    """aspect_ratio accepts any of the supported ratios."""
+    gi = GenerationInput(
+        source_context="Test methodology",
+        communicative_intent="Test caption",
+        aspect_ratio="16:9",
+    )
+    assert gi.aspect_ratio == "16:9"
+
+
+def test_generation_input_with_invalid_aspect_ratio_raises():
+    """Invalid aspect_ratio values raise a clear error."""
+    with pytest.raises(ValueError):
+        GenerationInput(
+            source_context="Test methodology",
+            communicative_intent="Test caption",
+            aspect_ratio="16:10",
+        )
+
+
 def test_generation_input_plot():
     """Test GenerationInput for statistical plots."""
     gi = GenerationInput(
