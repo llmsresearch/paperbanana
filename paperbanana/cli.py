@@ -171,6 +171,7 @@ def generate(
         None,
         "--venue",
         help="Target venue style (neurips, icml, acl, ieee, custom)",
+    ),
     progress_json: bool = typer.Option(
         False,
         "--progress-json",
@@ -201,6 +202,8 @@ def generate(
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
         console.print(
             f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+        )
+        raise typer.Exit(1)
     if pdf_pages and (continue_last or continue_run):
         console.print(
             "[red]Error: --pdf-pages cannot be used with --continue or --continue-run[/red]"
