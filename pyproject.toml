@@ -59,8 +59,11 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.0",
     "ruff>=0.4",
+    "pymupdf>=1.24",
+    "gradio>=4.44",
 ]
 pdf = ["pymupdf>=1.24"]
+studio = ["gradio>=4.44"]
 
 [project.urls]
 Homepage = "https://github.com/llmsresearch/paperbanana"

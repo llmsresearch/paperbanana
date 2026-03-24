@@ -11,9 +11,50 @@ from paperbanana.core.batch import (
     REPORT_FILENAME,
     generate_batch_report_html,
     generate_batch_report_md,
+    load_batch_manifest,
     load_batch_report,
     write_batch_report,
 )
+
+# ---------------------------------------------------------------------------
+# load_batch_manifest
+# ---------------------------------------------------------------------------
+
+
+def test_load_batch_manifest_pdf_pages(tmp_path: Path) -> None:
+    m = tmp_path / "m.yaml"
+    txt = tmp_path / "a.txt"
+    txt.write_text("x", encoding="utf-8")
+    m.write_text(
+        f"""items:
+  - input: {txt.name}
+    caption: "Fig 1"
+    pdf_pages: "1-3"
+""",
+        encoding="utf-8",
+    )
+    items = load_batch_manifest(m)
+    assert len(items) == 1
+    assert items[0]["pdf_pages"] == "1-3"
+
+
+def test_load_batch_manifest_pdf_pages_must_be_string(tmp_path: Path) -> None:
+    m = tmp_path / "m.json"
+    txt = tmp_path / "a.txt"
+    txt.write_text("x", encoding="utf-8")
+    m.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {"input": txt.name, "caption": "c", "pdf_pages": 1},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="pdf_pages"):
+        load_batch_manifest(m)
+
 
 # ---------------------------------------------------------------------------
 # load_batch_report

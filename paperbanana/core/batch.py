@@ -26,9 +26,10 @@ def load_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
     """Load a batch manifest (YAML or JSON) and return a list of items.
 
     Each item is a dict with:
-      - input: path to methodology text file (resolved relative to manifest parent)
+      - input: path to methodology text or PDF file (resolved relative to manifest parent)
       - caption: figure caption / communicative intent
       - id: optional string identifier for the item (default: index-based)
+      - pdf_pages: optional 1-based page selection for PDF inputs (e.g. "1-5" or "2,4,6-8")
 
     Paths in the manifest are resolved relative to the manifest file's directory.
     """
@@ -74,11 +75,15 @@ def load_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
         input_path = Path(inp)
         if not input_path.is_absolute():
             input_path = (parent / input_path).resolve()
+        pdf_pages = entry.get("pdf_pages")
+        if pdf_pages is not None and not isinstance(pdf_pages, str):
+            raise ValueError(f"Manifest item {i}: 'pdf_pages' must be a string when set")
         result.append(
             {
                 "input": str(input_path),
                 "caption": str(caption),
                 "id": entry.get("id", f"item_{i + 1}"),
+                "pdf_pages": pdf_pages,
             }
         )
     return result
