@@ -122,6 +122,16 @@ def generate(
         "--save-prompts/--no-save-prompts",
         help="Save formatted prompts into the run directory (for debugging)",
     ),
+    cost_only: bool = typer.Option(
+        False,
+        "--cost-only",
+        help="Estimate cost without making API calls (implies --dry-run)",
+    ),
+    budget: Optional[float] = typer.Option(
+        None,
+        "--budget",
+        help="Budget cap in USD; pipeline aborts gracefully when exceeded",
+    ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
@@ -239,6 +249,8 @@ def generate(
         overrides["exemplar_retrieval_max_retries"] = exemplar_retries
     if seed is not None:
         overrides["seed"] = seed
+    if budget is not None:
+        overrides["budget_usd"] = budget
 
     if config:
         settings = Settings.from_yaml(config, **overrides)
@@ -387,6 +399,31 @@ def generate(
 
     # Determine expected output file extension based on settings.output_format
     output_ext = "jpg" if settings.output_format == "jpeg" else settings.output_format
+
+    if cost_only:
+        from paperbanana.core.cost_estimator import estimate_cost
+
+        estimate = estimate_cost(settings, gen_input.diagram_type)
+        iter_est = (
+            f"auto (max {settings.max_iterations})"
+            if settings.auto_refine
+            else str(settings.refinement_iterations)
+        )
+        lines = [
+            "[bold]PaperBanana[/bold] - Cost Estimate\n",
+            f"VLM: {settings.vlm_provider} / {settings.effective_vlm_model}",
+            f"Image: {settings.image_provider} / {settings.effective_image_model}",
+            f"Iterations: {iter_est}",
+            f"Optimize: {'yes' if settings.optimize_inputs else 'no'}",
+            "",
+            f"Estimated VLM calls: {estimate['vlm_calls']}",
+            f"Estimated image calls: {estimate['image_calls']}",
+            f"[bold]Estimated cost: ${estimate['estimated_total_usd']:.4f}[/bold]",
+        ]
+        if estimate.get("pricing_note"):
+            lines.append(f"\n[yellow]Note: {estimate['pricing_note']}[/yellow]")
+        console.print(Panel.fit("\n".join(lines), border_style="green"))
+        return
 
     if dry_run:
         expected_output = (
@@ -538,6 +575,23 @@ def generate(
     )
     console.print(f"  Output: [bold]{result.image_path}[/bold]")
     console.print(f"  Run ID: [dim]{result.metadata.get('run_id', 'unknown')}[/dim]")
+
+    cost_data = result.metadata.get("cost")
+    if cost_data:
+        console.print(
+            f"  Cost:   [bold]${cost_data['total_usd']:.4f}[/bold]"
+            f" [dim](VLM: ${cost_data['vlm_usd']:.4f},"
+            f" Image: ${cost_data['image_usd']:.4f})[/dim]"
+        )
+        if cost_data.get("budget_exceeded"):
+            console.print(
+                f"  [yellow]Budget exceeded: ${cost_data['total_usd']:.4f}"
+                f" / ${cost_data.get('budget_usd', '?')}[/yellow]"
+            )
+        elif not cost_data.get("pricing_complete", True):
+            console.print(
+                "  [yellow]Note: Some model prices unknown; actual cost may differ[/yellow]"
+            )
 
 
 @app.command()

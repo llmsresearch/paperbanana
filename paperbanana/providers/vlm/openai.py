@@ -100,9 +100,14 @@ class OpenAIVLM(VLMProvider):
         response = await client.chat.completions.create(**kwargs)
         text = response.choices[0].message.content
 
-        logger.debug(
-            "OpenAI response",
-            model=self._model,
-            usage=getattr(response, "usage", None),
-        )
+        usage = getattr(response, "usage", None)
+        logger.debug("OpenAI response", model=self._model, usage=usage)
+
+        if self.cost_tracker is not None and usage is not None:
+            self.cost_tracker.record_vlm_call(
+                provider=self.name,
+                model=self._model,
+                input_tokens=getattr(usage, "prompt_tokens", 0),
+                output_tokens=getattr(usage, "completion_tokens", 0),
+            )
         return text

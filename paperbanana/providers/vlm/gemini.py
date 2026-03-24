@@ -123,9 +123,14 @@ class GeminiVLM(VLMProvider):
             config=config,
         )
 
-        logger.debug(
-            "Gemini response",
-            model=self._model,
-            usage=getattr(response, "usage_metadata", None),
-        )
+        usage = getattr(response, "usage_metadata", None)
+        logger.debug("Gemini response", model=self._model, usage=usage)
+
+        if self.cost_tracker is not None and usage is not None:
+            self.cost_tracker.record_vlm_call(
+                provider=self.name,
+                model=self._model,
+                input_tokens=getattr(usage, "prompt_token_count", 0),
+                output_tokens=getattr(usage, "candidates_token_count", 0),
+            )
         return response.text
