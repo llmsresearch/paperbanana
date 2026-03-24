@@ -127,10 +127,14 @@ class ProviderRegistry:
                 api_key=settings.anthropic_api_key,
                 model=settings.vlm_model,
             )
+        elif provider == "claude_code":
+            from paperbanana.providers.vlm.claude_code import ClaudeCodeVLM
+
+            return ClaudeCodeVLM(model=settings.vlm_model)
         else:
             raise ValueError(
                 "Unknown VLM provider: "
-                f"{provider}. Available: gemini, openrouter, openai, bedrock, anthropic"
+                f"{provider}. Available: gemini, openrouter, openai, bedrock, anthropic, claude_code"
             )
 
     @staticmethod
