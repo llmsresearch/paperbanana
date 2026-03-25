@@ -3,6 +3,11 @@
 Uses the locally installed `claude` CLI as the VLM backend.
 No API key needed — uses the user's Claude Code subscription.
 Maintains conversation context across calls via --resume.
+
+Note: the ``claude`` CLI does not expose ``temperature`` or
+``max_tokens`` knobs — those parameters are accepted for interface
+compatibility but silently ignored.  If the CLI adds support in the
+future this provider should be updated to pass them through.
 """
 
 from __future__ import annotations
@@ -10,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -23,15 +29,18 @@ logger = structlog.get_logger()
 
 
 class ClaudeCodeVLM(VLMProvider):
-    """VLM provider that shells out to the `claude` CLI.
+    """VLM provider that shells out to the ``claude`` CLI.
 
-    Maintains a single conversation session across planner, stylist,
-    and critic calls so each step has full context of prior steps.
+    Maintains a single conversation session so each ``generate()`` call
+    can build on the context of previous calls (e.g. planner → stylist
+    → critic).  Because ``_session_id`` is shared mutable state, an
+    ``asyncio.Lock`` serialises concurrent calls to prevent races.
     """
 
     def __init__(self, model: str = "sonnet"):
         self._model = model
         self._session_id: Optional[str] = None
+        self._lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -42,8 +51,6 @@ class ClaudeCodeVLM(VLMProvider):
         return f"claude-code ({self._model})"
 
     def is_available(self) -> bool:
-        import shutil
-
         return shutil.which("claude") is not None
 
     async def generate(
@@ -55,6 +62,34 @@ class ClaudeCodeVLM(VLMProvider):
         max_tokens: int = 4096,
         response_format: Optional[str] = None,
     ) -> str:
+        async with self._lock:
+            return await self._generate(
+                prompt,
+                images=images,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
+
+    async def _generate(
+        self,
+        prompt: str,
+        *,
+        images: Optional[list[Image.Image]] = None,
+        system_prompt: Optional[str] = None,
+        temperature: float = 1.0,
+        max_tokens: int = 4096,
+        response_format: Optional[str] = None,
+    ) -> str:
+        if temperature != 1.0 or max_tokens != 4096:
+            logger.warning(
+                "ClaudeCodeVLM does not support temperature/max_tokens"
+                " — the claude CLI has no flags for these; values ignored",
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
         cmd = [
             "claude",
             "-p",
@@ -72,7 +107,8 @@ class ClaudeCodeVLM(VLMProvider):
 
         if response_format == "json":
             full_prompt += (
-                "[Output format: respond with valid JSON only, no markdown fences]\n\n"
+                "[Output format: respond with valid JSON only,"
+                " no markdown fences]\n\n"
             )
 
         full_prompt += prompt
@@ -122,7 +158,6 @@ class ClaudeCodeVLM(VLMProvider):
         if proc.returncode != 0:
             error_msg = stderr.decode().strip()
             stdout_msg = stdout.decode().strip()
-            # Claude CLI may output errors as JSON on stdout
             combined = error_msg or stdout_msg
             logger.error(
                 "Claude Code CLI failed",
@@ -140,7 +175,9 @@ class ClaudeCodeVLM(VLMProvider):
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            logger.warning("Claude Code returned non-JSON output, using raw text")
+            logger.warning(
+                "Claude Code returned non-JSON output, using raw text",
+            )
             return raw.strip()
 
         # Capture session_id for conversation continuity
@@ -148,7 +185,10 @@ class ClaudeCodeVLM(VLMProvider):
             prev = self._session_id
             self._session_id = data["session_id"]
             if prev is None:
-                logger.info("Claude Code session started", session_id=self._session_id)
+                logger.info(
+                    "Claude Code session started",
+                    session_id=self._session_id,
+                )
 
         result_text = data.get("result", raw.strip())
 
