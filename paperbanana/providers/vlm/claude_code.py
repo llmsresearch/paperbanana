@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -76,18 +77,26 @@ class ClaudeCodeVLM(VLMProvider):
 
         full_prompt += prompt
 
-        # Handle images by saving to temp files and referencing in prompt
+        # Handle images by saving to temp files and referencing
+        # in prompt.  We build the preamble in order then prepend
+        # it so Image 1 always comes first.
         temp_files: list[Path] = []
         if images:
+            preamble_parts: list[str] = []
             for i, img in enumerate(images):
-                tmp = Path(tempfile.mktemp(suffix=f"_pb_img_{i}.png"))
+                fd, tmp_name = tempfile.mkstemp(
+                    suffix=f"_pb_img_{i}.png",
+                )
+                os.close(fd)
+                tmp = Path(tmp_name)
                 img.save(tmp, format="PNG")
                 temp_files.append(tmp)
-                full_prompt = (
+                preamble_parts.append(
                     f"[Image {i + 1}: see file {tmp}]\n"
-                    f"Please read the image at {tmp} before responding.\n\n"
-                    + full_prompt
+                    f"Please read the image at {tmp}"
+                    " before responding.\n\n"
                 )
+            full_prompt = "".join(preamble_parts) + full_prompt
 
         cmd.append(full_prompt)
 
@@ -99,16 +108,16 @@ class ClaudeCodeVLM(VLMProvider):
             num_images=len(images) if images else 0,
         )
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-
-        # Clean up temp image files
-        for tmp in temp_files:
-            tmp.unlink(missing_ok=True)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+        finally:
+            for tmp in temp_files:
+                tmp.unlink(missing_ok=True)
 
         if proc.returncode != 0:
             error_msg = stderr.decode().strip()
@@ -121,7 +130,10 @@ class ClaudeCodeVLM(VLMProvider):
                 stderr=error_msg[:500] if error_msg else None,
                 stdout=stdout_msg[:500] if stdout_msg else None,
             )
-            raise RuntimeError(f"claude CLI exited with code {proc.returncode}: {combined[:500]}")
+            raise RuntimeError(
+                "claude CLI exited with code "
+                f"{proc.returncode}: {combined[:500]}"
+            )
 
         raw = stdout.decode()
 
