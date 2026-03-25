@@ -548,7 +548,12 @@ def sweep(
         "-i",
         help="Path to methodology text file or PDF (.pdf requires: pip install 'paperbanana[pdf]')",
     ),
-    caption: str = typer.Option(..., "--caption", "-c", help="Figure caption / communicative intent"),
+    caption: str = typer.Option(
+        ...,
+        "--caption",
+        "-c",
+        help="Figure caption / communicative intent",
+    ),
     output_dir: str = typer.Option(
         "outputs",
         "--output-dir",
@@ -624,6 +629,9 @@ def sweep(
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
 
+    from dotenv import load_dotenv
+
+    from paperbanana.core.pipeline import PaperBananaPipeline
     from paperbanana.core.source_loader import load_methodology_source
     from paperbanana.core.sweep import (
         build_sweep_variants,
@@ -686,9 +694,6 @@ def sweep(
         console.print(f"\n[green]Dry run complete.[/green] Planned {len(variant_list)} variants")
         console.print(f"  Report: [bold]{report_path}[/bold]")
         return
-
-    from dotenv import load_dotenv
-    from paperbanana.core.pipeline import PaperBananaPipeline
 
     load_dotenv()
     all_results: list[dict] = []
@@ -756,7 +761,8 @@ def sweep(
             )
             console.print(f"  [red]✗[/red] {e}")
 
-    ranked_results = rank_sweep_results([item for item in all_results if item["status"] == "success"])
+    successful = [item for item in all_results if item["status"] == "success"]
+    ranked_results = rank_sweep_results(successful)
     summary = summarize_sweep(all_results)
     elapsed = time.perf_counter() - total_start
     report = {

@@ -50,9 +50,19 @@ def test_parse_csv_bools_supports_common_forms() -> None:
 
 def test_rank_and_summarize_sweep_results() -> None:
     results = [
-        {"variant_id": "a", "status": "success", "quality_proxy_score": 80.0, "total_seconds": 20.0},
+        {
+            "variant_id": "a",
+            "status": "success",
+            "quality_proxy_score": 80.0,
+            "total_seconds": 20.0,
+        },
         {"variant_id": "b", "status": "failed"},
-        {"variant_id": "c", "status": "success", "quality_proxy_score": 90.0, "total_seconds": 25.0},
+        {
+            "variant_id": "c",
+            "status": "success",
+            "quality_proxy_score": 90.0,
+            "total_seconds": 25.0,
+        },
     ]
     ranked = rank_sweep_results([x for x in results if x["status"] == "success"])
     assert [x["variant_id"] for x in ranked] == ["c", "a"]
