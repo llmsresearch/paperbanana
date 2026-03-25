@@ -89,6 +89,76 @@ def load_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
     return result
 
 
+def load_plot_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
+    """Load a plot batch manifest (YAML or JSON): multiple statistical plots in one run.
+
+    Each item must include:
+      - data: path to CSV or JSON (resolved relative to manifest parent)
+      - intent: communicative intent for the plot (like ``paperbanana plot --intent``)
+      - id: optional string identifier (default: index-based)
+
+    Optional per-item fields (override CLI defaults when set):
+      - aspect_ratio: e.g. \"16:9\"
+    """
+    manifest_path = Path(manifest_path).resolve()
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Manifest not found: {manifest_path}")
+    parent = manifest_path.parent
+    raw = manifest_path.read_text(encoding="utf-8")
+    suffix = manifest_path.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        try:
+            import yaml
+
+            data = yaml.safe_load(raw)
+        except ImportError:
+            raise RuntimeError(
+                "PyYAML is required for YAML manifests. Install with: pip install pyyaml"
+            )
+    elif suffix == ".json":
+        data = json.loads(raw)
+    else:
+        raise ValueError(f"Manifest must be .yaml, .yml, or .json. Got: {manifest_path.suffix}")
+
+    if data is None:
+        raise ValueError("Manifest is empty")
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict) and "items" in data:
+        items = data["items"]
+    else:
+        raise ValueError("Manifest must be a list of items or an object with an 'items' list")
+
+    result = []
+    for i, entry in enumerate(items):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Manifest item {i} must be an object, got {type(entry).__name__}")
+        data_key = entry.get("data")
+        intent = entry.get("intent")
+        if not data_key or not intent:
+            raise ValueError(f"Manifest item {i}: 'data' and 'intent' are required")
+        data_path = Path(data_key)
+        if not data_path.is_absolute():
+            data_path = (parent / data_path).resolve()
+        suffix_d = data_path.suffix.lower()
+        if suffix_d not in (".csv", ".json"):
+            raise ValueError(
+                f"Manifest item {i}: 'data' must be a .csv or .json file, got {data_path.suffix!r}"
+            )
+        aspect_ratio = entry.get("aspect_ratio")
+        if aspect_ratio is not None and not isinstance(aspect_ratio, str):
+            raise ValueError(f"Manifest item {i}: 'aspect_ratio' must be a string when set")
+        result.append(
+            {
+                "data": str(data_path),
+                "intent": str(intent),
+                "id": entry.get("id", f"plot_{i + 1}"),
+                "aspect_ratio": aspect_ratio,
+            }
+        )
+    return result
+
+
 def load_batch_report(batch_dir: Path) -> dict[str, Any]:
     """Load batch_report.json from a batch output directory.
 
@@ -130,15 +200,23 @@ def generate_batch_report_md(report: dict[str, Any], batch_dir: Path) -> str:
     batch_id = report.get("batch_id", "batch")
     manifest = report.get("manifest", "")
     succeeded, total, total_seconds = _report_summary(report)
+    kind = report.get("batch_kind")
     lines = [
         f"# Batch Report: {batch_id}",
         "",
         f"- **Manifest:** `{manifest}`",
-        f"- **Summary:** {succeeded}/{total} succeeded in {total_seconds:.1f}s",
-        "",
-        "| ID | Caption | Status | Output / Error | Iterations |",
-        "|----|--------|--------|-----------------|------------|",
     ]
+    if kind in ("methodology", "statistical_plot"):
+        label = "statistical plots" if kind == "statistical_plot" else "methodology diagrams"
+        lines.append(f"- **Batch kind:** {label}")
+    lines.extend(
+        [
+            f"- **Summary:** {succeeded}/{total} succeeded in {total_seconds:.1f}s",
+            "",
+            "| ID | Caption | Status | Output / Error | Iterations |",
+            "|----|--------|--------|-----------------|------------|",
+        ]
+    )
     for item in report.get("items", []):
         item_id = item.get("id", "—")
         caption = (item.get("caption") or "")[:60]
@@ -173,6 +251,12 @@ def generate_batch_report_html(report: dict[str, Any], batch_dir: Path) -> str:
         return (
             s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
         )
+
+    kind = report.get("batch_kind")
+    kind_html = ""
+    if kind in ("methodology", "statistical_plot"):
+        label = "statistical plots" if kind == "statistical_plot" else "methodology diagrams"
+        kind_html = f"Batch kind: <strong>{escape(label)}</strong><br>\n  "
 
     rows = []
     for item in report.get("items", []):
@@ -218,7 +302,7 @@ def generate_batch_report_html(report: dict[str, Any], batch_dir: Path) -> str:
 <body>
   <h1>Batch Report: {escape(batch_id)}</h1>
   <p class="meta">Manifest: <code>{escape(manifest)}</code><br>
-  Summary: <strong>{succeeded}/{total}</strong> succeeded in
+  {kind_html}Summary: <strong>{succeeded}/{total}</strong> succeeded in
   <strong>{total_seconds:.1f}s</strong></p>
   <table>
     <thead><tr><th>ID</th><th>Caption</th><th>Status</th>

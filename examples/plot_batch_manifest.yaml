@@ -1,0 +1,10 @@
+# Statistical plot batch — same idea as `paperbanana batch` but each item is data + intent.
+# Run: paperbanana plot-batch --manifest examples/plot_batch_manifest.yaml
+items:
+  - data: sample_data/benchmark_slice.csv
+    intent: "Bar chart of accuracy by model; clear axis labels and NeurIPS-style colors."
+    id: acc_bar
+  - data: sample_data/benchmark_slice.csv
+    intent: "Side-by-side bars comparing accuracy and F1 for each model."
+    id: acc_f1_grouped
+    aspect_ratio: "16:9"

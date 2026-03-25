@@ -40,6 +40,7 @@ An agentic framework for generating publication-quality academic diagrams and st
 - Auto-refine mode and run continuation with user feedback
 - CLI, Python API, and MCP server for IDE integration
 - **Batch generation** from a manifest file (YAML/JSON) for multiple diagrams in one run
+- **Batch plots** — `paperbanana plot-batch` runs many statistical plots from one manifest (CSV/JSON per item)
 - **PDF inputs** for methodology context (optional `paperbanana[pdf]` / PyMuPDF), with per-page selection
 - **PaperBanana Studio** — local Gradio web UI (`paperbanana studio`) for diagrams, plots, evaluation, batch, and run browser
 - Claude Code skills for `/generate-diagram`, `/generate-plot`, and `/evaluate-diagram`
@@ -123,7 +124,7 @@ pip install 'paperbanana[studio]'
 paperbanana studio
 ```
 
-Open the URL shown in the terminal (default `http://127.0.0.1:7860/`). The Studio exposes the same workflows as the CLI: methodology diagrams, statistical plots, comparative evaluation, continuing a prior run, batch manifests, and a simple browser for `run_*` / `batch_*` output folders. Use `--host`, `--port`, `--config`, and `--output-dir` as needed.
+Open the URL shown in the terminal (default `http://127.0.0.1:7860/`). The Studio exposes the same workflows as the CLI: methodology diagrams, statistical plots, comparative evaluation, continuing a prior run, batch manifests (methodology or **plot** batch via the Batch tab), and a simple browser for `run_*` / `batch_*` output folders. Use `--host`, `--port`, `--config`, and `--output-dir` as needed.
 
 ---
 
@@ -268,6 +269,8 @@ paperbanana batch-report --batch-dir outputs/batch_20250109_123456_abc --format 
 paperbanana batch-report --batch-id batch_20250109_123456_abc --format html --output report.html
 ```
 
+Diagram batch reports include `batch_kind: methodology`; plot batches use `batch_kind: statistical_plot`. Human-readable reports (`paperbanana batch-report`) show the batch kind when present.
+
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--manifest` | `-m` | Path to manifest file (required) |
@@ -278,6 +281,47 @@ paperbanana batch-report --batch-id batch_20250109_123456_abc --format html --ou
 | `--auto` | | Loop until critic satisfied per item |
 | `--format` | `-f` | Output image format (png, jpeg, webp) |
 | `--auto-download-data` | | Download expanded reference set if needed |
+
+### `paperbanana plot-batch` -- Batch Statistical Plots
+
+Generate multiple plots from a manifest (YAML or JSON). Each item specifies a **data** file (CSV or JSON) and an **intent** string, mirroring `paperbanana plot`. Outputs live under `outputs/batch_<id>/run_<id>/` with the same `batch_report.json` and `paperbanana batch-report` workflow as diagram batches.
+
+```bash
+paperbanana plot-batch --manifest examples/plot_batch_manifest.yaml --optimize
+```
+
+Manifest format (`items` list):
+
+```yaml
+items:
+  - data: path/to/results.csv
+    intent: "Bar chart comparing accuracy across models"
+    id: fig_acc
+  - data: other.json
+    intent: "Scatter plot with trend line"
+    aspect_ratio: "16:9"   # optional per item; CLI --aspect-ratio is the default when omitted
+```
+
+Paths are resolved relative to the manifest file’s directory.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--manifest` | `-m` | Path to manifest (required) |
+| `--output-dir` | `-o` | Parent directory for `batch_*` (default: outputs) |
+| `--config` | | Path to config YAML |
+| `--vlm-provider` | | VLM provider (default: gemini) |
+| `--vlm-model` | | VLM model override |
+| `--image-provider` | | Image gen provider |
+| `--image-model` | | Image gen model |
+| `--iterations` | `-n` | Refinement iterations per item |
+| `--auto` | | Loop until critic satisfied per item |
+| `--max-iterations` | | Safety cap for `--auto` |
+| `--optimize` | | Input optimization per item |
+| `--format` | `-f` | png, jpeg, or webp |
+| `--save-prompts` / `--no-save-prompts` | | Persist prompts (default: on, same as `plot`) |
+| `--venue` | | Venue style (neurips, icml, acl, ieee, custom) |
+| `--aspect-ratio` | `-ar` | Default aspect ratio when not set in the manifest |
+| `--verbose` | `-v` | Verbose logging |
 
 ### `paperbanana evaluate` -- Quality Assessment
 

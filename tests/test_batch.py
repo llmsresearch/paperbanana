@@ -13,6 +13,7 @@ from paperbanana.core.batch import (
     generate_batch_report_md,
     load_batch_manifest,
     load_batch_report,
+    load_plot_batch_manifest,
     write_batch_report,
 )
 
@@ -54,6 +55,52 @@ def test_load_batch_manifest_pdf_pages_must_be_string(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="pdf_pages"):
         load_batch_manifest(m)
+
+
+# ---------------------------------------------------------------------------
+# load_plot_batch_manifest
+# ---------------------------------------------------------------------------
+
+
+def test_load_plot_batch_manifest_resolves_paths(tmp_path: Path) -> None:
+    csv = tmp_path / "d.csv"
+    csv.write_text("x,y\n1,2\n", encoding="utf-8")
+    m = tmp_path / "plots.yaml"
+    m.write_text(
+        f"""items:
+  - data: {csv.name}
+    intent: "Line chart of y vs x"
+    id: p1
+""",
+        encoding="utf-8",
+    )
+    items = load_plot_batch_manifest(m)
+    assert len(items) == 1
+    assert items[0]["id"] == "p1"
+    assert items[0]["intent"].startswith("Line chart")
+    assert Path(items[0]["data"]) == csv.resolve()
+
+
+def test_load_plot_batch_manifest_requires_data_and_intent(tmp_path: Path) -> None:
+    m = tmp_path / "bad.yaml"
+    m.write_text('items:\n  - data: "x.csv"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="intent"):
+        load_plot_batch_manifest(m)
+
+
+def test_load_plot_batch_manifest_rejects_non_tabular_suffix(tmp_path: Path) -> None:
+    txt = tmp_path / "a.txt"
+    txt.write_text("x", encoding="utf-8")
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        f"""items:
+  - data: {txt.name}
+    intent: "test"
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="csv or .json"):
+        load_plot_batch_manifest(m)
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +170,30 @@ def test_generate_batch_report_md_contains_summary(tmp_path: Path):
     assert "| b |" in md
     assert "Success" in md
     assert "Failed" in md
+
+
+def test_generate_batch_report_md_includes_batch_kind(tmp_path: Path) -> None:
+    report = {
+        "batch_id": "batch_plot",
+        "manifest": "p.yaml",
+        "batch_kind": "statistical_plot",
+        "items": [],
+        "total_seconds": 0.0,
+    }
+    md = generate_batch_report_md(report, tmp_path)
+    assert "statistical plots" in md
+
+
+def test_generate_batch_report_html_includes_batch_kind(tmp_path: Path) -> None:
+    report = {
+        "batch_id": "batch_m",
+        "manifest": "m.yaml",
+        "batch_kind": "methodology",
+        "items": [],
+        "total_seconds": 0.0,
+    }
+    html = generate_batch_report_html(report, tmp_path)
+    assert "methodology diagrams" in html
 
 
 # ---------------------------------------------------------------------------

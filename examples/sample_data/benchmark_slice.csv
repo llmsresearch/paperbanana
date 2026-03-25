@@ -1,0 +1,5 @@
+model,accuracy,f1
+GPT-4o,0.91,0.89
+Claude-3,0.88,0.86
+Gemini,0.85,0.83
+Llama-3,0.79,0.77
