@@ -221,6 +221,38 @@ def test_sweep_writes_report_with_mocked_pipeline(tmp_path, monkeypatch):
     assert ranked[0]["quality_proxy_score"] > ranked[1]["quality_proxy_score"]
 
 
+def test_generate_accepts_vector_flag():
+    """--vector flag is accepted by the CLI in dry-run mode."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Sample methodology text for testing.")
+        input_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            ["generate", "--input", input_path, "--caption", "test", "--dry-run", "--vector"],
+        )
+        assert result.exit_code == 0
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
+def test_generate_no_vector_flag_accepted():
+    """--no-vector flag (explicit opt-out) is accepted by the CLI in dry-run mode."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Sample methodology text for testing.")
+        input_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            ["generate", "--input", input_path, "--caption", "test", "--dry-run", "--no-vector"],
+        )
+        assert result.exit_code == 0
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
 def test_ablate_retrieval_writes_report(monkeypatch):
     """ablate-retrieval writes a JSON report and exits cleanly."""
     from paperbanana.evaluation.retrieval_ablation import AblationReport, AblationVariantResult

@@ -539,6 +539,7 @@ class PaperBananaPipeline:
         current_description = optimized_description
         iterations: list[IterationRecord] = []
         iteration_timings = []
+        vector_formats = ["svg", "pdf"] if self.settings.vector_export else None
 
         if self.settings.auto_refine:
             total_iters = self.settings.max_iterations
@@ -588,6 +589,7 @@ class PaperBananaPipeline:
                 iteration=iter_index,
                 seed=self.settings.seed,
                 aspect_ratio=effective_ratio,
+                vector_formats=vector_formats,
             )
             visualizer_seconds = time.perf_counter() - visualizer_start
             _emit_progress(
@@ -783,6 +785,10 @@ class PaperBananaPipeline:
                 cost_summary["budget_usd"] = self.settings.budget_usd
             metadata_dict["cost"] = cost_summary
 
+        # Include vector output paths when vector export was requested
+        if self.settings.vector_export and self.visualizer._last_vector_paths:
+            metadata_dict["vector_output_paths"] = self.visualizer._last_vector_paths
+
         # Always write metadata (including cost) to disk for every run
         save_json(metadata_dict, self._run_dir / "metadata.json")
 
@@ -852,6 +858,7 @@ class PaperBananaPipeline:
         iterations: list[IterationRecord] = []
         iteration_timings = []
         budget_exceeded = False
+        vector_formats = ["svg", "pdf"] if self.settings.vector_export else None
 
         for i in range(total_iters):
             if budget_exceeded:
@@ -889,6 +896,7 @@ class PaperBananaPipeline:
                 iteration=iter_num,
                 seed=self.settings.seed,
                 aspect_ratio=resume_state.aspect_ratio,
+                vector_formats=vector_formats,
             )
             visualizer_seconds = time.perf_counter() - visualizer_start
             _emit_progress(
@@ -1078,6 +1086,9 @@ class PaperBananaPipeline:
             if self.settings.budget_usd is not None:
                 cost_summary["budget_usd"] = self.settings.budget_usd
             metadata_dict["cost"] = cost_summary
+
+        if self.settings.vector_export and self.visualizer._last_vector_paths:
+            metadata_dict["vector_output_paths"] = self.visualizer._last_vector_paths
 
         # Always write metadata (including cost) to disk for every run
         save_json(metadata_dict, run_dir / "metadata_continued.json")
