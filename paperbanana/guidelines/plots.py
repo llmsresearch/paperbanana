@@ -94,19 +94,35 @@ Sequential & Heatmaps:
 """
 
 
-def load_plot_guidelines(guidelines_path: str | None = None) -> str:
+def load_plot_guidelines(
+    guidelines_path: str | None = None,
+    venue: str | None = None,
+) -> str:
     """Load statistical plot style guidelines.
 
     Args:
-        guidelines_path: Path to custom guidelines file. If None, uses defaults.
+        guidelines_path: Base directory for guideline files. If None, uses defaults.
+        venue: Target venue (neurips, icml, acl, ieee). When set to "custom" or
+            None, the loader skips venue subdirectory resolution and looks for
+            files directly under guidelines_path (original behavior).
 
     Returns:
         Guidelines text.
     """
     if guidelines_path:
-        path = Path(guidelines_path) / "plot_style_guide.md"
-        if path.exists():
-            logger.info("Loading custom plot guidelines", path=str(path))
-            return path.read_text(encoding="utf-8")
+        base = Path(guidelines_path)
+
+        # Try venue-specific path first: {guidelines_path}/{venue}/plot_style_guide.md
+        if venue and venue != "custom":
+            venue_path = base / venue / "plot_style_guide.md"
+            if venue_path.exists():
+                logger.info("Loading plot guidelines", venue=venue, path=str(venue_path))
+                return venue_path.read_text(encoding="utf-8")
+
+        # Fallback to flat path: {guidelines_path}/plot_style_guide.md
+        flat_path = base / "plot_style_guide.md"
+        if flat_path.exists():
+            logger.info("Loading plot guidelines (flat path)", path=str(flat_path))
+            return flat_path.read_text(encoding="utf-8")
 
     return DEFAULT_PLOT_GUIDELINES
