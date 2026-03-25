@@ -130,11 +130,19 @@ class ProviderRegistry:
         elif provider == "claude_code":
             from paperbanana.providers.vlm.claude_code import ClaudeCodeVLM
 
-            return ClaudeCodeVLM(model=settings.vlm_model)
+            vlm = ClaudeCodeVLM(model=settings.vlm_model)
+            if not vlm.is_available():
+                raise ValueError(
+                    "claude CLI not found in PATH.\n\n"
+                    "Install Claude Code and sign in, then"
+                    " ensure `claude` is available on PATH."
+                )
+            return vlm
         else:
             raise ValueError(
                 "Unknown VLM provider: "
-                f"{provider}. Available: gemini, openrouter, openai, bedrock, anthropic, claude_code"
+                f"{provider}. Available: gemini, openrouter,"
+                " openai, bedrock, anthropic, claude_code"
             )
 
     @staticmethod
