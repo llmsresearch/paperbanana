@@ -98,19 +98,35 @@ corners for processes.
 """
 
 
-def load_methodology_guidelines(guidelines_path: str | None = None) -> str:
+def load_methodology_guidelines(
+    guidelines_path: str | None = None,
+    venue: str | None = None,
+) -> str:
     """Load methodology diagram style guidelines.
 
     Args:
-        guidelines_path: Path to custom guidelines file. If None, uses defaults.
+        guidelines_path: Base directory for guideline files. If None, uses defaults.
+        venue: Target venue (neurips, icml, acl, ieee). When set to "custom" or
+            None, the loader skips venue subdirectory resolution and looks for
+            files directly under guidelines_path (original behavior).
 
     Returns:
         Guidelines text.
     """
     if guidelines_path:
-        path = Path(guidelines_path) / "methodology_style_guide.md"
-        if path.exists():
-            logger.info("Loading custom methodology guidelines", path=str(path))
-            return path.read_text(encoding="utf-8")
+        base = Path(guidelines_path)
+
+        # Try venue-specific path first: {guidelines_path}/{venue}/methodology_style_guide.md
+        if venue and venue != "custom":
+            venue_path = base / venue / "methodology_style_guide.md"
+            if venue_path.exists():
+                logger.info("Loading methodology guidelines", venue=venue, path=str(venue_path))
+                return venue_path.read_text(encoding="utf-8")
+
+        # Fallback to flat path: {guidelines_path}/methodology_style_guide.md
+        flat_path = base / "methodology_style_guide.md"
+        if flat_path.exists():
+            logger.info("Loading methodology guidelines (flat path)", path=str(flat_path))
+            return flat_path.read_text(encoding="utf-8")
 
     return DEFAULT_METHODOLOGY_GUIDELINES

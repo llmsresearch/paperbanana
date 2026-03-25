@@ -161,10 +161,11 @@ class PaperBananaPipeline:
                 max_retries=self.settings.exemplar_retrieval_max_retries,
             )
 
-        # Load guidelines
+        # Load guidelines (venue-aware resolution)
         guidelines_path = self.settings.guidelines_path
-        self._methodology_guidelines = load_methodology_guidelines(guidelines_path)
-        self._plot_guidelines = load_plot_guidelines(guidelines_path)
+        venue = self.settings.venue
+        self._methodology_guidelines = load_methodology_guidelines(guidelines_path, venue=venue)
+        self._plot_guidelines = load_plot_guidelines(guidelines_path, venue=venue)
 
         # Initialize agents
         prompt_dir = self._find_prompt_dir()
@@ -222,7 +223,9 @@ class PaperBananaPipeline:
         return ensure_dir(Path(self.settings.output_dir) / self.run_id)
 
     def _find_prompt_dir(self) -> str:
-        """Find the prompts directory relative to the package."""
+        """Find the prompts directory, preferring settings.prompt_dir if set."""
+        if self.settings.prompt_dir:
+            return self.settings.prompt_dir
         return find_prompt_dir()
 
     async def _resolve_retrieval_candidates(
