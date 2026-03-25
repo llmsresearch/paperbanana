@@ -748,8 +748,7 @@ def sweep(
                 }
             )
             console.print(
-                f"  [green]✓[/green] score={quality_proxy:.1f} "
-                f"[dim]{variant_seconds:.1f}s[/dim]"
+                f"  [green]✓[/green] score={quality_proxy:.1f} [dim]{variant_seconds:.1f}s[/dim]"
             )
         except Exception as e:
             all_results.append(

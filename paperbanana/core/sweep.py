@@ -82,9 +82,7 @@ def parse_csv_bools(raw: str | None, *, field_name: str) -> list[bool]:
         if lowered in allowed_false:
             parsed.append(False)
             continue
-        raise ValueError(
-            f"{field_name} must use booleans (on/off,true/false,1/0). Got: '{token}'"
-        )
+        raise ValueError(f"{field_name} must use booleans (on/off,true/false,1/0). Got: '{token}'")
     return parsed
 
 
@@ -122,9 +120,7 @@ def build_sweep_variants(
                 vlm_provider=str(data["vlm_provider"]),
                 vlm_model=(str(data["vlm_model"]) if data["vlm_model"] is not None else None),
                 image_provider=str(data["image_provider"]),
-                image_model=(
-                    str(data["image_model"]) if data["image_model"] is not None else None
-                ),
+                image_model=(str(data["image_model"]) if data["image_model"] is not None else None),
                 refinement_iterations=int(data["refinement_iterations"]),
                 optimize_inputs=bool(data["optimize_inputs"]),
                 auto_refine=bool(data["auto_refine"]),
