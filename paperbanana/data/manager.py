@@ -109,9 +109,19 @@ class DatasetManager:
         Args:
             dataset: Check for a specific dataset ('curated' or 'full_bench').
                      If None, returns True if *any* expansion is cached.
+
+        Note:
+            Caches that pre-date ``dataset_info.json`` (only ``index.json``
+            present) are treated as an untracked expansion when *dataset* is
+            None, but will not match a specific dataset name.
         """
         info = self.get_info()
         if info is None:
+            # Fallback: legacy caches may only have index.json with no
+            # dataset_info.json.  Treat them as "something is downloaded"
+            # when no specific dataset is requested.
+            if dataset is None and self.index_path.exists():
+                return True
             return False
         downloaded = info.get("datasets", [])
         # Back-compat: old dataset_info.json without "datasets" key
@@ -174,14 +184,16 @@ class DatasetManager:
         """
         if self.is_downloaded(dataset=dataset) and not force:
             count = self.get_example_count()
-            logger.info("Dataset already cached", dataset=dataset, count=count,
-                        path=str(self.reference_dir))
+            logger.info(
+                "Dataset already cached", dataset=dataset, count=count, path=str(self.reference_dir)
+            )
             return count
 
         if dataset == "curated":
             return self._download_curated(force=force, progress_callback=progress_callback)
-        return self._download_full_bench(task=task, force=force,
-                                         progress_callback=progress_callback)
+        return self._download_full_bench(
+            task=task, force=force, progress_callback=progress_callback
+        )
 
     def _download_curated(
         self,
@@ -190,6 +202,7 @@ class DatasetManager:
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> int:
         """Download the curated expansion and merge into cache."""
+
         def _log(msg: str):
             logger.info(msg)
             if progress_callback:
@@ -213,9 +226,7 @@ class DatasetManager:
                 if candidates:
                     expansion_dir = candidates[0].parent
                 else:
-                    raise RuntimeError(
-                        "Could not find index.json in curated expansion archive."
-                    )
+                    raise RuntimeError("Could not find index.json in curated expansion archive.")
 
             expansion_index = expansion_dir / "index.json"
             if not expansion_index.exists():
@@ -248,8 +259,7 @@ class DatasetManager:
             count = _merge_index(self.index_path, new_examples)
 
             # Update dataset_info.json
-            self._record_dataset("curated", CURATED_EXPANSION_VERSION,
-                                 CURATED_EXPANSION_URL, count)
+            self._record_dataset("curated", CURATED_EXPANSION_VERSION, CURATED_EXPANSION_URL, count)
 
             _log(f"Merged {len(new_examples)} curated examples → {count} total in cache")
             return count
@@ -262,6 +272,7 @@ class DatasetManager:
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> int:
         """Download the full PaperBananaBench dataset."""
+
         def _log(msg: str):
             logger.info(msg)
             if progress_callback:
@@ -296,11 +307,17 @@ class DatasetManager:
             images_dir = self.reference_dir / "images"
             images_dir.mkdir(exist_ok=True)
 
-            count = _import_from_bench(bench_dir, task, images_dir, self.index_path)
+            bench_examples = _import_from_bench(bench_dir, task, images_dir)
+            count = _merge_index(self.index_path, bench_examples)
 
             # Update dataset_info.json
-            self._record_dataset("full_bench", DATASET_VERSION, DATASET_URL, count,
-                                 extra={"revision": DATASET_REVISION, "task": task})
+            self._record_dataset(
+                "full_bench",
+                DATASET_VERSION,
+                DATASET_URL,
+                count,
+                extra={"revision": DATASET_REVISION, "task": task},
+            )
 
             _log(f"Cached {count} reference examples to {self.reference_dir}")
             return count
@@ -321,12 +338,14 @@ class DatasetManager:
             downloaded.add("full_bench")
         downloaded.add(dataset)
 
-        info.update({
-            "datasets": sorted(downloaded),
-            "version": version,
-            "source": source,
-            "example_count": example_count,
-        })
+        info.update(
+            {
+                "datasets": sorted(downloaded),
+                "version": version,
+                "source": source,
+                "example_count": example_count,
+            }
+        )
         if extra:
             info.update(extra)
 
@@ -404,18 +423,21 @@ def _import_from_bench(
     bench_dir: Path,
     task: str,
     images_dir: Path,
-    index_path: Path,
-) -> int:
-    """Convert official dataset format to community index.json format.
+) -> list[dict]:
+    """Convert official dataset format to a list of example dicts.
+
+    Images are copied into *images_dir*; the caller is responsible for
+    merging the returned examples into the cached ``index.json`` (via
+    ``_merge_index``) so that previously-downloaded datasets (e.g. the
+    curated expansion) are preserved.
 
     Args:
         bench_dir: Extracted PaperBananaBench directory.
         task: 'diagram', 'plot', or 'both'.
         images_dir: Destination directory for reference images.
-        index_path: Path to write the generated index.json.
 
     Returns:
-        Number of examples imported.
+        List of imported example dicts.
     """
     from PIL import Image
 
@@ -489,28 +511,7 @@ def _import_from_bench(
     if not all_examples:
         raise RuntimeError("No examples could be imported from the dataset.")
 
-    # Write index.json
-    categories = sorted(set(e.get("category", "") for e in all_examples if e.get("category")))
-
-    index_data = {
-        "metadata": {
-            "name": "paperbanana_bench",
-            "description": (
-                f"Reference set from official PaperBananaBench dataset. "
-                f"{len(all_examples)} examples across {len(categories)} categories."
-            ),
-            "version": "3.0.0",
-            "source": "https://huggingface.co/datasets/dwzhu/PaperBananaBench",
-            "categories": categories,
-            "total_examples": len(all_examples),
-        },
-        "examples": all_examples,
-    }
-
-    with open(index_path, "w", encoding="utf-8") as f:
-        json.dump(index_data, f, indent=2, ensure_ascii=False)
-
-    return len(all_examples)
+    return all_examples
 
 
 def resolve_reference_path(

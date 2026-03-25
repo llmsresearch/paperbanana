@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -73,20 +72,28 @@ class TestIsDownloaded:
 
     def test_true_with_datasets_marker(self, tmp_cache):
         tmp_cache.reference_dir.mkdir(parents=True)
-        tmp_cache.info_path.write_text(json.dumps({
-            "datasets": ["curated"],
-            "version": "1.0.0",
-        }))
+        tmp_cache.info_path.write_text(
+            json.dumps(
+                {
+                    "datasets": ["curated"],
+                    "version": "1.0.0",
+                }
+            )
+        )
         assert tmp_cache.is_downloaded()
         assert tmp_cache.is_downloaded(dataset="curated")
         assert not tmp_cache.is_downloaded(dataset="full_bench")
 
     def test_true_with_both_datasets(self, tmp_cache):
         tmp_cache.reference_dir.mkdir(parents=True)
-        tmp_cache.info_path.write_text(json.dumps({
-            "datasets": ["curated", "full_bench"],
-            "version": "1.0.0",
-        }))
+        tmp_cache.info_path.write_text(
+            json.dumps(
+                {
+                    "datasets": ["curated", "full_bench"],
+                    "version": "1.0.0",
+                }
+            )
+        )
         assert tmp_cache.is_downloaded()
         assert tmp_cache.is_downloaded(dataset="curated")
         assert tmp_cache.is_downloaded(dataset="full_bench")
@@ -96,12 +103,32 @@ class TestIsDownloaded:
         from paperbanana.data.manager import DATASET_URL
 
         tmp_cache.reference_dir.mkdir(parents=True)
-        tmp_cache.info_path.write_text(json.dumps({
-            "version": "1.0.0",
-            "source": DATASET_URL,
-        }))
+        tmp_cache.info_path.write_text(
+            json.dumps(
+                {
+                    "version": "1.0.0",
+                    "source": DATASET_URL,
+                }
+            )
+        )
         assert tmp_cache.is_downloaded()
         assert tmp_cache.is_downloaded(dataset="full_bench")
+        assert not tmp_cache.is_downloaded(dataset="curated")
+
+    def test_legacy_cache_index_only(self, tmp_cache):
+        """Caches with index.json but no dataset_info.json count as downloaded."""
+        tmp_cache.reference_dir.mkdir(parents=True)
+        tmp_cache.index_path.write_text(
+            json.dumps(
+                {
+                    "metadata": {},
+                    "examples": [{"id": "a"}],
+                }
+            )
+        )
+        assert tmp_cache.is_downloaded()
+        # But a specific dataset query still returns False
+        assert not tmp_cache.is_downloaded(dataset="full_bench")
         assert not tmp_cache.is_downloaded(dataset="curated")
 
     def test_false_with_corrupt_info(self, tmp_cache):
@@ -133,10 +160,14 @@ class TestRecordDataset:
         from paperbanana.data.manager import DATASET_URL
 
         tmp_cache.reference_dir.mkdir(parents=True)
-        tmp_cache.info_path.write_text(json.dumps({
-            "version": "1.0.0",
-            "source": DATASET_URL,
-        }))
+        tmp_cache.info_path.write_text(
+            json.dumps(
+                {
+                    "version": "1.0.0",
+                    "source": DATASET_URL,
+                }
+            )
+        )
         tmp_cache._record_dataset("curated", "1.0.0", "https://example.com", 38)
         info = json.loads(tmp_cache.info_path.read_text())
         assert sorted(info["datasets"]) == ["curated", "full_bench"]
@@ -149,14 +180,22 @@ class TestDownloadSkip:
     def test_skip_when_already_cached(self, tmp_cache):
         tmp_cache.reference_dir.mkdir(parents=True)
         # Write a cached index with 2 examples
-        tmp_cache.index_path.write_text(json.dumps({
-            "metadata": {},
-            "examples": [{"id": "a"}, {"id": "b"}],
-        }))
-        tmp_cache.info_path.write_text(json.dumps({
-            "datasets": ["curated"],
-            "version": "1.0.0",
-        }))
+        tmp_cache.index_path.write_text(
+            json.dumps(
+                {
+                    "metadata": {},
+                    "examples": [{"id": "a"}, {"id": "b"}],
+                }
+            )
+        )
+        tmp_cache.info_path.write_text(
+            json.dumps(
+                {
+                    "datasets": ["curated"],
+                    "version": "1.0.0",
+                }
+            )
+        )
         count = tmp_cache.download(dataset="curated")
         assert count == 2  # returns cached count, no download
 
@@ -197,10 +236,14 @@ class TestDownloadCurated:
         # Seed cache with one existing example
         tmp_cache.reference_dir.mkdir(parents=True)
         (tmp_cache.reference_dir / "images").mkdir()
-        tmp_cache.index_path.write_text(json.dumps({
-            "metadata": {},
-            "examples": [{"id": "existing", "category": "cat0"}],
-        }))
+        tmp_cache.index_path.write_text(
+            json.dumps(
+                {
+                    "metadata": {},
+                    "examples": [{"id": "existing", "category": "cat0"}],
+                }
+            )
+        )
 
         def fake_download(url, dest):
             self._make_curated_zip(dest, examples, images)
@@ -234,6 +277,63 @@ class TestDownloadCurated:
         assert any("curated" in m.lower() for m in messages)
 
 
+# ── full_bench merges with existing curated ───────────────────────────
+
+
+class TestFullBenchMerge:
+    """Downloading full_bench after curated must preserve curated-only entries."""
+
+    def test_full_bench_preserves_curated_entries(self, tmp_cache):
+        """Curated entries that are NOT in full_bench survive a full import."""
+        # Seed cache with curated-only entries
+        tmp_cache.reference_dir.mkdir(parents=True)
+        (tmp_cache.reference_dir / "images").mkdir()
+        tmp_cache.index_path.write_text(
+            json.dumps(
+                {
+                    "metadata": {},
+                    "examples": [
+                        {"id": "curated_only", "category": "extra"},
+                        {"id": "overlap", "category": "old_cat"},
+                    ],
+                }
+            )
+        )
+        tmp_cache.info_path.write_text(
+            json.dumps(
+                {
+                    "datasets": ["curated"],
+                    "version": "1.0.0",
+                }
+            )
+        )
+
+        # _import_from_bench returns examples that overlap + new ones
+        bench_examples = [
+            {"id": "overlap", "category": "bench_cat"},
+            {"id": "bench_new", "category": "bench_cat"},
+        ]
+
+        with patch(
+            "paperbanana.data.manager._import_from_bench",
+            return_value=bench_examples,
+        ):
+            count = tmp_cache.download(dataset="full_bench", force=True)
+
+        assert count == 3  # curated_only + overlap (updated) + bench_new
+        data = json.loads(tmp_cache.index_path.read_text())
+        ids = {e["id"] for e in data["examples"]}
+        assert ids == {"curated_only", "overlap", "bench_new"}
+
+        # overlap entry should be updated by full_bench (new wins)
+        overlap = next(e for e in data["examples"] if e["id"] == "overlap")
+        assert overlap["category"] == "bench_cat"
+
+        # dataset_info should list both
+        info = json.loads(tmp_cache.info_path.read_text())
+        assert sorted(info["datasets"]) == ["curated", "full_bench"]
+
+
 # ── resolve_reference_path ────────────────────────────────────────────
 
 
@@ -245,14 +345,22 @@ class TestResolveReferencePath:
     def test_uses_cache_when_downloaded(self, tmp_path):
         ref_dir = tmp_path / "reference_sets"
         ref_dir.mkdir(parents=True)
-        (ref_dir / "index.json").write_text(json.dumps({
-            "metadata": {},
-            "examples": [{"id": "a"}],
-        }))
-        (ref_dir / "dataset_info.json").write_text(json.dumps({
-            "datasets": ["curated"],
-            "version": "1.0.0",
-        }))
+        (ref_dir / "index.json").write_text(
+            json.dumps(
+                {
+                    "metadata": {},
+                    "examples": [{"id": "a"}],
+                }
+            )
+        )
+        (ref_dir / "dataset_info.json").write_text(
+            json.dumps(
+                {
+                    "datasets": ["curated"],
+                    "version": "1.0.0",
+                }
+            )
+        )
         result = resolve_reference_path("data/reference_sets", cache_dir=str(tmp_path))
         assert result == str(ref_dir)
 
