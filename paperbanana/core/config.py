@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings
 
 OutputFormat = Literal["png", "jpeg", "webp"]
 ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
+Venue = Literal["neurips", "icml", "acl", "ieee", "custom"]
 
 
 class VLMConfig(BaseSettings):
@@ -76,6 +77,7 @@ class Settings(BaseSettings):
     exemplar_retrieval_top_k: int = 10
     exemplar_retrieval_timeout_seconds: float = 20.0
     exemplar_retrieval_max_retries: int = 2
+    venue: Venue = "neurips"
 
     # Reference settings
     reference_set_path: str = "data/reference_sets"
@@ -89,6 +91,12 @@ class Settings(BaseSettings):
     output_format: OutputFormat = "png"
     save_iterations: bool = True
     save_prompts: bool = True
+
+    # Prompt settings
+    prompt_dir: Optional[str] = None
+
+    # Benchmark settings
+    benchmark_concurrency: int = 1
 
     # API Keys (loaded from environment)
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
@@ -175,6 +183,17 @@ class Settings(BaseSettings):
             raise ValueError("exemplar_retrieval_max_retries must be >= 0")
         return v
 
+    @field_validator("venue", mode="before")
+    @classmethod
+    def validate_venue(cls, v: Any) -> str:
+        """Validate venue is a supported venue name (case-insensitive)."""
+        if v is None:
+            return "neurips"
+        v = str(v).lower()
+        if v not in ("neurips", "icml", "acl", "ieee", "custom"):
+            raise ValueError(f"venue must be neurips, icml, acl, ieee, or custom. Got: {v}")
+        return v
+
     @classmethod
     def from_yaml(cls, config_path: str | Path, **overrides: Any) -> Settings:
         """Load settings from a YAML config file with optional overrides."""
@@ -213,10 +232,12 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "pipeline.exemplar_retrieval_max_retries": "exemplar_retrieval_max_retries",
         "reference.path": "reference_set_path",
         "reference.guidelines_path": "guidelines_path",
+        "pipeline.venue": "venue",
         "output.dir": "output_dir",
         "output.format": "output_format",
         "output.save_iterations": "save_iterations",
         "output.save_prompts": "save_prompts",
+        "pipeline.prompt_dir": "prompt_dir",
     }
 
     def _recurse(d: dict, prefix: str = "") -> None:
