@@ -471,8 +471,7 @@ def generate(
                 f" ({ref_count} examples). For better results:[/dim]"
             )
             console.print(
-                "  [dim]  paperbanana data download --curated"
-                "   # or --auto-download-data[/dim]"
+                "  [dim]  paperbanana data download --curated   # or --auto-download-data[/dim]"
             )
 
         def on_progress(event: PipelineProgressEvent) -> None:
