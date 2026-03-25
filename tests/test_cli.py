@@ -70,6 +70,62 @@ def test_generate_accepts_progress_json_flag():
         Path(input_path).unlink(missing_ok=True)
 
 
+def test_sweep_dry_run_writes_report(tmp_path):
+    """sweep --dry-run plans variants and writes sweep_report.json."""
+    input_path = tmp_path / "input.txt"
+    input_path.write_text("Method details", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "sweep",
+            "--input",
+            str(input_path),
+            "--caption",
+            "Sweep caption",
+            "--vlm-providers",
+            "gemini,openai",
+            "--iterations",
+            "2,3",
+            "--optimize-modes",
+            "on,off",
+            "--dry-run",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Dry run complete" in result.output
+
+    reports = list(tmp_path.glob("sweep_*/sweep_report.json"))
+    assert len(reports) == 1
+    payload = json.loads(reports[0].read_text(encoding="utf-8"))
+    assert payload["status"] == "dry_run"
+    assert payload["total_variants"] == 8
+
+
+def test_sweep_rejects_invalid_bool_axis(tmp_path):
+    """sweep rejects invalid boolean tokens in mode axes."""
+    input_path = tmp_path / "input.txt"
+    input_path.write_text("Method details", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "sweep",
+            "--input",
+            str(input_path),
+            "--caption",
+            "Sweep caption",
+            "--optimize-modes",
+            "maybe",
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "booleans" in result.output
+
+
 def test_ablate_retrieval_writes_report(monkeypatch):
     """ablate-retrieval writes a JSON report and exits cleanly."""
     from paperbanana.evaluation.retrieval_ablation import AblationReport, AblationVariantResult
