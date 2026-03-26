@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     # Prompt settings
     prompt_dir: Optional[str] = None
 
+    # Caption generation
+    generate_caption: bool = False
+
     # Benchmark settings
     benchmark_concurrency: int = 1
 
@@ -244,6 +247,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "output.save_prompts": "save_prompts",
         "cost.budget": "budget_usd",
         "pipeline.prompt_dir": "prompt_dir",
+        "pipeline.generate_caption": "generate_caption",
     }
 
     def _recurse(d: dict, prefix: str = "") -> None:

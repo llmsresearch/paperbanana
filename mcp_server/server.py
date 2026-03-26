@@ -23,6 +23,7 @@ from pathlib import Path
 import structlog
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
+from mcp.types import TextContent
 from PIL import Image as PILImage
 
 from paperbanana.core.config import Settings
@@ -116,7 +117,8 @@ async def generate_diagram(
     aspect_ratio: str | None = None,
     optimize: bool = False,
     auto_refine: bool = False,
-) -> Image:
+    generate_caption: bool = False,
+) -> Image | list:
     """Generate a publication-quality methodology diagram from text.
 
     Args:
@@ -129,14 +131,18 @@ async def generate_diagram(
             Set False to skip preprocessing for faster results.
         auto_refine: Let critic loop until satisfied (default True, max 30 iterations).
             Set False to use fixed iteration count for faster results.
+        generate_caption: Auto-generate a publication-ready figure caption after generation.
+            Returns a list [caption_text, image] instead of just the image (default False).
 
     Returns:
-        The generated diagram as a PNG image.
+        The generated diagram as a PNG image, or a list of [caption text, image] when
+        generate_caption=True.
     """
     settings = Settings(
         refinement_iterations=iterations,
         optimize_inputs=optimize,
         auto_refine=auto_refine,
+        generate_caption=generate_caption,
     )
 
     def _on_progress(event: str, payload: dict) -> None:
@@ -154,7 +160,11 @@ async def generate_diagram(
 
     result = await pipeline.generate(gen_input)
     effective_path, fmt = _compress_for_api(result.image_path)
-    return Image(path=effective_path, format=fmt)
+    image = Image(path=effective_path, format=fmt)
+
+    if result.generated_caption:
+        return [TextContent(type="text", text=result.generated_caption), image]
+    return image
 
 
 @mcp.tool
@@ -165,7 +175,8 @@ async def generate_plot(
     aspect_ratio: str | None = None,
     optimize: bool = False,
     auto_refine: bool = False,
-) -> Image:
+    generate_caption: bool = False,
+) -> Image | list:
     """Generate a publication-quality statistical plot from JSON data.
 
     Args:
@@ -179,9 +190,12 @@ async def generate_plot(
             Set False to skip preprocessing for faster results.
         auto_refine: Let critic loop until satisfied (default True, max 30 iterations).
             Set False to use fixed iteration count for faster results.
+        generate_caption: Auto-generate a publication-ready figure caption after generation.
+            Returns a list [caption_text, image] instead of just the image (default False).
 
     Returns:
-        The generated plot as a PNG image.
+        The generated plot as a PNG image, or a list of [caption text, image] when
+        generate_caption=True.
     """
     raw_data = json.loads(data_json)
 
@@ -189,6 +203,7 @@ async def generate_plot(
         refinement_iterations=iterations,
         optimize_inputs=optimize,
         auto_refine=auto_refine,
+        generate_caption=generate_caption,
     )
 
     def _on_progress(event: str, payload: dict) -> None:
@@ -206,7 +221,11 @@ async def generate_plot(
 
     result = await pipeline.generate(gen_input)
     effective_path, fmt = _compress_for_api(result.image_path)
-    return Image(path=effective_path, format=fmt)
+    image = Image(path=effective_path, format=fmt)
+
+    if result.generated_caption:
+        return [TextContent(type="text", text=result.generated_caption), image]
+    return image
 
 
 @mcp.tool

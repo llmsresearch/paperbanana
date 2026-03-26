@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Optional
 
 import structlog
 
+from paperbanana.agents.caption import CaptionAgent
 from paperbanana.agents.critic import CriticAgent
 from paperbanana.agents.optimizer import InputOptimizerAgent
 from paperbanana.agents.planner import PlannerAgent
@@ -202,6 +203,9 @@ class PaperBananaPipeline:
             prompt_recorder=self._prompt_recorder,
         )
         self.critic = CriticAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
+        self.caption_agent = CaptionAgent(
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
 
@@ -732,6 +736,45 @@ class PaperBananaPipeline:
                 run_id=self.run_id,
             )
 
+        # ── Caption Generation (optional) ─────────────────────────────
+        generated_caption: Optional[str] = None
+        caption_seconds = 0.0
+        if self.settings.generate_caption:
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.CAPTION_START,
+                    message="Generating figure caption",
+                ),
+            )
+            self._emit_progress("caption_started")
+            caption_start = time.perf_counter()
+            try:
+                generated_caption = await self.caption_agent.run(
+                    image_path=final_output_path,
+                    source_context=input.source_context,
+                    intent=input.communicative_intent,
+                    description=current_description,
+                    diagram_type=input.diagram_type,
+                )
+            except Exception as e:
+                logger.warning("Caption generation failed", error=str(e))
+            caption_seconds = time.perf_counter() - caption_start
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.CAPTION_END,
+                    message="Caption generated",
+                    seconds=caption_seconds,
+                    extra={"caption": generated_caption},
+                ),
+            )
+            self._emit_progress(
+                "caption_completed",
+                seconds=round(caption_seconds, 1),
+                caption=generated_caption,
+            )
+
         total_seconds = time.perf_counter() - total_start
         logger.info(
             "Total generation time",
@@ -768,6 +811,7 @@ class PaperBananaPipeline:
             "retrieval_seconds": retrieval_seconds,
             "planning_seconds": planning_seconds,
             "styling_seconds": styling_seconds,
+            "caption_seconds": caption_seconds,
             "iterations": iteration_timings,
         }
         metadata_dict["retrieval"] = {
@@ -775,6 +819,8 @@ class PaperBananaPipeline:
             "external_enabled": self.settings.exemplar_retrieval_enabled,
             "external_candidate_ids": external_candidate_ids,
         }
+        if generated_caption is not None:
+            metadata_dict["generated_caption"] = generated_caption
 
         if self._cost_tracker:
             cost_summary = self._cost_tracker.summary()
@@ -791,6 +837,7 @@ class PaperBananaPipeline:
             description=current_description,
             iterations=iterations,
             metadata=metadata_dict,
+            generated_caption=generated_caption,
         )
 
         logger.info(
@@ -1034,6 +1081,46 @@ class PaperBananaPipeline:
                 run_id=self.run_id,
             )
 
+        # ── Caption Generation (optional) ─────────────────────────────
+        generated_caption: Optional[str] = None
+        caption_seconds = 0.0
+        if self.settings.generate_caption:
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.CAPTION_START,
+                    message="Generating figure caption",
+                ),
+            )
+            self._emit_progress("caption_started", mode="continue")
+            caption_start = time.perf_counter()
+            try:
+                generated_caption = await self.caption_agent.run(
+                    image_path=final_output_path,
+                    source_context=resume_state.source_context,
+                    intent=resume_state.communicative_intent,
+                    description=current_description,
+                    diagram_type=resume_state.diagram_type,
+                )
+            except Exception as e:
+                logger.warning("Caption generation failed", error=str(e))
+            caption_seconds = time.perf_counter() - caption_start
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.CAPTION_END,
+                    message="Caption generated",
+                    seconds=caption_seconds,
+                    extra={"caption": generated_caption},
+                ),
+            )
+            self._emit_progress(
+                "caption_completed",
+                seconds=round(caption_seconds, 1),
+                caption=generated_caption,
+                mode="continue",
+            )
+
         total_seconds = time.perf_counter() - total_start
         logger.info(
             "Continue run complete",
@@ -1066,11 +1153,14 @@ class PaperBananaPipeline:
         metadata_dict = metadata.model_dump()
         metadata_dict["timing"] = {
             "continue_total_seconds": total_seconds,
+            "caption_seconds": caption_seconds,
             "iterations": iteration_timings,
         }
         metadata_dict["continued_from_iteration"] = start_iter
         if user_feedback:
             metadata_dict["user_feedback"] = user_feedback
+        if generated_caption is not None:
+            metadata_dict["generated_caption"] = generated_caption
 
         if self._cost_tracker:
             cost_summary = self._cost_tracker.summary()
@@ -1087,6 +1177,7 @@ class PaperBananaPipeline:
             description=current_description,
             iterations=iterations,
             metadata=metadata_dict,
+            generated_caption=generated_caption,
         )
 
         return output
