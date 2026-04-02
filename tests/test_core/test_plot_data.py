@@ -27,6 +27,25 @@ def test_load_statistical_plot_payload_json(tmp_path: Path) -> None:
     assert payload == [{"x": 1}, {"x": 2}]
 
 
+def test_load_statistical_plot_payload_json_unwraps_data_envelope(tmp_path: Path) -> None:
+    """{"data": [...]} must not double-wrap when passed as raw_data={"data": payload}."""
+    p = tmp_path / "env.json"
+    inner = [{"x": 1}]
+    p.write_text(json.dumps({"data": inner, "meta": "ignored"}), encoding="utf-8")
+    ctx, payload = load_statistical_plot_payload(p)
+    assert payload == inner
+    assert "ignored" not in ctx
+
+
+def test_load_statistical_plot_payload_json_object_without_data_key(tmp_path: Path) -> None:
+    p = tmp_path / "obj.json"
+    obj = {"models": ["a"], "scores": [0.9]}
+    p.write_text(json.dumps(obj), encoding="utf-8")
+    ctx, payload = load_statistical_plot_payload(p)
+    assert payload == obj
+    assert "models" in ctx
+
+
 def test_load_statistical_plot_payload_missing_file(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         load_statistical_plot_payload(tmp_path / "nope.csv")

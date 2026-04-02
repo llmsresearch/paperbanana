@@ -88,6 +88,12 @@ def test_load_plot_batch_manifest_requires_data_and_intent(tmp_path: Path) -> No
         load_plot_batch_manifest(m)
 
 
+def test_load_plot_batch_manifest_empty_items(tmp_path: Path) -> None:
+    m = tmp_path / "empty.yaml"
+    m.write_text("items: []\n", encoding="utf-8")
+    assert load_plot_batch_manifest(m) == []
+
+
 def test_load_plot_batch_manifest_rejects_non_tabular_suffix(tmp_path: Path) -> None:
     txt = tmp_path / "a.txt"
     txt.write_text("x", encoding="utf-8")

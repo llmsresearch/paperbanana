@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -522,6 +523,8 @@ def run_plot_batch(
         "items": [],
     }
 
+    total_start = time.perf_counter()
+
     async def _run_all_items() -> None:
         for idx, item in enumerate(items):
             item_id = item["id"]
@@ -593,10 +596,14 @@ def run_plot_batch(
 
     asyncio.run(_run_all_items())
 
+    total_elapsed = time.perf_counter() - total_start
+    report["total_seconds"] = round(total_elapsed, 1)
+
     report_path = batch_dir / "batch_report.json"
     save_json(report, report_path)
     lines.append("")
     lines.append(f"Report written: {report_path}")
     ok = sum(1 for x in report["items"] if x.get("output_path"))
     lines.append(f"Succeeded: {ok}/{len(items)}")
+    lines.append(f"Total time: {report['total_seconds']}s")
     return "\n".join(lines), str(batch_dir.resolve())
