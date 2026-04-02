@@ -7,6 +7,18 @@ from dataclasses import dataclass
 from statistics import mean
 from typing import Any
 
+# Heuristic used to rank successful variants in CLI sweep reports (not a human-judgment score).
+QUALITY_PROXY_MAX = 100.0
+QUALITY_PROXY_PENALTY_PER_SUGGESTION = 12.5
+
+
+def quality_proxy_score(suggestion_count: int) -> float:
+    """Map final-iteration critic suggestion count to a rough ranking score."""
+    return max(
+        0.0,
+        QUALITY_PROXY_MAX - QUALITY_PROXY_PENALTY_PER_SUGGESTION * float(suggestion_count),
+    )
+
 
 @dataclass(frozen=True)
 class SweepVariant:

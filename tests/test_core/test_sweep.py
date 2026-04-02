@@ -8,6 +8,7 @@ from paperbanana.core.sweep import (
     build_sweep_variants,
     parse_csv_bools,
     parse_csv_ints,
+    quality_proxy_score,
     rank_sweep_results,
     summarize_sweep,
 )
@@ -35,6 +36,13 @@ def test_parse_csv_ints_validates_values() -> None:
         parse_csv_ints("x,2", field_name="--iterations")
     with pytest.raises(ValueError, match=">= 1"):
         parse_csv_ints("0,2", field_name="--iterations")
+
+
+def test_quality_proxy_score_formula() -> None:
+    assert quality_proxy_score(0) == 100.0
+    assert quality_proxy_score(1) == 87.5
+    assert quality_proxy_score(8) == 0.0
+    assert quality_proxy_score(9) == 0.0
 
 
 def test_parse_csv_bools_supports_common_forms() -> None:

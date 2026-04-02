@@ -573,6 +573,11 @@ def sweep(
         "-c",
         help="Figure caption / communicative intent",
     ),
+    pdf_pages: Optional[str] = typer.Option(
+        None,
+        "--pdf-pages",
+        help=("PDF input only: 1-based pages (e.g. '1-5', '3', '1-3,7'); default: all pages"),
+    ),
     output_dir: str = typer.Option(
         "outputs",
         "--output-dir",
@@ -631,9 +636,19 @@ def sweep(
         "--dry-run",
         help="Show planned variant matrix without API calls",
     ),
+    auto_download_data: bool = typer.Option(
+        False,
+        "--auto-download-data",
+        help="Auto-download expanded reference set (~257MB) on first run if not cached",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
 ):
-    """Run a parameter sweep for one input and rank generated variants."""
+    """Run a parameter sweep for one input and rank generated variants.
+
+    Successful variants are ranked by *quality_proxy_score*: max(0, 100 − 12.5 × N) where N is
+    the number of critic suggestions on the **final** refinement iteration. This is a rough
+    proxy for comparing runs, not a substitute for human evaluation.
+    """
     if format not in ("png", "jpeg", "webp"):
         console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
         raise typer.Exit(1)
@@ -650,13 +665,15 @@ def sweep(
 
     from dotenv import load_dotenv
 
-    from paperbanana.core.pipeline import PaperBananaPipeline
+    load_dotenv()
+
     from paperbanana.core.source_loader import load_methodology_source
     from paperbanana.core.sweep import (
         build_sweep_variants,
         parse_csv_bools,
         parse_csv_ints,
         parse_csv_values,
+        quality_proxy_score,
         rank_sweep_results,
         summarize_sweep,
     )
@@ -681,7 +698,7 @@ def sweep(
         raise typer.Exit(1)
 
     try:
-        source_context = load_methodology_source(input_path)
+        source_context = load_methodology_source(input_path, pdf_pages=pdf_pages)
     except (ImportError, ValueError) as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
@@ -714,13 +731,30 @@ def sweep(
         console.print(f"  Report: [bold]{report_path}[/bold]")
         return
 
-    load_dotenv()
+    from paperbanana.core.pipeline import PaperBananaPipeline
+
+    if config:
+        base_settings = Settings.from_yaml(config)
+    else:
+        base_settings = Settings()
+
+    if auto_download_data:
+        from paperbanana.data.manager import DatasetManager
+
+        dm = DatasetManager(cache_dir=base_settings.cache_dir)
+        if not dm.is_downloaded():
+            console.print("  [dim]Downloading expanded reference set...[/dim]")
+            try:
+                dm.download()
+            except Exception as e:
+                console.print(f"  [yellow]Download failed: {e}, using built-in set[/yellow]")
+
     all_results: list[dict] = []
     total_start = time.perf_counter()
 
     for idx, variant in enumerate(variant_list, start=1):
         variant_dir = ensure_dir(sweep_dir / variant.variant_id)
-        overrides = {
+        overrides: dict = {
             "output_dir": str(variant_dir),
             "output_format": format,
             "vlm_provider": variant.vlm_provider,
@@ -734,10 +768,7 @@ def sweep(
         if variant.image_model:
             overrides["image_model"] = variant.image_model
 
-        if config:
-            settings = Settings.from_yaml(config, **overrides)
-        else:
-            settings = Settings(**overrides)
+        settings = base_settings.model_copy(update=overrides)
 
         gen_input = GenerationInput(
             source_context=source_context,
@@ -753,7 +784,7 @@ def sweep(
             variant_seconds = time.perf_counter() - variant_start
             final_critique = result.iterations[-1].critique if result.iterations else None
             suggestion_count = len(final_critique.critic_suggestions) if final_critique else 0
-            quality_proxy = max(0.0, 100.0 - (12.5 * suggestion_count))
+            quality_proxy = quality_proxy_score(suggestion_count)
             all_results.append(
                 {
                     "status": "success",
@@ -785,12 +816,17 @@ def sweep(
     elapsed = time.perf_counter() - total_start
     report = {
         "sweep_id": sweep_id,
+        "status": "completed",
         "input": str(input_path),
         "caption": caption,
         "total_seconds": round(elapsed, 2),
         "summary": summary,
         "results": all_results,
         "ranked_results": ranked_results,
+        "quality_proxy_note": (
+            "quality_proxy_score = max(0, 100 - 12.5 * N) where N is critic suggestion "
+            "count on the final iteration"
+        ),
     }
     report_path = sweep_dir / "sweep_report.json"
     save_json(report, report_path)
