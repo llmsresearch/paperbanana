@@ -11,16 +11,6 @@ from paperbanana.core.pricing import lookup_image_price, lookup_vlm_price
 logger = structlog.get_logger()
 
 
-class BudgetExceededError(Exception):
-    """Raised when cumulative cost exceeds the user-specified budget."""
-
-    def __init__(self, budget: float, spent: float, last_agent: str):
-        self.budget = budget
-        self.spent = spent
-        self.last_agent = last_agent
-        super().__init__(f"Budget ${budget:.4f} exceeded (spent ${spent:.4f}) after {last_agent}")
-
-
 @dataclass
 class CostEntry:
     """A single API call's cost record."""
@@ -47,6 +37,10 @@ class CostTracker:
     budget: float | None = None
     _entries: list[CostEntry] = field(default_factory=list)
     _current_agent: str = ""
+
+    def set_agent(self, agent: str) -> None:
+        """Set the current agent name for subsequent API call records."""
+        self._current_agent = agent
 
     def record_vlm_call(
         self,
@@ -138,14 +132,6 @@ class CostTracker:
     def is_over_budget(self) -> bool:
         """Return True if cumulative cost exceeds the budget cap."""
         return self.budget is not None and self.total_cost > self.budget
-
-    def _check_budget(self, agent: str) -> None:
-        if self.is_over_budget:
-            raise BudgetExceededError(
-                budget=self.budget,
-                spent=self.total_cost,
-                last_agent=agent,
-            )
 
     @property
     def total_cost(self) -> float:

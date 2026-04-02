@@ -88,7 +88,7 @@ class Settings(BaseSettings):
 
     # Cost tracking
     budget_usd: Optional[float] = Field(
-        default=None, description="Budget cap in USD; pipeline aborts if exceeded"
+        default=None, gt=0, description="Budget cap in USD; pipeline aborts if exceeded"
     )
 
     # Output settings

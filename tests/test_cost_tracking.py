@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from paperbanana.core.cost_estimator import estimate_cost
-from paperbanana.core.cost_tracker import BudgetExceededError, CostTracker
+from paperbanana.core.cost_tracker import CostTracker
 from paperbanana.core.pricing import lookup_image_price, lookup_vlm_price
 
 # ── Pricing lookup ──────────────────────────────────────────────────
@@ -98,9 +98,9 @@ class TestCostTracker:
         assert tracker.total_cost == 0.0
         assert tracker.pricing_complete is True
 
-    def test_current_agent_fallback(self):
+    def test_set_agent_fallback(self):
         tracker = CostTracker()
-        tracker._current_agent = "stylist"
+        tracker.set_agent("stylist")
         tracker.record_vlm_call(
             provider="gemini",
             model="gemini-2.0-flash",
@@ -192,21 +192,6 @@ class TestBudgetGuard:
         assert tracker.is_over_budget is True
         assert tracker.total_cost > 0.001
 
-    def test_check_budget_raises_at_checkpoint(self):
-        """_check_budget (called at pipeline checkpoints) should raise BudgetExceededError."""
-        tracker = CostTracker(budget=0.001)
-        tracker.record_vlm_call(
-            provider="openai",
-            model="gpt-5.2",
-            input_tokens=10000,
-            output_tokens=5000,
-            agent="planner",
-        )
-        with pytest.raises(BudgetExceededError) as exc_info:
-            tracker._check_budget("iteration_boundary")
-        assert exc_info.value.budget == 0.001
-        assert exc_info.value.spent > 0.001
-
     def test_budget_not_exceeded_for_cheap_calls(self):
         tracker = CostTracker(budget=100.0)
         tracker.record_vlm_call(
@@ -218,23 +203,6 @@ class TestBudgetGuard:
         )
         assert tracker.is_over_budget is False
 
-    def test_budget_exceeded_error_attributes(self):
-        tracker = CostTracker(budget=0.0001)
-        tracker.record_vlm_call(
-            provider="openai",
-            model="gpt-5.2",
-            input_tokens=1000,
-            output_tokens=500,
-            agent="critic",
-        )
-        assert tracker.is_over_budget is True
-        with pytest.raises(BudgetExceededError) as exc_info:
-            tracker._check_budget("critic")
-        err = exc_info.value
-        assert err.budget == 0.0001
-        assert err.last_agent == "critic"
-        assert "Budget" in str(err)
-
     def test_image_call_sets_over_budget(self):
         """record_image_call should also set is_over_budget without raising."""
         tracker = CostTracker(budget=0.001)
@@ -244,6 +212,17 @@ class TestBudgetGuard:
             agent="visualizer",
         )
         assert tracker.is_over_budget is True
+
+    def test_negative_budget_rejected(self):
+        """Settings should reject negative or zero budget values."""
+        from pydantic import ValidationError
+
+        from paperbanana.core.config import Settings
+
+        with pytest.raises(ValidationError):
+            Settings(budget_usd=-5.0)
+        with pytest.raises(ValidationError):
+            Settings(budget_usd=0.0)
 
 
 # ── Cost estimator ──────────────────────────────────────────────────

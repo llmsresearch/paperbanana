@@ -938,6 +938,16 @@ def plot(
         "--venue",
         help="Target venue style (neurips, icml, acl, ieee, custom)",
     ),
+    cost_only: bool = typer.Option(
+        False,
+        "--cost-only",
+        help="Estimate cost without making API calls",
+    ),
+    budget: Optional[float] = typer.Option(
+        None,
+        "--budget",
+        help="Budget cap in USD; pipeline aborts gracefully when exceeded",
+    ),
 ):
     """Generate a statistical plot from data."""
     if format not in ("png", "jpeg", "webp"):
@@ -984,6 +994,7 @@ def plot(
         auto_refine=auto,
         save_prompts=True if save_prompts is None else save_prompts,
         venue=venue,
+        budget_usd=budget,
     )
 
     gen_input = GenerationInput(
@@ -993,6 +1004,28 @@ def plot(
         raw_data={"data": raw_data},
         aspect_ratio=aspect_ratio,
     )
+
+    if cost_only:
+        from paperbanana.core.cost_estimator import estimate_cost
+
+        estimate = estimate_cost(settings, gen_input.diagram_type)
+        iter_est = (
+            f"auto (max {settings.max_iterations})"
+            if settings.auto_refine
+            else str(settings.refinement_iterations)
+        )
+        lines = [
+            "[bold]PaperBanana[/bold] - Cost Estimate (Plot)\n",
+            f"VLM: {settings.vlm_provider} / {settings.effective_vlm_model}",
+            f"Iterations: {iter_est}",
+            "",
+            f"Estimated VLM calls: {estimate['vlm_calls']}",
+            f"[bold]Estimated cost: ${estimate['estimated_total_usd']:.4f}[/bold]",
+        ]
+        if estimate.get("pricing_note"):
+            lines.append(f"\n[yellow]Note: {estimate['pricing_note']}[/yellow]")
+        console.print(Panel.fit("\n".join(lines), border_style="green"))
+        return
 
     console.print(
         Panel.fit(
@@ -1011,6 +1044,13 @@ def plot(
 
     result = asyncio.run(_run())
     console.print(f"\n[green]Done![/green] Plot saved to: [bold]{result.image_path}[/bold]")
+
+    cost_data = result.metadata.get("cost")
+    if cost_data:
+        console.print(
+            f"  Cost: [bold]${cost_data['total_usd']:.4f}[/bold]"
+            f" [dim](VLM: ${cost_data['vlm_usd']:.4f})[/dim]"
+        )
 
 
 @app.command()
