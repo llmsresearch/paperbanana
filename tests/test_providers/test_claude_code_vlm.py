@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from PIL import Image
-
 from tenacity import stop_after_attempt, wait_none
 
 from paperbanana.core.config import Settings
@@ -28,6 +27,7 @@ def _no_retry_delay():
     )
     yield
     ClaudeCodeVLM.generate = original
+
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -56,6 +56,7 @@ def test_create_claude_code_vlm_raises_when_cli_missing():
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_proc_mock(
     stdout: bytes = b"",
     stderr: bytes = b"",
@@ -78,10 +79,12 @@ def _make_proc_mock(
 @pytest.mark.asyncio
 async def test_generate_basic_text() -> None:
     """Basic text prompt → parses JSON, returns result, captures session."""
-    payload = json.dumps({
-        "result": "hello world",
-        "session_id": "sess-abc",
-    }).encode()
+    payload = json.dumps(
+        {
+            "result": "hello world",
+            "session_id": "sess-abc",
+        }
+    ).encode()
     factory = _make_proc_mock(stdout=payload)
 
     with patch("asyncio.create_subprocess_exec", factory):
@@ -102,10 +105,12 @@ async def test_generate_basic_text() -> None:
 @pytest.mark.asyncio
 async def test_generate_resumes_session() -> None:
     """Second call includes ``--resume`` with the captured session_id."""
-    payload = json.dumps({
-        "result": "ok",
-        "session_id": "sess-xyz",
-    }).encode()
+    payload = json.dumps(
+        {
+            "result": "ok",
+            "session_id": "sess-xyz",
+        }
+    ).encode()
     factory = _make_proc_mock(stdout=payload)
 
     with patch("asyncio.create_subprocess_exec", factory):
@@ -185,6 +190,7 @@ async def test_temp_files_cleaned_up_on_success() -> None:
         await vlm.generate("go", images=[img])
 
     import pathlib
+
     for p in created_paths:
         assert not pathlib.Path(p).exists(), f"temp file leaked: {p}"
 
@@ -193,7 +199,9 @@ async def test_temp_files_cleaned_up_on_success() -> None:
 async def test_temp_files_cleaned_up_on_subprocess_failure() -> None:
     """Temp image files are removed even when the subprocess fails."""
     factory = _make_proc_mock(
-        stdout=b"", stderr=b"boom", returncode=1,
+        stdout=b"",
+        stderr=b"boom",
+        returncode=1,
     )
 
     img = Image.new("RGB", (4, 4))
@@ -215,6 +223,7 @@ async def test_temp_files_cleaned_up_on_subprocess_failure() -> None:
             await vlm.generate("go", images=[img])
 
     import pathlib
+
     for p in created_paths:
         assert not pathlib.Path(p).exists(), f"temp file leaked: {p}"
 
@@ -395,10 +404,12 @@ async def test_concurrent_calls_chain_session_ids() -> None:
         await asyncio.sleep(0.02)
         proc = AsyncMock()
         proc.communicate.return_value = (
-            json.dumps({
-                "result": f"r{n}",
-                "session_id": f"s-{n}",
-            }).encode(),
+            json.dumps(
+                {
+                    "result": f"r{n}",
+                    "session_id": f"s-{n}",
+                }
+            ).encode(),
             b"",
         )
         proc.returncode = 0
@@ -456,7 +467,9 @@ async def test_error_message_truncated_to_500_chars() -> None:
     """Very long error output is truncated in the RuntimeError."""
     long_err = b"E" * 1000
     factory = _make_proc_mock(
-        stdout=b"", stderr=long_err, returncode=1,
+        stdout=b"",
+        stderr=long_err,
+        returncode=1,
     )
 
     with patch("asyncio.create_subprocess_exec", factory):
@@ -532,7 +545,9 @@ async def test_generate_warns_on_non_default_temperature() -> None:
 async def test_generate_cli_error_raises() -> None:
     """Non-zero exit code raises RuntimeError with stderr context."""
     factory = _make_proc_mock(
-        stdout=b"", stderr=b"segfault", returncode=1,
+        stdout=b"",
+        stderr=b"segfault",
+        returncode=1,
     )
 
     with patch("asyncio.create_subprocess_exec", factory):

@@ -95,8 +95,10 @@ class ClaudeCodeVLM(VLMProvider):
         cmd = [
             "claude",
             "-p",
-            "--output-format", "json",
-            "--model", self._model,
+            "--output-format",
+            "json",
+            "--model",
+            self._model,
         ]
 
         if self._session_id:
@@ -109,10 +111,7 @@ class ClaudeCodeVLM(VLMProvider):
         full_prompt = ""
 
         if response_format == "json":
-            full_prompt += (
-                "[Output format: respond with valid JSON only,"
-                " no markdown fences]\n\n"
-            )
+            full_prompt += "[Output format: respond with valid JSON only, no markdown fences]\n\n"
 
         full_prompt += prompt
 
@@ -168,10 +167,7 @@ class ClaudeCodeVLM(VLMProvider):
                 stderr=error_msg[:500] if error_msg else None,
                 stdout=stdout_msg[:500] if stdout_msg else None,
             )
-            raise RuntimeError(
-                "claude CLI exited with code "
-                f"{proc.returncode}: {combined[:500]}"
-            )
+            raise RuntimeError(f"claude CLI exited with code {proc.returncode}: {combined[:500]}")
 
         raw = stdout.decode()
 
