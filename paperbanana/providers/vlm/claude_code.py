@@ -22,6 +22,7 @@ from typing import Optional
 
 import structlog
 from PIL import Image
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from paperbanana.providers.base import VLMProvider
 
@@ -53,6 +54,7 @@ class ClaudeCodeVLM(VLMProvider):
     def is_available(self) -> bool:
         return shutil.which("claude") is not None
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=30), reraise=True)
     async def generate(
         self,
         prompt: str,
@@ -100,10 +102,11 @@ class ClaudeCodeVLM(VLMProvider):
         if self._session_id:
             cmd += ["--resume", self._session_id]
 
-        # Build the full prompt with optional system context
-        full_prompt = ""
         if system_prompt:
-            full_prompt += f"[System instructions]\n{system_prompt}\n\n"
+            cmd += ["--system-prompt", system_prompt]
+
+        # Build the full prompt
+        full_prompt = ""
 
         if response_format == "json":
             full_prompt += (
@@ -196,6 +199,7 @@ class ClaudeCodeVLM(VLMProvider):
             "Claude Code response",
             model=self._model,
             session_id=self._session_id,
+            usage=data.get("usage"),
             duration_ms=data.get("duration_ms"),
             cost_usd=data.get("total_cost_usd"),
             result_length=len(result_text),

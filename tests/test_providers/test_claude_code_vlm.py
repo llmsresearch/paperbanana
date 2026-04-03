@@ -10,9 +10,24 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from PIL import Image
 
+from tenacity import stop_after_attempt, wait_none
+
 from paperbanana.core.config import Settings
 from paperbanana.providers.registry import ProviderRegistry
 from paperbanana.providers.vlm.claude_code import ClaudeCodeVLM
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_delay():
+    """Disable retry backoff/attempts in tests for speed."""
+    original = ClaudeCodeVLM.generate
+    ClaudeCodeVLM.generate = original.retry_with(
+        stop=stop_after_attempt(1),
+        wait=wait_none(),
+        reraise=True,
+    )
+    yield
+    ClaudeCodeVLM.generate = original
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -210,8 +225,8 @@ async def test_temp_files_cleaned_up_on_subprocess_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_system_prompt_and_json_mode_in_prompt() -> None:
-    """System prompt and JSON-mode header appear before the user prompt."""
+async def test_system_prompt_passed_via_cli_flag() -> None:
+    """System prompt is passed via --system-prompt flag, not in prompt body."""
     payload = json.dumps({"result": "ok"}).encode()
     factory = _make_proc_mock(stdout=payload)
 
@@ -223,17 +238,21 @@ async def test_system_prompt_and_json_mode_in_prompt() -> None:
             response_format="json",
         )
 
-    full_prompt: str = factory.call_args[0][-1]
-    sys_idx = full_prompt.index("[System instructions]")
+    cmd_args = list(factory.call_args[0])
+    assert "--system-prompt" in cmd_args
+    sp_idx = cmd_args.index("--system-prompt")
+    assert cmd_args[sp_idx + 1] == "be concise"
+
+    full_prompt: str = cmd_args[-1]
+    assert "[System instructions]" not in full_prompt
     json_idx = full_prompt.index("[Output format:")
     task_idx = full_prompt.index("do stuff")
-    assert sys_idx < json_idx < task_idx
-    assert "be concise" in full_prompt
+    assert json_idx < task_idx
 
 
 @pytest.mark.asyncio
 async def test_full_prompt_with_system_images_and_json() -> None:
-    """All prompt parts appear in correct order: images, system, json, task."""
+    """System prompt via flag; images, json header, task in prompt body."""
     payload = json.dumps({"result": "ok"}).encode()
     factory = _make_proc_mock(stdout=payload)
     img = Image.new("RGB", (4, 4))
@@ -247,12 +266,16 @@ async def test_full_prompt_with_system_images_and_json() -> None:
             response_format="json",
         )
 
-    full_prompt: str = factory.call_args[0][-1]
+    cmd_args = list(factory.call_args[0])
+    sp_idx = cmd_args.index("--system-prompt")
+    assert cmd_args[sp_idx + 1] == "expert mode"
+
+    full_prompt: str = cmd_args[-1]
+    assert "[System instructions]" not in full_prompt
     img_idx = full_prompt.index("[Image 1:")
-    sys_idx = full_prompt.index("[System instructions]")
     json_idx = full_prompt.index("[Output format:")
     task_idx = full_prompt.index("analyze")
-    assert img_idx < sys_idx < json_idx < task_idx
+    assert img_idx < json_idx < task_idx
 
 
 @pytest.mark.asyncio
@@ -483,19 +506,21 @@ async def test_temp_files_cleaned_up_when_exec_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_warns_on_non_default_temperature(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+async def test_generate_warns_on_non_default_temperature() -> None:
     """A warning is logged when temperature or max_tokens differ from defaults."""
     payload = json.dumps({"result": "ok"}).encode()
     factory = _make_proc_mock(stdout=payload)
 
-    with patch("asyncio.create_subprocess_exec", factory):
+    with (
+        patch("asyncio.create_subprocess_exec", factory),
+        patch("paperbanana.providers.vlm.claude_code.logger") as mock_logger,
+    ):
         vlm = ClaudeCodeVLM(model="sonnet")
         await vlm.generate("hi", temperature=0.5, max_tokens=1024)
 
-    captured = capsys.readouterr()
-    assert "does not support temperature/max_tokens" in captured.out
+    mock_logger.warning.assert_called_once()
+    msg = mock_logger.warning.call_args[0][0]
+    assert "does not support temperature/max_tokens" in msg
 
 
 # ---------------------------------------------------------------------------
