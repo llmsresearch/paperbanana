@@ -31,7 +31,6 @@ from paperbanana.core.types import (
     PipelineProgressStage,
 )
 
-
 # ── Shared mock helpers ────────────────────────────────────────────
 
 
@@ -216,9 +215,7 @@ async def test_caption_agent_uses_plot_prompt_for_statistical_type(tmp_path):
 @pytest.mark.asyncio
 async def test_caption_disabled_by_default(tmp_path):
     """generate_caption=False (default) → generated_caption is None."""
-    vlm = _MockVLM(
-        ["Planned description", "Styled description", _critic_satisfied()]
-    )
+    vlm = _MockVLM(["Planned description", "Styled description", _critic_satisfied()])
     pipeline = PaperBananaPipeline(
         settings=_make_settings(tmp_path),
         vlm_client=vlm,
@@ -261,8 +258,8 @@ async def test_caption_generated_when_enabled(tmp_path):
 @pytest.mark.asyncio
 async def test_caption_uses_final_output_image(tmp_path):
     """CaptionAgent receives the final_output image path, not a per-iteration path."""
-    from paperbanana.core.utils import find_prompt_dir
     from paperbanana.agents.caption import CaptionAgent
+    from paperbanana.core.utils import find_prompt_dir
 
     called_with_paths = []
 
@@ -278,9 +275,7 @@ async def test_caption_uses_final_output_image(tmp_path):
         vlm_client=vlm,
         image_gen_fn=_MockImageGen(),
     )
-    pipeline.caption_agent = _TrackingCaptionAgent(
-        vlm_provider=vlm, prompt_dir=find_prompt_dir()
-    )
+    pipeline.caption_agent = _TrackingCaptionAgent(vlm_provider=vlm, prompt_dir=find_prompt_dir())
 
     result = await pipeline.generate(
         GenerationInput(source_context="ctx", communicative_intent="intent")
@@ -309,9 +304,7 @@ async def test_caption_failure_is_graceful(tmp_path):
         vlm_client=vlm,
         image_gen_fn=_MockImageGen(),
     )
-    pipeline.caption_agent = _FailingCaptionAgent(
-        vlm_provider=vlm, prompt_dir=find_prompt_dir()
-    )
+    pipeline.caption_agent = _FailingCaptionAgent(vlm_provider=vlm, prompt_dir=find_prompt_dir())
 
     result = await pipeline.generate(
         GenerationInput(source_context="ctx", communicative_intent="intent")
@@ -358,9 +351,7 @@ async def test_caption_seconds_always_present_in_timing(tmp_path):
     """timing.caption_seconds is always in metadata, even when caption is disabled."""
     vlm = _MockVLM(["Plan", "Style", _critic_satisfied()])
     settings = _make_settings(tmp_path, generate_caption=False)
-    pipeline = PaperBananaPipeline(
-        settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen()
-    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen())
     result = await pipeline.generate(
         GenerationInput(source_context="ctx", communicative_intent="intent")
     )
@@ -371,13 +362,9 @@ async def test_caption_seconds_always_present_in_timing(tmp_path):
 @pytest.mark.asyncio
 async def test_caption_seconds_nonzero_when_enabled(tmp_path):
     """timing.caption_seconds > 0 when caption generation runs."""
-    import time as _time
-
     vlm = _MockVLM(["Plan", "Style", _critic_satisfied(), "A generated caption."])
     settings = _make_settings(tmp_path, generate_caption=True)
-    pipeline = PaperBananaPipeline(
-        settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen()
-    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen())
     result = await pipeline.generate(
         GenerationInput(source_context="ctx", communicative_intent="intent")
     )
@@ -394,9 +381,7 @@ async def test_caption_progress_events_emitted(tmp_path):
     """CAPTION_START and CAPTION_END progress events are emitted when enabled."""
     vlm = _MockVLM(["Plan", "Style", _critic_satisfied(), "A caption."])
     settings = _make_settings(tmp_path, generate_caption=True)
-    pipeline = PaperBananaPipeline(
-        settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen()
-    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen())
 
     received_stages = []
 
@@ -421,9 +406,7 @@ async def test_no_caption_progress_events_when_disabled(tmp_path):
     """No CAPTION_* events are emitted when generate_caption=False."""
     vlm = _MockVLM(["Plan", "Style", _critic_satisfied()])
     settings = _make_settings(tmp_path, generate_caption=False)
-    pipeline = PaperBananaPipeline(
-        settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen()
-    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen())
 
     received_stages = []
 
@@ -445,9 +428,7 @@ async def test_caption_end_event_carries_caption_text(tmp_path):
     expected_caption = "Our method combines diffusion and attention."
     vlm = _MockVLM(["Plan", "Style", _critic_satisfied(), expected_caption])
     settings = _make_settings(tmp_path, generate_caption=True)
-    pipeline = PaperBananaPipeline(
-        settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen()
-    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen())
 
     caption_end_events = []
 
@@ -508,9 +489,7 @@ async def test_caption_in_continue_run(tmp_path):
         save_iterations=False,
         generate_caption=True,
     )
-    pipeline = PaperBananaPipeline(
-        settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen()
-    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen())
 
     result = await pipeline.continue_run(resume_state=state, additional_iterations=1)
 
@@ -554,9 +533,7 @@ async def test_no_caption_in_continue_run_when_disabled(tmp_path):
         save_iterations=False,
         generate_caption=False,
     )
-    pipeline = PaperBananaPipeline(
-        settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen()
-    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=_MockImageGen())
 
     result = await pipeline.continue_run(resume_state=state, additional_iterations=1)
     assert result.generated_caption is None

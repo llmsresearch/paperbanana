@@ -242,6 +242,62 @@ class PaperBananaPipeline:
             return self.settings.prompt_dir
         return find_prompt_dir()
 
+    async def _generate_caption(
+        self,
+        *,
+        image_path: str,
+        source_context: str,
+        intent: str,
+        description: str,
+        diagram_type: DiagramType,
+        progress_callback: Optional[Callable[[PipelineProgressEvent], None]],
+    ) -> tuple[Optional[str], float]:
+        """Run the CaptionAgent if ``generate_caption`` is enabled.
+
+        Returns:
+            (generated_caption, caption_seconds).  Both default to
+            ``(None, 0.0)`` when the setting is off or the agent fails.
+        """
+        if not self.settings.generate_caption:
+            return None, 0.0
+
+        _emit_progress(
+            progress_callback,
+            PipelineProgressEvent(
+                stage=PipelineProgressStage.CAPTION_START,
+                message="Generating figure caption",
+            ),
+        )
+        self._emit_progress("caption_started")
+        generated_caption: Optional[str] = None
+        caption_start = time.perf_counter()
+        try:
+            generated_caption = await self.caption_agent.run(
+                image_path=image_path,
+                source_context=source_context,
+                intent=intent,
+                description=description,
+                diagram_type=diagram_type,
+            )
+        except Exception as e:
+            logger.warning("Caption generation failed", error=str(e))
+        caption_seconds = time.perf_counter() - caption_start
+        _emit_progress(
+            progress_callback,
+            PipelineProgressEvent(
+                stage=PipelineProgressStage.CAPTION_END,
+                message="Caption generated",
+                seconds=caption_seconds,
+                extra={"caption": generated_caption},
+            ),
+        )
+        self._emit_progress(
+            "caption_completed",
+            seconds=round(caption_seconds, 1),
+            caption=generated_caption,
+        )
+        return generated_caption, caption_seconds
+
     async def _resolve_retrieval_candidates(
         self, input: GenerationInput, candidates: list[ReferenceExample]
     ) -> tuple[list[ReferenceExample], str, list[str]]:
@@ -737,43 +793,14 @@ class PaperBananaPipeline:
             )
 
         # ── Caption Generation (optional) ─────────────────────────────
-        generated_caption: Optional[str] = None
-        caption_seconds = 0.0
-        if self.settings.generate_caption:
-            _emit_progress(
-                progress_callback,
-                PipelineProgressEvent(
-                    stage=PipelineProgressStage.CAPTION_START,
-                    message="Generating figure caption",
-                ),
-            )
-            self._emit_progress("caption_started")
-            caption_start = time.perf_counter()
-            try:
-                generated_caption = await self.caption_agent.run(
-                    image_path=final_output_path,
-                    source_context=input.source_context,
-                    intent=input.communicative_intent,
-                    description=current_description,
-                    diagram_type=input.diagram_type,
-                )
-            except Exception as e:
-                logger.warning("Caption generation failed", error=str(e))
-            caption_seconds = time.perf_counter() - caption_start
-            _emit_progress(
-                progress_callback,
-                PipelineProgressEvent(
-                    stage=PipelineProgressStage.CAPTION_END,
-                    message="Caption generated",
-                    seconds=caption_seconds,
-                    extra={"caption": generated_caption},
-                ),
-            )
-            self._emit_progress(
-                "caption_completed",
-                seconds=round(caption_seconds, 1),
-                caption=generated_caption,
-            )
+        generated_caption, caption_seconds = await self._generate_caption(
+            image_path=final_output_path,
+            source_context=input.source_context,
+            intent=input.communicative_intent,
+            description=current_description,
+            diagram_type=input.diagram_type,
+            progress_callback=progress_callback,
+        )
 
         total_seconds = time.perf_counter() - total_start
         logger.info(
@@ -1082,44 +1109,14 @@ class PaperBananaPipeline:
             )
 
         # ── Caption Generation (optional) ─────────────────────────────
-        generated_caption: Optional[str] = None
-        caption_seconds = 0.0
-        if self.settings.generate_caption:
-            _emit_progress(
-                progress_callback,
-                PipelineProgressEvent(
-                    stage=PipelineProgressStage.CAPTION_START,
-                    message="Generating figure caption",
-                ),
-            )
-            self._emit_progress("caption_started", mode="continue")
-            caption_start = time.perf_counter()
-            try:
-                generated_caption = await self.caption_agent.run(
-                    image_path=final_output_path,
-                    source_context=resume_state.source_context,
-                    intent=resume_state.communicative_intent,
-                    description=current_description,
-                    diagram_type=resume_state.diagram_type,
-                )
-            except Exception as e:
-                logger.warning("Caption generation failed", error=str(e))
-            caption_seconds = time.perf_counter() - caption_start
-            _emit_progress(
-                progress_callback,
-                PipelineProgressEvent(
-                    stage=PipelineProgressStage.CAPTION_END,
-                    message="Caption generated",
-                    seconds=caption_seconds,
-                    extra={"caption": generated_caption},
-                ),
-            )
-            self._emit_progress(
-                "caption_completed",
-                seconds=round(caption_seconds, 1),
-                caption=generated_caption,
-                mode="continue",
-            )
+        generated_caption, caption_seconds = await self._generate_caption(
+            image_path=final_output_path,
+            source_context=resume_state.source_context,
+            intent=resume_state.communicative_intent,
+            description=current_description,
+            diagram_type=resume_state.diagram_type,
+            progress_callback=progress_callback,
+        )
 
         total_seconds = time.perf_counter() - total_start
         logger.info(

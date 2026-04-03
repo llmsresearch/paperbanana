@@ -200,7 +200,7 @@ def generate(
     generate_caption: bool = typer.Option(
         False,
         "--generate-caption",
-        help="Auto-generate a publication-ready figure caption after generation (one extra VLM call)",
+        help="Auto-generate a publication-ready figure caption (one extra VLM call)",
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
@@ -613,7 +613,7 @@ def generate(
     console.print(f"  Output: [bold]{result.image_path}[/bold]")
     console.print(f"  Run ID: [dim]{result.metadata.get('run_id', 'unknown')}[/dim]")
     if result.generated_caption:
-        console.print(f"\n  [bold]Generated Caption:[/bold]")
+        console.print("\n  [bold]Generated Caption:[/bold]")
         console.print(f"  {result.generated_caption}")
 
     cost_data = result.metadata.get("cost")
@@ -1481,8 +1481,12 @@ def plot(
     generate_caption: bool = typer.Option(
         False,
         "--generate-caption",
+<<<<<<< HEAD
         help="Auto-generate a publication-ready figure caption after generation (one extra VLM call)",
 >>>>>>> 43d46a4 (feat: add CaptionAgent for auto-generating publication-ready figure captions)
+=======
+        help="Auto-generate a publication-ready figure caption (one extra VLM call)",
+>>>>>>> e4ba4dc (fix: address review and CI failures)
     ),
 ):
     """Generate a statistical plot from data."""
@@ -1573,7 +1577,7 @@ def plot(
     result = asyncio.run(_run())
     console.print(f"\n[green]Done![/green] Plot saved to: [bold]{result.image_path}[/bold]")
     if result.generated_caption:
-        console.print(f"\n  [bold]Generated Caption:[/bold]")
+        console.print("\n  [bold]Generated Caption:[/bold]")
         console.print(f"  {result.generated_caption}")
 
     cost_data = result.metadata.get("cost")
