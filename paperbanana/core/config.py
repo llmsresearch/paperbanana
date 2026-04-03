@@ -10,7 +10,6 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 OutputFormat = Literal["png", "jpeg", "webp"]
-VectorFormat = Literal["svg", "pdf"]
 ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
 Venue = Literal["neurips", "icml", "acl", "ieee", "custom"]
 

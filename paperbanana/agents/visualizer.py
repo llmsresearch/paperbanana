@@ -233,8 +233,11 @@ class VisualizerAgent(BaseAgent):
         # Strip any VECTOR_PATH_* assignments the VLM may have generated.
         code = re.sub(r'^VECTOR_PATH_\w+\s*=\s*["\'].*["\']\s*$', "", code, flags=re.MULTILINE)
 
-        # Build header: inject authoritative path variables
-        header = f'OUTPUT_PATH = "{output_path}"\n'
+        # Build header: inject authoritative path variables.
+        # Use forward slashes to avoid invalid unicode escapes on Windows
+        # (e.g. C:\Users → \U is an invalid escape sequence in Python strings).
+        safe_output = output_path.replace("\\", "/")
+        header = f'OUTPUT_PATH = "{safe_output}"\n'
 
         # Map each requested vector format to its output path
         fmt_to_path: dict[str, str] = {}
@@ -242,7 +245,8 @@ class VisualizerAgent(BaseAgent):
             for fmt in vector_formats:
                 vec_path = str(Path(output_path).with_suffix(f".{fmt}"))
                 fmt_to_path[fmt] = vec_path
-                header += f'VECTOR_PATH_{fmt.upper()} = "{vec_path}"\n'
+                safe_vec = vec_path.replace("\\", "/")
+                header += f'VECTOR_PATH_{fmt.upper()} = "{safe_vec}"\n'
 
         # Inject figure size from aspect ratio
         if aspect_ratio:
@@ -257,7 +261,7 @@ class VisualizerAgent(BaseAgent):
         vector_suffix = ""
         if fmt_to_path:
             vector_suffix = "\nimport matplotlib.pyplot as _pb_plt\n"
-            for fmt, var_path in fmt_to_path.items():
+            for fmt in fmt_to_path:
                 var = f"VECTOR_PATH_{fmt.upper()}"
                 vector_suffix += f"_pb_plt.savefig({var}, format='{fmt}', bbox_inches='tight')\n"
 

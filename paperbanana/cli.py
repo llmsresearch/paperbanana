@@ -119,7 +119,7 @@ def generate(
     vector: bool = typer.Option(
         False,
         "--vector/--no-vector",
-        help="Also export SVG and PDF vector formats for statistical plots.",
+        help="Export SVG and PDF vector formats for statistical plots.",
     ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
     save_prompts: Optional[bool] = typer.Option(
