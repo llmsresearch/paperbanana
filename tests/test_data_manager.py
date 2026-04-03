@@ -56,6 +56,15 @@ class TestMergeIndex:
         data = json.loads(idx.read_text())
         assert sorted(data["metadata"]["categories"]) == ["alpha", "beta"]
 
+    def test_merge_preserves_examples_without_id(self, tmp_path):
+        idx = tmp_path / "index.json"
+        _merge_index(idx, [{"id": "a", "category": "cat1"}, {"category": "no_id"}])
+        count = _merge_index(idx, [{"category": "also_no_id"}])
+        assert count == 3
+        data = json.loads(idx.read_text())
+        no_id_entries = [e for e in data["examples"] if "id" not in e]
+        assert len(no_id_entries) == 2
+
     def test_merge_handles_corrupt_existing(self, tmp_path):
         idx = tmp_path / "index.json"
         idx.write_text("not json")
@@ -147,13 +156,30 @@ class TestRecordDataset:
         info = json.loads(tmp_cache.info_path.read_text())
         assert "curated" in info["datasets"]
         assert info["example_count"] == 25
+        assert info["dataset_meta"]["curated"]["version"] == "1.0.0"
+        assert info["dataset_meta"]["curated"]["source"] == "https://example.com"
 
     def test_preserves_existing_datasets(self, tmp_cache):
         tmp_cache.reference_dir.mkdir(parents=True)
-        tmp_cache._record_dataset("curated", "1.0.0", "https://example.com", 25)
-        tmp_cache._record_dataset("full_bench", "1.0.0", "https://example.com", 294)
+        tmp_cache._record_dataset("curated", "1.0.0", "https://curated.example.com", 25)
+        tmp_cache._record_dataset("full_bench", "2.0.0", "https://bench.example.com", 294)
         info = json.loads(tmp_cache.info_path.read_text())
         assert sorted(info["datasets"]) == ["curated", "full_bench"]
+        assert info["dataset_meta"]["curated"]["version"] == "1.0.0"
+        assert info["dataset_meta"]["curated"]["source"] == "https://curated.example.com"
+        assert info["dataset_meta"]["full_bench"]["version"] == "2.0.0"
+
+    def test_per_dataset_meta_not_overwritten(self, tmp_cache):
+        tmp_cache.reference_dir.mkdir(parents=True)
+        tmp_cache._record_dataset("curated", "1.0.0", "https://curated.example.com", 25)
+        tmp_cache._record_dataset("full_bench", "2.0.0", "https://bench.example.com", 294)
+        info = json.loads(tmp_cache.info_path.read_text())
+        # top-level version/source should not exist
+        assert "version" not in info
+        assert "source" not in info
+        # per-dataset metadata preserved
+        assert info["dataset_meta"]["curated"]["source"] == "https://curated.example.com"
+        assert info["dataset_meta"]["full_bench"]["source"] == "https://bench.example.com"
 
     def test_back_compat_upgrade(self, tmp_cache):
         """Recording a new dataset upgrades old-format info to include datasets list."""
@@ -275,6 +301,14 @@ class TestDownloadCurated:
             )
 
         assert any("curated" in m.lower() for m in messages)
+
+    def test_download_curated_404_gives_clear_error(self, tmp_cache):
+        def fake_download(url, dest):
+            raise Exception("404 Not Found")
+
+        with patch("paperbanana.data.manager._download_file", side_effect=fake_download):
+            with pytest.raises(RuntimeError, match="artifact may not be published yet"):
+                tmp_cache.download(dataset="curated", force=True)
 
 
 # ── full_bench merges with existing curated ───────────────────────────

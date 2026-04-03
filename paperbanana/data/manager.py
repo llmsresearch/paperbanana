@@ -213,7 +213,13 @@ class DatasetManager:
             zip_path = tmp_dir / "CuratedExpansion.zip"
 
             _log("Downloading curated expansion set...")
-            _download_file(CURATED_EXPANSION_URL, zip_path)
+            try:
+                _download_file(CURATED_EXPANSION_URL, zip_path)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to download curated expansion from {CURATED_EXPANSION_URL} "
+                    f"— the artifact may not be published yet. Original error: {exc}"
+                ) from exc
 
             _log("Extracting curated expansion...")
             with zipfile.ZipFile(zip_path) as zf:
@@ -333,21 +339,26 @@ class DatasetManager:
         """Update dataset_info.json, preserving the list of downloaded datasets."""
         info = self.get_info() or {}
         downloaded = set(info.get("datasets", []))
-        # Back-compat
         if not downloaded and info.get("source") == DATASET_URL:
             downloaded.add("full_bench")
         downloaded.add(dataset)
 
+        dataset_meta: dict = info.get("dataset_meta", {})
+        meta_entry: dict = {"version": version, "source": source}
+        if extra:
+            meta_entry.update(extra)
+        dataset_meta[dataset] = meta_entry
+
         info.update(
             {
                 "datasets": sorted(downloaded),
-                "version": version,
-                "source": source,
+                "dataset_meta": dataset_meta,
                 "example_count": example_count,
             }
         )
-        if extra:
-            info.update(extra)
+        info.pop("version", None)
+        info.pop("source", None)
+        info.pop("revision", None)
 
         with open(self.info_path, "w") as f:
             json.dump(info, f, indent=2)
@@ -385,18 +396,22 @@ def _merge_index(index_path: Path, new_examples: list[dict]) -> int:
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Build lookup by ID; new entries win on collision
     by_id: dict[str, dict] = {}
+    no_id: list[dict] = []
     for ex in existing_examples:
         ex_id = ex.get("id", "")
         if ex_id:
             by_id[ex_id] = ex
+        else:
+            no_id.append(ex)
     for ex in new_examples:
         ex_id = ex.get("id", "")
         if ex_id:
             by_id[ex_id] = ex
+        else:
+            no_id.append(ex)
 
-    merged = list(by_id.values())
+    merged = list(by_id.values()) + no_id
     categories = sorted(set(e.get("category", "") for e in merged if e.get("category")))
 
     index_data = {

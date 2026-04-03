@@ -1620,15 +1620,19 @@ def download(
     from paperbanana.data.manager import DatasetManager
 
     dataset = "curated" if curated else "full_bench"
+    if curated and task != "diagram":
+        console.print("[yellow]Warning:[/yellow] --task is ignored when --curated is set.")
     dm = DatasetManager()
     if dm.is_downloaded(dataset=dataset) and not force:
         info = dm.get_info() or {}
+        meta = info.get("dataset_meta", {})
+        ds_version = meta.get(dataset, {}).get("version", info.get("version", "unknown"))
         console.print(
             Panel.fit(
                 f"[bold]Reference Set — Already Cached[/bold]\n\n"
                 f"Location: {dm.reference_dir}\n"
                 f"Examples: {dm.get_example_count()}\n"
-                f"Version: {info.get('version', 'unknown')}\n"
+                f"Version: {ds_version}\n"
                 f"Datasets: {', '.join(info.get('datasets', ['unknown']))}",
                 border_style="green",
             )
@@ -1665,17 +1669,19 @@ def info():
         console.print("\nDownload with: [bold]paperbanana data download[/bold]")
         return
 
-    console.print(
-        Panel.fit(
-            f"[bold]Cached Reference Set[/bold]\n\n"
-            f"Location: {dm.reference_dir}\n"
-            f"Examples: {dataset_info.get('example_count', '?')}\n"
-            f"Version: {dataset_info.get('version', 'unknown')}\n"
-            f"Revision: {dataset_info.get('revision', 'unknown')}\n"
-            f"Source: {dataset_info.get('source', 'unknown')}",
-            border_style="blue",
-        )
-    )
+    datasets = dataset_info.get("datasets", [])
+    meta = dataset_info.get("dataset_meta", {})
+    lines = [
+        "[bold]Cached Reference Set[/bold]\n",
+        f"Location: {dm.reference_dir}",
+        f"Examples: {dataset_info.get('example_count', '?')}",
+        f"Datasets: {', '.join(datasets) if datasets else 'unknown'}",
+    ]
+    for ds in datasets:
+        ds_meta = meta.get(ds, {})
+        lines.append(f"  {ds}: v{ds_meta.get('version', '?')} — {ds_meta.get('source', '?')}")
+
+    console.print(Panel.fit("\n".join(lines), border_style="blue"))
 
 
 @data_app.command()
