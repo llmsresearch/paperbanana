@@ -278,4 +278,4 @@ def test_cli_invalid_format_rejected():
     # Either file-not-found or format validation - we want format to be validated
     # Format check runs before file load, so we should get format error
     assert result.exit_code != 0
-    assert "png, jpeg, or webp" in result.output
+    assert "png, jpeg, webp, or svg" in result.output
