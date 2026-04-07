@@ -16,6 +16,7 @@ from paperbanana.agents.retriever import RetrieverAgent
 from paperbanana.agents.stylist import StylistAgent
 from paperbanana.agents.visualizer import VisualizerAgent
 from paperbanana.core.config import Settings
+from paperbanana.core.cost_tracker import CostTracker
 from paperbanana.core.prompt_recorder import PromptRecorder
 from paperbanana.core.types import (
     DiagramType,
@@ -150,6 +151,15 @@ class PaperBananaPipeline:
             self._vlm = ProviderRegistry.create_vlm(self.settings)
             self._image_gen = ProviderRegistry.create_image_gen(self.settings)
             self._demo_mode = False
+
+        # Cost tracking (optional — active when budget is set or always for reporting)
+        self._cost_tracker: CostTracker | None = None
+        if not self._demo_mode:
+            self._cost_tracker = CostTracker(budget=self.settings.budget_usd)
+            if hasattr(self._vlm, "cost_tracker"):
+                self._vlm.cost_tracker = self._cost_tracker
+            if hasattr(self._image_gen, "cost_tracker"):
+                self._image_gen.cost_tracker = self._cost_tracker
 
         # Load reference store (resolves cache → built-in fallback)
         self.reference_store = ReferenceStore.from_settings(self.settings)
@@ -319,6 +329,8 @@ class PaperBananaPipeline:
         optimize_seconds = 0.0
         if self.settings.optimize_inputs:
             logger.info("Phase 0: Optimizing inputs (parallel)")
+            if self._cost_tracker:
+                self._cost_tracker.set_agent("optimizer")
             _emit_progress(
                 progress_callback,
                 PipelineProgressEvent(
@@ -375,6 +387,8 @@ class PaperBananaPipeline:
 
         # Step 1: Retriever — find relevant examples (timer includes external call when enabled)
         logger.info("Phase 1: Retrieval")
+        if self._cost_tracker:
+            self._cost_tracker.set_agent("retriever")
         _emit_progress(
             progress_callback,
             PipelineProgressEvent(
@@ -425,6 +439,8 @@ class PaperBananaPipeline:
 
         # Step 2: Planner — generate textual description
         logger.info("Phase 1: Planning")
+        if self._cost_tracker:
+            self._cost_tracker.set_agent("planner")
         _emit_progress(
             progress_callback,
             PipelineProgressEvent(
@@ -459,6 +475,8 @@ class PaperBananaPipeline:
 
         # Step 3: Stylist — optimize description aesthetics
         logger.info("Phase 1: Styling")
+        if self._cost_tracker:
+            self._cost_tracker.set_agent("stylist")
         _emit_progress(
             progress_callback,
             PipelineProgressEvent(
@@ -527,7 +545,17 @@ class PaperBananaPipeline:
         else:
             total_iters = self.settings.refinement_iterations
 
+        budget_exceeded = False
+
+        # Check budget after pre-iteration phases (retriever, planner, stylist)
+        if self._cost_tracker and self._cost_tracker.is_over_budget:
+            logger.warning("Budget exceeded after planning phases, skipping iterations")
+            budget_exceeded = True
+
         for i in range(total_iters):
+            if budget_exceeded:
+                break
+
             iter_index = i + 1
             logger.info(
                 f"Phase 2: Iteration {iter_index}/{total_iters}"
@@ -541,6 +569,8 @@ class PaperBananaPipeline:
             )
 
             # Step 4: Visualizer — generate image
+            if self._cost_tracker:
+                self._cost_tracker.set_agent("visualizer")
             _emit_progress(
                 progress_callback,
                 PipelineProgressEvent(
@@ -580,6 +610,8 @@ class PaperBananaPipeline:
             )
 
             # Step 5: Critic — evaluate and provide feedback
+            if self._cost_tracker:
+                self._cost_tracker.set_agent("critic")
             _emit_progress(
                 progress_callback,
                 PipelineProgressEvent(
@@ -673,15 +705,32 @@ class PaperBananaPipeline:
                 needs_revision=critique.needs_revision,
             )
 
+            # Check budget between iterations
+            if self._cost_tracker and self._cost_tracker.is_over_budget:
+                logger.warning(
+                    "Budget exceeded between iterations, stopping early",
+                    iteration=iter_index,
+                )
+                budget_exceeded = True
+                break
+
         # Final output
-        final_image = iterations[-1].image_path
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(self._run_dir / f"final_output.{ext}")
 
-        # Load and save in desired format (handles PNG→JPEG/WebP conversion)
-        img = load_image(final_image)
-        save_image(img, final_output_path, format=output_format)
+        if iterations:
+            final_image = iterations[-1].image_path
+            # Load and save in desired format (handles PNG→JPEG/WebP conversion)
+            img = load_image(final_image)
+            save_image(img, final_output_path, format=output_format)
+        else:
+            # Budget exceeded before any iteration could complete
+            final_output_path = ""
+            logger.warning(
+                "No iterations completed — budget exceeded during planning phases",
+                run_id=self.run_id,
+            )
 
         total_seconds = time.perf_counter() - total_start
         logger.info(
@@ -727,8 +776,15 @@ class PaperBananaPipeline:
             "external_candidate_ids": external_candidate_ids,
         }
 
-        if self.settings.save_iterations:
-            save_json(metadata_dict, self._run_dir / "metadata.json")
+        if self._cost_tracker:
+            cost_summary = self._cost_tracker.summary()
+            cost_summary["budget_exceeded"] = budget_exceeded
+            if self.settings.budget_usd is not None:
+                cost_summary["budget_usd"] = self.settings.budget_usd
+            metadata_dict["cost"] = cost_summary
+
+        # Always write metadata (including cost) to disk for every run
+        save_json(metadata_dict, self._run_dir / "metadata.json")
 
         output = GenerationOutput(
             image_path=final_output_path,
@@ -795,8 +851,12 @@ class PaperBananaPipeline:
 
         iterations: list[IterationRecord] = []
         iteration_timings = []
+        budget_exceeded = False
 
         for i in range(total_iters):
+            if budget_exceeded:
+                break
+
             iter_num = start_iter + i + 1
             logger.info(
                 f"Phase 2: Iteration {iter_num}" + (" (auto)" if self.settings.auto_refine else "")
@@ -810,6 +870,8 @@ class PaperBananaPipeline:
             )
 
             # Visualizer — generate image
+            if self._cost_tracker:
+                self._cost_tracker.set_agent("visualizer")
             _emit_progress(
                 progress_callback,
                 PipelineProgressEvent(
@@ -850,6 +912,8 @@ class PaperBananaPipeline:
             )
 
             # Critic — evaluate with optional user feedback
+            if self._cost_tracker:
+                self._cost_tracker.set_agent("critic")
             _emit_progress(
                 progress_callback,
                 PipelineProgressEvent(
@@ -944,14 +1008,31 @@ class PaperBananaPipeline:
                 mode="continue",
             )
 
+            # Check budget between iterations
+            if self._cost_tracker and self._cost_tracker.is_over_budget:
+                logger.warning(
+                    "Budget exceeded between iterations, stopping early",
+                    iteration=iter_num,
+                )
+                budget_exceeded = True
+                break
+
         # Final output
-        final_image = iterations[-1].image_path
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(run_dir / f"final_output.{ext}")
 
-        img = load_image(final_image)
-        save_image(img, final_output_path, format=output_format)
+        if iterations:
+            final_image = iterations[-1].image_path
+            img = load_image(final_image)
+            save_image(img, final_output_path, format=output_format)
+        else:
+            # Budget exceeded before any iteration could complete
+            final_output_path = ""
+            logger.warning(
+                "No iterations completed — budget exceeded before first iteration",
+                run_id=self.run_id,
+            )
 
         total_seconds = time.perf_counter() - total_start
         logger.info(
@@ -991,8 +1072,15 @@ class PaperBananaPipeline:
         if user_feedback:
             metadata_dict["user_feedback"] = user_feedback
 
-        if self.settings.save_iterations:
-            save_json(metadata_dict, run_dir / "metadata_continued.json")
+        if self._cost_tracker:
+            cost_summary = self._cost_tracker.summary()
+            cost_summary["budget_exceeded"] = budget_exceeded
+            if self.settings.budget_usd is not None:
+                cost_summary["budget_usd"] = self.settings.budget_usd
+            metadata_dict["cost"] = cost_summary
+
+        # Always write metadata (including cost) to disk for every run
+        save_json(metadata_dict, run_dir / "metadata_continued.json")
 
         output = GenerationOutput(
             image_path=final_output_path,
