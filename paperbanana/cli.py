@@ -2466,5 +2466,13 @@ def studio(
     )
 
 
+@app.command()
+def doctor() -> None:
+    """Check system health: optional dependencies, API keys, and reference data."""
+    from paperbanana.doctor import run_doctor
+
+    raise typer.Exit(run_doctor())
+
+
 if __name__ == "__main__":
     app()
