@@ -411,3 +411,141 @@ def test_setup_custom_endpoint_requires_non_empty_url(monkeypatch):
         assert "URL cannot be empty" in result.output
         env_text = Path(".env").read_text(encoding="utf-8")
         assert "GOOGLE_BASE_URL=https://gemini-proxy.example.com" in env_text
+
+
+def test_batch_resume_retry_failed(tmp_path, monkeypatch):
+    """batch supports checkpoint resume with --retry-failed."""
+    input_a = tmp_path / "a.txt"
+    input_b = tmp_path / "b.txt"
+    input_a.write_text("A", encoding="utf-8")
+    input_b.write_text("B", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {"id": "ok", "input": str(input_a), "caption": "always ok"},
+                    {"id": "flaky", "input": str(input_b), "caption": "fails once"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    call_state = {"flaky_calls": 0}
+
+    class _FakePipeline:
+        def __init__(self, settings=None, **kwargs):
+            self.settings = settings
+
+        async def generate(self, gen_input):
+            from paperbanana.core.types import GenerationOutput, IterationRecord
+
+            if "fails once" in gen_input.communicative_intent:
+                call_state["flaky_calls"] += 1
+                if call_state["flaky_calls"] == 1:
+                    raise RuntimeError("transient boom")
+            image_path = str(tmp_path / f"{gen_input.communicative_intent.replace(' ', '_')}.png")
+            return GenerationOutput(
+                image_path=image_path,
+                description="d",
+                iterations=[IterationRecord(iteration=1, description="d", image_path=image_path)],
+                metadata={"run_id": f"run_{gen_input.communicative_intent.replace(' ', '_')}"},
+            )
+
+    monkeypatch.setattr("paperbanana.core.pipeline.PaperBananaPipeline", _FakePipeline)
+
+    first = runner.invoke(
+        app,
+        ["batch", "--manifest", str(manifest), "--output-dir", str(tmp_path)],
+    )
+    assert first.exit_code == 0
+    batches = sorted(tmp_path.glob("batch_*/batch_report.json"))
+    assert len(batches) == 1
+    batch_dir = batches[0].parent
+    first_report = json.loads(batches[0].read_text(encoding="utf-8"))
+    statuses = {item["id"]: item.get("status") for item in first_report["items"]}
+    assert statuses["ok"] == "success"
+    assert statuses["flaky"] == "failed"
+
+    second = runner.invoke(
+        app,
+        [
+            "batch",
+            "--manifest",
+            str(manifest),
+            "--output-dir",
+            str(tmp_path),
+            "--resume-batch",
+            str(batch_dir),
+            "--retry-failed",
+        ],
+    )
+    assert second.exit_code == 0
+    resumed_report = json.loads((batch_dir / "batch_report.json").read_text(encoding="utf-8"))
+    statuses = {item["id"]: item.get("status") for item in resumed_report["items"]}
+    assert statuses["ok"] == "success"
+    assert statuses["flaky"] == "success"
+
+
+def test_plot_batch_supports_concurrency_and_retries(tmp_path, monkeypatch):
+    """plot-batch writes attempts/status with retries."""
+    data_path = tmp_path / "data.csv"
+    data_path.write_text("x,y\n1,2\n2,3\n", encoding="utf-8")
+    manifest = tmp_path / "plot_manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {"id": "p1", "data": str(data_path), "intent": "ok plot"},
+                    {"id": "p2", "data": str(data_path), "intent": "flaky plot"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    state = {"flaky_calls": 0}
+
+    class _FakePipeline:
+        def __init__(self, settings=None, **kwargs):
+            self.settings = settings
+
+        async def generate(self, gen_input):
+            from paperbanana.core.types import GenerationOutput, IterationRecord
+
+            if "flaky" in gen_input.communicative_intent:
+                state["flaky_calls"] += 1
+                if state["flaky_calls"] == 1:
+                    raise RuntimeError("temporary")
+            img = str(tmp_path / f"{gen_input.communicative_intent.replace(' ', '_')}.png")
+            return GenerationOutput(
+                image_path=img,
+                description="d",
+                iterations=[IterationRecord(iteration=1, description="d", image_path=img)],
+                metadata={"run_id": "run_plot"},
+            )
+
+    monkeypatch.setattr("paperbanana.core.pipeline.PaperBananaPipeline", _FakePipeline)
+
+    result = runner.invoke(
+        app,
+        [
+            "plot-batch",
+            "--manifest",
+            str(manifest),
+            "--output-dir",
+            str(tmp_path),
+            "--concurrency",
+            "2",
+            "--max-retries",
+            "1",
+        ],
+    )
+    assert result.exit_code == 0
+    reports = sorted(tmp_path.glob("batch_*/batch_report.json"))
+    assert len(reports) == 1
+    report = json.loads(reports[0].read_text(encoding="utf-8"))
+    assert all(item.get("status") == "success" for item in report["items"])
+    flaky = next(item for item in report["items"] if item["id"] == "p2")
+    assert flaky.get("attempts", 0) >= 2
