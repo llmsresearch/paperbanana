@@ -554,6 +554,16 @@ def build_studio_app(
                     choices=ASPECT_RATIO_CHOICES,
                     value="default",
                 )
+                with gr.Row():
+                    b_resume = gr.Textbox(
+                        label="Resume batch (ID or path)",
+                        lines=1,
+                        placeholder="Optional: batch_... or /path/to/batch_dir",
+                    )
+                    b_retry_failed = gr.Checkbox(label="Retry failed items", value=False)
+                with gr.Row():
+                    b_max_retries = gr.Number(label="Max retries per item", value=0, precision=0)
+                    b_concurrency = gr.Number(label="Concurrency", value=1, precision=0)
                 b_log = gr.Textbox(label="Batch log", lines=22)
                 b_dir = gr.Textbox(label="Batch output directory", lines=1)
                 b_go = gr.Button("Run batch", variant="primary")
@@ -575,6 +585,10 @@ def build_studio_app(
                     sd,
                     mfile,
                     bar,
+                    resume_ref,
+                    retry_fail,
+                    max_retry_count,
+                    conc,
                 ):
                     _dotenv()
                     try:
@@ -584,10 +598,25 @@ def build_studio_app(
                             return "Upload a manifest file.", ""
                         if mode == "Statistical plots":
                             log, bpath = run_plot_batch(
-                                st0, path, default_aspect_ratio_label=bar, verbose_logging=False
+                                st0,
+                                path,
+                                default_aspect_ratio_label=bar,
+                                resume_batch=(resume_ref or "").strip() or None,
+                                retry_failed=bool(retry_fail),
+                                max_retries=max(0, int(max_retry_count or 0)),
+                                concurrency=max(1, int(conc or 1)),
+                                verbose_logging=False,
                             )
                         else:
-                            log, bpath = run_batch(st0, path, verbose_logging=False)
+                            log, bpath = run_batch(
+                                st0,
+                                path,
+                                resume_batch=(resume_ref or "").strip() or None,
+                                retry_failed=bool(retry_fail),
+                                max_retries=max(0, int(max_retry_count or 0)),
+                                concurrency=max(1, int(conc or 1)),
+                                verbose_logging=False,
+                            )
                         return log, bpath
                     except Exception as e:
                         return f"{type(e).__name__}: {e}", ""
@@ -611,6 +640,10 @@ def build_studio_app(
                         seed_val,
                         bf,
                         b_ar,
+                        b_resume,
+                        b_retry_failed,
+                        b_max_retries,
+                        b_concurrency,
                     ],
                     outputs=[b_log, b_dir],
                 )
