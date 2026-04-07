@@ -10,14 +10,19 @@ from typing import Any, Callable, Dict, Optional
 import structlog
 
 from paperbanana.agents.critic import CriticAgent
+from paperbanana.agents.ir_planner import IRPlannerAgent
 from paperbanana.agents.optimizer import InputOptimizerAgent
 from paperbanana.agents.planner import PlannerAgent
-from paperbanana.agents.ir_planner import IRPlannerAgent
 from paperbanana.agents.retriever import RetrieverAgent
 from paperbanana.agents.stylist import StylistAgent
 from paperbanana.agents.visualizer import VisualizerAgent
 from paperbanana.core.config import Settings
 from paperbanana.core.cost_tracker import CostTracker
+from paperbanana.core.diagram_ir import (
+    extract_diagram_ir,
+    save_raster_wrapped_svg,
+    save_svg_from_ir,
+)
 from paperbanana.core.prompt_recorder import PromptRecorder
 from paperbanana.core.types import (
     DiagramType,
@@ -28,11 +33,6 @@ from paperbanana.core.types import (
     PipelineProgressStage,
     ReferenceExample,
     RunMetadata,
-)
-from paperbanana.core.diagram_ir import (
-    extract_diagram_ir,
-    save_raster_wrapped_svg,
-    save_svg_from_ir,
 )
 from paperbanana.core.utils import (
     ensure_dir,
@@ -742,7 +742,10 @@ class PaperBananaPipeline:
                         )
                         logger.info("IR planner produced structured diagram IR")
                     except Exception as e:
-                        logger.warning("IR planner failed; falling back to heuristic IR", error=str(e))
+                        logger.warning(
+                            "IR planner failed; falling back to heuristic IR",
+                            error=str(e),
+                        )
                         diagram_ir = extract_diagram_ir(
                             current_description,
                             title=input.communicative_intent or "Methodology Diagram",
@@ -1071,7 +1074,10 @@ class PaperBananaPipeline:
                         )
                         logger.info("IR planner produced structured diagram IR")
                     except Exception as e:
-                        logger.warning("IR planner failed; falling back to heuristic IR", error=str(e))
+                        logger.warning(
+                            "IR planner failed; falling back to heuristic IR",
+                            error=str(e),
+                        )
                         diagram_ir = extract_diagram_ir(
                             current_description,
                             title=resume_state.communicative_intent or "Methodology Diagram",

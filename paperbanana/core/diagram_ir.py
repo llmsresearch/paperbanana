@@ -191,11 +191,13 @@ def save_svg_from_ir(diagram_ir: DiagramIR, output_path: str | Path) -> Path:
         lane_y[lane] = y
         bg = lane_colors[i % len(lane_colors)]
         parts.append(
-            f'<rect x="{margin_x}" y="{y}" width="{width - 2 * margin_x}" height="{lane_h}" rx="14" '
+            f'<rect x="{margin_x}" y="{y}" width="{width - 2 * margin_x}" '
+            f'height="{lane_h}" rx="14" '
             f'fill="{bg}" stroke="#cbd5e1" stroke-width="1.5"/>'
         )
         parts.append(
-            f'<text x="{margin_x + 16}" y="{y + 34}" font-family="Arial, sans-serif" font-size="20" '
+            f'<text x="{margin_x + 16}" y="{y + 34}" '
+            'font-family="Arial, sans-serif" font-size="20" '
             'font-weight="700" fill="#334155">'
             f"{html.escape(lane)}</text>"
         )
@@ -255,8 +257,12 @@ def save_svg_from_ir(diagram_ir: DiagramIR, output_path: str | Path) -> Path:
         src_port, dst_port = _select_ports(src, dst, node_w, node_h, same_lane=same_lane)
         src_side = _port_side(src, src_port, node_w, node_h)
         dst_side = _port_side(dst, dst_port, node_w, node_h)
-        node_side_total[(edge.source, src_side)] = node_side_total.get((edge.source, src_side), 0) + 1
-        node_side_total[(edge.target, dst_side)] = node_side_total.get((edge.target, dst_side), 0) + 1
+        node_side_total[(edge.source, src_side)] = (
+            node_side_total.get((edge.source, src_side), 0) + 1
+        )
+        node_side_total[(edge.target, dst_side)] = (
+            node_side_total.get((edge.target, dst_side), 0) + 1
+        )
         edge_ports[(edge.source, edge.target)] = (src_port, dst_port, src_side, dst_side)
 
     for edge in diagram_ir.edges:
@@ -271,7 +277,10 @@ def save_svg_from_ir(diagram_ir: DiagramIR, output_path: str | Path) -> Path:
         src_lane = (src_node.lane or "").strip() if src_node else ""
         dst_lane = (dst_node.lane or "").strip() if dst_node else ""
         same_lane = (not src_lane and not dst_lane) or src_lane == dst_lane
-        _raw_src, _raw_dst, src_side, dst_side = edge_ports.get((edge.source, edge.target), ((0, 0), (0, 0), "right", "left"))
+        _raw_src, _raw_dst, src_side, dst_side = edge_ports.get(
+            (edge.source, edge.target),
+            ((0, 0), (0, 0), "right", "left"),
+        )
 
         src_slot = node_side_used.get((edge.source, src_side), 0)
         src_total = node_side_total.get((edge.source, src_side), 1)
@@ -339,7 +348,8 @@ def save_svg_from_ir(diagram_ir: DiagramIR, output_path: str | Path) -> Path:
             label_y = ch_y - 6
 
         parts.append(
-            f'<path d="{d}" fill="none" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>'
+            f'<path d="{d}" fill="none" stroke="#4b5563" '
+            'stroke-width="2.5" marker-end="url(#arrow)"/>'
         )
         if edge.label:
             key = (label_x, label_y)
@@ -367,7 +377,8 @@ def save_raster_wrapped_svg(image_path: str | Path, output_path: str | Path) -> 
     data = base64.b64encode(image_path.read_bytes()).decode("ascii")
     content = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">\n'
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" '
+        'viewBox="0 0 1600 900">\n'
         f'  <image href="data:{mime};base64,{data}" x="0" y="0" width="1600" height="900"/>\n'
         "</svg>\n"
     )

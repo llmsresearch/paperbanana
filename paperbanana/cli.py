@@ -2296,7 +2296,10 @@ def benchmark(
 ):
     """Run generation + evaluation across PaperBananaBench entries."""
     if image_format not in ("png", "jpeg", "webp", "svg"):
-        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {image_format}[/red]")
+        console.print(
+            "[red]Error: Format must be png, jpeg, webp, or svg. "
+            f"Got: {image_format}[/red]"
+        )
         raise typer.Exit(1)
     if concurrency < 1:
         console.print("[red]Error: --concurrency must be at least 1[/red]")
