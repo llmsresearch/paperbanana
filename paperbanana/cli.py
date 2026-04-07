@@ -21,7 +21,7 @@ from paperbanana.core.types import (
     PipelineProgressEvent,
     PipelineProgressStage,
 )
-from paperbanana.core.utils import generate_run_id
+from paperbanana.core.utils import ensure_dir, generate_run_id, save_json
 
 app = typer.Typer(
     name="paperbanana",
@@ -611,6 +611,291 @@ def generate(
             console.print(
                 "  [yellow]Note: Some model prices unknown; actual cost may differ[/yellow]"
             )
+
+
+@app.command()
+def sweep(
+    input: str = typer.Option(
+        ...,
+        "--input",
+        "-i",
+        help="Path to methodology text file or PDF (.pdf requires: pip install 'paperbanana[pdf]')",
+    ),
+    caption: str = typer.Option(
+        ...,
+        "--caption",
+        "-c",
+        help="Figure caption / communicative intent",
+    ),
+    pdf_pages: Optional[str] = typer.Option(
+        None,
+        "--pdf-pages",
+        help=("PDF input only: 1-based pages (e.g. '1-5', '3', '1-3,7'); default: all pages"),
+    ),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Parent directory for sweep outputs (sweep_<id> will be created here)",
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    vlm_providers: Optional[str] = typer.Option(
+        None,
+        "--vlm-providers",
+        help="Comma-separated VLM providers (e.g. gemini,openai)",
+    ),
+    vlm_models: Optional[str] = typer.Option(
+        None,
+        "--vlm-models",
+        help="Comma-separated VLM models (paired as full cartesian combinations)",
+    ),
+    image_providers: Optional[str] = typer.Option(
+        None,
+        "--image-providers",
+        help="Comma-separated image providers (e.g. google_imagen,openai_imagen)",
+    ),
+    image_models: Optional[str] = typer.Option(
+        None,
+        "--image-models",
+        help="Comma-separated image models (paired as full cartesian combinations)",
+    ),
+    iterations: Optional[str] = typer.Option(
+        None,
+        "--iterations",
+        help="Comma-separated refinement iterations (e.g. 2,3,4)",
+    ),
+    optimize_modes: Optional[str] = typer.Option(
+        None,
+        "--optimize-modes",
+        help="Comma-separated booleans for optimize_inputs axis (e.g. on,off)",
+    ),
+    auto_modes: Optional[str] = typer.Option(
+        None,
+        "--auto-modes",
+        help="Comma-separated booleans for auto_refine axis (e.g. off,on)",
+    ),
+    max_variants: Optional[int] = typer.Option(
+        None,
+        "--max-variants",
+        help="Optional cap on total generated variants",
+    ),
+    format: str = typer.Option(
+        "png",
+        "--format",
+        "-f",
+        help="Output image format (png, jpeg, webp)",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show planned variant matrix without API calls",
+    ),
+    auto_download_data: bool = typer.Option(
+        False,
+        "--auto-download-data",
+        help="Auto-download expanded reference set (~257MB) on first run if not cached",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
+):
+    """Run a parameter sweep for one input and rank generated variants.
+
+    Successful variants are ranked by *quality_proxy_score*: max(0, 100 − 12.5 × N) where N is
+    the number of critic suggestions on the **final** refinement iteration. This is a rough
+    proxy for comparing runs, not a substitute for human evaluation.
+    """
+    if format not in ("png", "jpeg", "webp"):
+        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+        raise typer.Exit(1)
+    if max_variants is not None and max_variants < 1:
+        console.print("[red]Error: --max-variants must be >= 1[/red]")
+        raise typer.Exit(1)
+
+    configure_logging(verbose=verbose)
+
+    input_path = Path(input)
+    if not input_path.exists():
+        console.print(f"[red]Error: Input file not found: {input}[/red]")
+        raise typer.Exit(1)
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    from paperbanana.core.source_loader import load_methodology_source
+    from paperbanana.core.sweep import (
+        build_sweep_variants,
+        parse_csv_bools,
+        parse_csv_ints,
+        parse_csv_values,
+        quality_proxy_score,
+        rank_sweep_results,
+        summarize_sweep,
+    )
+
+    try:
+        variant_list = build_sweep_variants(
+            vlm_providers=parse_csv_values(vlm_providers),
+            vlm_models=parse_csv_values(vlm_models),
+            image_providers=parse_csv_values(image_providers),
+            image_models=parse_csv_values(image_models),
+            refinement_iterations=parse_csv_ints(iterations, field_name="--iterations"),
+            optimize_inputs=parse_csv_bools(optimize_modes, field_name="--optimize-modes"),
+            auto_refine=parse_csv_bools(auto_modes, field_name="--auto-modes"),
+            max_variants=max_variants,
+        )
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not variant_list:
+        console.print("[red]Error: Sweep generated zero variants[/red]")
+        raise typer.Exit(1)
+
+    try:
+        source_context = load_methodology_source(input_path, pdf_pages=pdf_pages)
+    except (ImportError, ValueError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    sweep_id = f"sweep_{generate_run_id()}"
+    sweep_dir = ensure_dir(Path(output_dir) / sweep_id)
+    iter_label = f"{len(variant_list)} variants"
+    console.print(
+        Panel.fit(
+            f"[bold]PaperBanana[/bold] — Parameter Sweep\n\n"
+            f"Input: {input_path.name}\n"
+            f"Caption: {caption}\n"
+            f"Plan: {iter_label}\n"
+            f"Output: {sweep_dir}",
+            border_style="magenta",
+        )
+    )
+
+    if dry_run:
+        preview = [variant.as_dict() for variant in variant_list[: min(10, len(variant_list))]]
+        report = {
+            "sweep_id": sweep_id,
+            "status": "dry_run",
+            "total_variants": len(variant_list),
+            "preview": preview,
+        }
+        report_path = sweep_dir / "sweep_report.json"
+        save_json(report, report_path)
+        console.print(f"\n[green]Dry run complete.[/green] Planned {len(variant_list)} variants")
+        console.print(f"  Report: [bold]{report_path}[/bold]")
+        return
+
+    from paperbanana.core.pipeline import PaperBananaPipeline
+
+    if config:
+        base_settings = Settings.from_yaml(config)
+    else:
+        base_settings = Settings()
+
+    if auto_download_data:
+        from paperbanana.data.manager import DatasetManager
+
+        dm = DatasetManager(cache_dir=base_settings.cache_dir)
+        if not dm.is_downloaded():
+            console.print("  [dim]Downloading expanded reference set...[/dim]")
+            try:
+                dm.download()
+            except Exception as e:
+                console.print(f"  [yellow]Download failed: {e}, using built-in set[/yellow]")
+
+    all_results: list[dict] = []
+    total_start = time.perf_counter()
+
+    for idx, variant in enumerate(variant_list, start=1):
+        variant_dir = ensure_dir(sweep_dir / variant.variant_id)
+        overrides: dict = {
+            "output_dir": str(variant_dir),
+            "output_format": format,
+            "vlm_provider": variant.vlm_provider,
+            "image_provider": variant.image_provider,
+            "refinement_iterations": variant.refinement_iterations,
+            "optimize_inputs": variant.optimize_inputs,
+            "auto_refine": variant.auto_refine,
+        }
+        if variant.vlm_model:
+            overrides["vlm_model"] = variant.vlm_model
+        if variant.image_model:
+            overrides["image_model"] = variant.image_model
+
+        settings = base_settings.model_copy(update=overrides)
+
+        gen_input = GenerationInput(
+            source_context=source_context,
+            communicative_intent=caption,
+            diagram_type=DiagramType.METHODOLOGY,
+        )
+        console.print(f"[bold]Variant {idx}/{len(variant_list)}[/bold] — {variant.variant_id}")
+
+        try:
+            variant_start = time.perf_counter()
+            pipeline = PaperBananaPipeline(settings=settings)
+            result = asyncio.run(pipeline.generate(gen_input))
+            variant_seconds = time.perf_counter() - variant_start
+            final_critique = result.iterations[-1].critique if result.iterations else None
+            suggestion_count = len(final_critique.critic_suggestions) if final_critique else 0
+            quality_proxy = quality_proxy_score(suggestion_count)
+            all_results.append(
+                {
+                    "status": "success",
+                    **variant.as_dict(),
+                    "run_id": result.metadata.get("run_id"),
+                    "output_path": result.image_path,
+                    "iterations_used": len(result.iterations),
+                    "critic_suggestions": suggestion_count,
+                    "quality_proxy_score": round(quality_proxy, 2),
+                    "total_seconds": round(variant_seconds, 2),
+                }
+            )
+            console.print(
+                f"  [green]✓[/green] score={quality_proxy:.1f} [dim]{variant_seconds:.1f}s[/dim]"
+            )
+        except Exception as e:
+            all_results.append(
+                {
+                    "status": "failed",
+                    **variant.as_dict(),
+                    "error": str(e),
+                }
+            )
+            console.print(f"  [red]✗[/red] {e}")
+
+    successful = [item for item in all_results if item["status"] == "success"]
+    ranked_results = rank_sweep_results(successful)
+    summary = summarize_sweep(all_results)
+    elapsed = time.perf_counter() - total_start
+    report = {
+        "sweep_id": sweep_id,
+        "status": "completed",
+        "input": str(input_path),
+        "caption": caption,
+        "total_seconds": round(elapsed, 2),
+        "summary": summary,
+        "results": all_results,
+        "ranked_results": ranked_results,
+        "quality_proxy_note": (
+            "quality_proxy_score = max(0, 100 - 12.5 * N) where N is critic suggestion "
+            "count on the final iteration"
+        ),
+    }
+    report_path = sweep_dir / "sweep_report.json"
+    save_json(report, report_path)
+
+    console.print(
+        Panel.fit(
+            "[bold]Sweep Complete[/bold]\n\n"
+            f"Completed: {summary.get('completed', 0)}\n"
+            f"Failed: {summary.get('failed', 0)}\n"
+            f"Best variant: {summary.get('best_variant')}\n"
+            f"Mean proxy score: {summary.get('mean_quality_proxy_score')}\n"
+            f"Report: {report_path}",
+            border_style="cyan",
+        )
+    )
 
 
 @app.command()
