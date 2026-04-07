@@ -1109,7 +1109,9 @@ def batch(
                             state=state,
                             total_seconds=time.perf_counter() - total_start,
                         )
-                        console.print(f"[red]Item {idx + 1}/{len(items)} {item_id}: input missing[/red]")
+                        console.print(
+                            f"[red]Item {idx + 1}/{len(items)} {item_id}: input missing[/red]"
+                        )
                         return
                     try:
                         source_context = load_methodology_source(
@@ -1134,7 +1136,8 @@ def batch(
                             total_seconds=time.perf_counter() - total_start,
                         )
                         console.print(
-                            f"[green]Item {idx + 1}/{len(items)} {item_id}: ok[/green] [dim]{result.image_path}[/dim]"
+                            f"[green]Item {idx + 1}/{len(items)} {item_id}: ok[/green] "
+                            f"[dim]{result.image_path}[/dim]"
                         )
                         return
                     except Exception as e:
@@ -1146,10 +1149,13 @@ def batch(
                         )
                         if attempt < max_retries:
                             console.print(
-                                f"[yellow]Item {item_id}: retry {attempt + 1}/{max_retries} after {e}[/yellow]"
+                                f"[yellow]Item {item_id}: retry {attempt + 1}/{max_retries} "
+                                f"after {e}[/yellow]"
                             )
                             continue
-                        console.print(f"[red]Item {idx + 1}/{len(items)} {item_id}: failed - {e}[/red]")
+                        console.print(
+                            f"[red]Item {idx + 1}/{len(items)} {item_id}: failed - {e}[/red]"
+                        )
                         return
 
         await asyncio.gather(*[_run_one(idx, item) for idx, item, _ in planned])
@@ -1440,7 +1446,9 @@ def plot_batch(
                             state=state,
                             total_seconds=time.perf_counter() - total_start,
                         )
-                        console.print(f"[red]Item {idx + 1}/{len(items)} {item_id}: data missing[/red]")
+                        console.print(
+                            f"[red]Item {idx + 1}/{len(items)} {item_id}: data missing[/red]"
+                        )
                         return
                     try:
                         source_context, raw_data = load_statistical_plot_payload(data_path)
@@ -1466,7 +1474,8 @@ def plot_batch(
                             total_seconds=time.perf_counter() - total_start,
                         )
                         console.print(
-                            f"[green]Item {idx + 1}/{len(items)} {item_id}: ok[/green] [dim]{result.image_path}[/dim]"
+                            f"[green]Item {idx + 1}/{len(items)} {item_id}: ok[/green] "
+                            f"[dim]{result.image_path}[/dim]"
                         )
                         return
                     except Exception as e:
@@ -1478,10 +1487,13 @@ def plot_batch(
                         )
                         if attempt < max_retries:
                             console.print(
-                                f"[yellow]Item {item_id}: retry {attempt + 1}/{max_retries} after {e}[/yellow]"
+                                f"[yellow]Item {item_id}: retry {attempt + 1}/{max_retries} "
+                                f"after {e}[/yellow]"
                             )
                             continue
-                        console.print(f"[red]Item {idx + 1}/{len(items)} {item_id}: failed - {e}[/red]")
+                        console.print(
+                            f"[red]Item {idx + 1}/{len(items)} {item_id}: failed - {e}[/red]"
+                        )
                         return
 
         await asyncio.gather(*[_run_one(idx, item) for idx, item, _ in planned])

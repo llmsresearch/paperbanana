@@ -604,7 +604,9 @@ def run_plot_batch(
                         return
                     try:
                         source_context, raw_data = load_statistical_plot_payload(data_path)
-                        ar = item.get("aspect_ratio") or _aspect_ratio_value(default_aspect_ratio_label)
+                        ar = item.get("aspect_ratio") or _aspect_ratio_value(
+                            default_aspect_ratio_label
+                        )
                         gen_in = GenerationInput(
                             source_context=source_context,
                             communicative_intent=item["intent"],

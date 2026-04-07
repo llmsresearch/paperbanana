@@ -123,7 +123,9 @@ def load_batch_summary(output_dir: str, batch_id: str) -> dict[str, Any]:
                     status = "success" if item.get("output_path") else "failed"
                 status_counts[status] = status_counts.get(status, 0) + 1
             out["status_counts"] = status_counts
-            out["can_resume"] = any(status in ("pending", "running", "failed") for status in status_counts)
+            out["can_resume"] = any(
+                status in ("pending", "running", "failed") for status in status_counts
+            )
         except (OSError, json.JSONDecodeError) as e:
             out["report_preview"] = f"(could not read report: {e})"
     else:
