@@ -113,9 +113,14 @@ class BedrockVLM(VLMProvider):
 
         text = response["output"]["message"]["content"][0]["text"]
 
-        logger.debug(
-            "Bedrock response",
-            model=self._model,
-            usage=response.get("usage"),
-        )
+        usage = response.get("usage")
+        logger.debug("Bedrock response", model=self._model, usage=usage)
+
+        if self.cost_tracker is not None and usage:
+            self.cost_tracker.record_vlm_call(
+                provider=self.name,
+                model=self._model,
+                input_tokens=usage.get("inputTokens", 0),
+                output_tokens=usage.get("outputTokens", 0),
+            )
         return text
