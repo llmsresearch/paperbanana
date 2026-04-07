@@ -131,9 +131,14 @@ class AnthropicVLM(VLMProvider):
 
         text = "".join(parts)
 
-        logger.debug(
-            "Anthropic response",
-            model=self._model,
-            usage=getattr(response, "usage", None),
-        )
+        usage = getattr(response, "usage", None)
+        logger.debug("Anthropic response", model=self._model, usage=usage)
+
+        if self.cost_tracker is not None and usage is not None:
+            self.cost_tracker.record_vlm_call(
+                provider=self.name,
+                model=self._model,
+                input_tokens=getattr(usage, "input_tokens", 0),
+                output_tokens=getattr(usage, "output_tokens", 0),
+            )
         return text
