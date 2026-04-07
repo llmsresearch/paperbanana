@@ -44,9 +44,7 @@ def _select_ports(
     return (sx, src_cy), (dx + node_w, dst_cy)
 
 
-def _port_side(
-    node_xy: tuple[int, int], port_xy: tuple[int, int], node_w: int, node_h: int
-) -> str:
+def _port_side(node_xy: tuple[int, int], port_xy: tuple[int, int], node_w: int, node_h: int) -> str:
     """Return side name for a selected port relative to node rect."""
     x, y = node_xy
     px, py = port_xy
@@ -306,13 +304,7 @@ def save_svg_from_ir(diagram_ir: DiagramIR, output_path: str | Path) -> Path:
             # If using vertical ports, route through top bus channel.
             if x1 != (src[0] + node_w) and x1 != src[0]:
                 bus_y = top_y - 18
-                d = (
-                    f"M {x1} {y1} "
-                    f"L {x1} {bus_y} "
-                    f"L {bus_x} {bus_y} "
-                    f"L {bus_x} {y2} "
-                    f"L {x2} {y2}"
-                )
+                d = f"M {x1} {y1} L {x1} {bus_y} L {bus_x} {bus_y} L {bus_x} {y2} L {x2} {y2}"
             else:
                 exit_x = x1 + 16 if x1 <= src[0] + node_w // 2 else x1 - 16
                 pre_x2 = x2 - 16 if x2 >= dst[0] + node_w // 2 else x2 + 16
