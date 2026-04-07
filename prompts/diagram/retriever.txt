@@ -18,7 +18,7 @@ You must select the **Top {num_examples} candidates** that would be most helpful
 Your goal is to find examples that match the Target in both **Domain** and **Diagram Type**.
 
 **1. Match Research Topic (Use Methodology & Caption):**
-* What is the domain? (e.g., Agent & Reasoning, Vision & Perception, Generative & Learning, Science & Applications).
+* What is the domain? (e.g., Agent & Reasoning, Vision & Perception, Generative & Learning, Science & Applications, Systems & Networking, NLP & Language, Robotics & Control, Multimodal Fusion, Optimization & Theory, Healthcare & Medical).
 * Select candidates that belong to the **same research domain**.
 * *Why?* Similar domains share similar terminology (e.g., "Actor-Critic" in RL).
 
