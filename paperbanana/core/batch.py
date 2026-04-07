@@ -197,7 +197,7 @@ def _report_summary(report: dict[str, Any]) -> tuple[int, int, float]:
 
 
 def _utc_now() -> str:
-    return datetime.datetime.now(datetime.UTC).isoformat()
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
