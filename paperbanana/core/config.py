@@ -86,6 +86,11 @@ class Settings(BaseSettings):
     # Cache settings
     cache_dir: Optional[str] = Field(default=None, alias="PAPERBANANA_CACHE_DIR")
 
+    # Cost tracking
+    budget_usd: Optional[float] = Field(
+        default=None, gt=0, description="Budget cap in USD; pipeline aborts if exceeded"
+    )
+
     # Output settings
     output_dir: str = "outputs"
     output_format: OutputFormat = "png"
@@ -237,6 +242,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "output.format": "output_format",
         "output.save_iterations": "save_iterations",
         "output.save_prompts": "save_prompts",
+        "cost.budget": "budget_usd",
         "pipeline.prompt_dir": "prompt_dir",
     }
 

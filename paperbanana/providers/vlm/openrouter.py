@@ -103,9 +103,14 @@ class OpenRouterVLM(VLMProvider):
         data = response.json()
         text = data["choices"][0]["message"]["content"]
 
-        logger.debug(
-            "OpenRouter response",
-            model=self._model,
-            usage=data.get("usage"),
-        )
+        usage = data.get("usage")
+        logger.debug("OpenRouter response", model=self._model, usage=usage)
+
+        if self.cost_tracker is not None and usage:
+            self.cost_tracker.record_vlm_call(
+                provider=self.name,
+                model=self._model,
+                input_tokens=usage.get("prompt_tokens", 0),
+                output_tokens=usage.get("completion_tokens", 0),
+            )
         return text
