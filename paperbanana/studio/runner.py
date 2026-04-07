@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
-import json
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from paperbanana.core.batch import generate_batch_id, load_batch_manifest
+from paperbanana.core.batch import (
+    generate_batch_id,
+    load_batch_manifest,
+    load_plot_batch_manifest,
+)
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
 from paperbanana.core.pipeline import PaperBananaPipeline
+from paperbanana.core.plot_data import load_statistical_plot_payload
 from paperbanana.core.resume import load_resume_state
 from paperbanana.core.types import (
     DiagramType,
@@ -235,19 +240,7 @@ def run_plot(
         return log.text, None, [], msg
 
     try:
-        if path.suffix.lower() == ".csv":
-            import pandas as pd
-
-            df = pd.read_csv(path)
-            raw_data = df.to_dict(orient="records")
-            source_context = (
-                f"CSV columns: {list(df.columns)}\nRows: {len(df)}\n\n"
-                f"Sample:\n{df.head().to_string()}"
-            )
-        else:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            raw_data = raw if isinstance(raw, list) else raw.get("data", raw)
-            source_context = f"JSON data:\n{json.dumps(raw, indent=2)[:8000]}"
+        source_context, raw_data = load_statistical_plot_payload(path)
 
         gen_in = GenerationInput(
             source_context=source_context,
@@ -421,7 +414,12 @@ def run_batch(
     lines.append(f"Output: {batch_dir}")
     lines.append("")
 
-    report: dict[str, Any] = {"batch_id": batch_id, "manifest": str(mpath.resolve()), "items": []}
+    report: dict[str, Any] = {
+        "batch_id": batch_id,
+        "manifest": str(mpath.resolve()),
+        "batch_kind": "methodology",
+        "items": [],
+    }
 
     async def _run_all_items() -> None:
         for idx, item in enumerate(items):
@@ -482,4 +480,130 @@ def run_batch(
     lines.append(f"Report written: {report_path}")
     ok = sum(1 for x in report["items"] if x.get("output_path"))
     lines.append(f"Succeeded: {ok}/{len(items)}")
+    return "\n".join(lines), str(batch_dir.resolve())
+
+
+def run_plot_batch(
+    settings: Settings,
+    manifest_path: str,
+    default_aspect_ratio_label: str = "default",
+    verbose_logging: bool = False,
+) -> tuple[str, str]:
+    """Run plot batch manifest; returns (log, batch_dir path or error note)."""
+    configure_logging(verbose=verbose_logging)
+    lines: list[str] = []
+    mpath = Path(manifest_path)
+    if not mpath.is_file():
+        msg = f"Manifest not found: {manifest_path}"
+        lines.append(msg)
+        return "\n".join(lines), msg
+
+    try:
+        items = load_plot_batch_manifest(mpath)
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
+        msg = f"Invalid manifest: {e}"
+        lines.append(msg)
+        return "\n".join(lines), msg
+
+    batch_id = generate_batch_id()
+    batch_dir = Path(settings.output_dir) / batch_id
+    ensure_dir(batch_dir)
+
+    settings = settings.model_copy(update={"output_dir": str(batch_dir)})
+    lines.append(f"Batch ID: {batch_id}")
+    lines.append("Kind: statistical plots")
+    lines.append(f"Items: {len(items)}")
+    lines.append(f"Output: {batch_dir}")
+    lines.append("")
+
+    report: dict[str, Any] = {
+        "batch_id": batch_id,
+        "manifest": str(mpath.resolve()),
+        "batch_kind": "statistical_plot",
+        "items": [],
+    }
+
+    total_start = time.perf_counter()
+
+    async def _run_all_items() -> None:
+        for idx, item in enumerate(items):
+            item_id = item["id"]
+            data_path = Path(item["data"])
+            lines.append(f"— Item {idx + 1}/{len(items)} — {item_id}")
+            if not data_path.is_file():
+                lines.append(f"  skip: data file not found ({data_path})")
+                report["items"].append(
+                    {
+                        "id": item_id,
+                        "data": item["data"],
+                        "caption": item["intent"],
+                        "run_id": None,
+                        "output_path": None,
+                        "error": "data file not found",
+                    }
+                )
+                continue
+            try:
+                source_context, raw_data = load_statistical_plot_payload(data_path)
+            except (ValueError, OSError) as e:
+                lines.append(f"  skip: {e}")
+                report["items"].append(
+                    {
+                        "id": item_id,
+                        "data": item["data"],
+                        "caption": item["intent"],
+                        "run_id": None,
+                        "output_path": None,
+                        "error": str(e),
+                    }
+                )
+                continue
+
+            ar = item.get("aspect_ratio") or _aspect_ratio_value(default_aspect_ratio_label)
+            gen_in = GenerationInput(
+                source_context=source_context,
+                communicative_intent=item["intent"],
+                diagram_type=DiagramType.STATISTICAL_PLOT,
+                raw_data={"data": raw_data},
+                aspect_ratio=ar,
+            )
+            pipeline = PaperBananaPipeline(settings=settings)
+            try:
+                result = await pipeline.generate(gen_in)
+                lines.append(f"  ok: {result.image_path}")
+                report["items"].append(
+                    {
+                        "id": item_id,
+                        "data": item["data"],
+                        "caption": item["intent"],
+                        "run_id": result.metadata.get("run_id"),
+                        "output_path": result.image_path,
+                        "iterations": len(result.iterations),
+                    }
+                )
+            except Exception as e:
+                lines.append(f"  error: {e}")
+                report["items"].append(
+                    {
+                        "id": item_id,
+                        "data": item["data"],
+                        "caption": item["intent"],
+                        "run_id": None,
+                        "output_path": None,
+                        "error": str(e),
+                    }
+                )
+
+    asyncio.run(_run_all_items())
+
+    total_elapsed = time.perf_counter() - total_start
+    report["total_seconds"] = round(total_elapsed, 1)
+
+    report_path = batch_dir / "batch_report.json"
+    save_json(report, report_path)
+    lines.append("")
+    lines.append(f"Report written: {report_path}")
+    ok = sum(1 for x in report["items"] if x.get("output_path"))
+    lines.append(f"Succeeded: {ok}/{len(items)}")
+    lines.append(f"Total time: {report['total_seconds']}s")
     return "\n".join(lines), str(batch_dir.resolve())

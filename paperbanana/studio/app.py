@@ -18,6 +18,7 @@ from paperbanana.studio.runner import (
     run_evaluate,
     run_methodology,
     run_plot,
+    run_plot_batch,
 )
 
 
@@ -537,17 +538,28 @@ def build_studio_app(
             # ── Batch ───────────────────────────────────────────────────
             with gr.Tab("Batch"):
                 gr.Markdown(
-                    "Upload a **YAML** or **JSON** manifest (same format as "
-                    "`paperbanana batch --manifest`). Paths inside the file are "
-                    "resolved relative to the manifest’s directory — prefer absolute "
-                    "paths or keep inputs next to the manifest."
+                    "Upload a **YAML** or **JSON** manifest. **Methodology** manifests "
+                    "match `paperbanana batch` (`input` + `caption` per item). "
+                    "**Plot** manifests match `paperbanana plot-batch` (`data` + `intent`). "
+                    "Paths resolve relative to the manifest directory."
+                )
+                b_mode = gr.Radio(
+                    label="Batch type",
+                    choices=["Methodology diagrams", "Statistical plots"],
+                    value="Methodology diagrams",
                 )
                 bf = gr.File(label="Manifest", file_types=[".yaml", ".yml", ".json"])
+                b_ar = gr.Dropdown(
+                    label="Default aspect ratio (plots only)",
+                    choices=ASPECT_RATIO_CHOICES,
+                    value="default",
+                )
                 b_log = gr.Textbox(label="Batch log", lines=22)
                 b_dir = gr.Textbox(label="Batch output directory", lines=1)
                 b_go = gr.Button("Run batch", variant="primary")
 
                 def _do_batch(
+                    mode,
                     od,
                     c,
                     vp,
@@ -562,6 +574,7 @@ def build_studio_app(
                     sp,
                     sd,
                     mfile,
+                    bar,
                 ):
                     _dotenv()
                     try:
@@ -569,7 +582,12 @@ def build_studio_app(
                         path = _upload_path(mfile)
                         if not path:
                             return "Upload a manifest file.", ""
-                        log, bpath = run_batch(st0, path, verbose_logging=False)
+                        if mode == "Statistical plots":
+                            log, bpath = run_plot_batch(
+                                st0, path, default_aspect_ratio_label=bar, verbose_logging=False
+                            )
+                        else:
+                            log, bpath = run_batch(st0, path, verbose_logging=False)
                         return log, bpath
                     except Exception as e:
                         return f"{type(e).__name__}: {e}", ""
@@ -577,6 +595,7 @@ def build_studio_app(
                 b_go.click(
                     _do_batch,
                     inputs=[
+                        b_mode,
                         out_dir,
                         cfg,
                         vlm_p,
@@ -591,6 +610,7 @@ def build_studio_app(
                         save_pr,
                         seed_val,
                         bf,
+                        b_ar,
                     ],
                     outputs=[b_log, b_dir],
                 )
