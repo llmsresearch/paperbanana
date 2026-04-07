@@ -115,6 +115,17 @@ def load_batch_summary(output_dir: str, batch_id: str) -> dict[str, Any]:
         try:
             data = json.loads(report_path.read_text(encoding="utf-8"))
             out["report_preview"] = json.dumps(data, indent=2)[:16000]
+            items = data.get("items", []) if isinstance(data, dict) else []
+            status_counts: dict[str, int] = {}
+            for item in items:
+                status = item.get("status")
+                if not status:
+                    status = "success" if item.get("output_path") else "failed"
+                status_counts[status] = status_counts.get(status, 0) + 1
+            out["status_counts"] = status_counts
+            out["can_resume"] = any(
+                status in ("pending", "running", "failed") for status in status_counts
+            )
         except (OSError, json.JSONDecodeError) as e:
             out["report_preview"] = f"(could not read report: {e})"
     else:

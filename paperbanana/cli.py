@@ -951,6 +951,16 @@ def batch(
     auto_download_data: bool = typer.Option(
         False, "--auto-download-data", help="Auto-download curated expansion if needed"
     ),
+    resume_batch: Optional[str] = typer.Option(
+        None, "--resume-batch", help="Batch ID or batch directory to resume"
+    ),
+    retry_failed: bool = typer.Option(
+        False, "--retry-failed", help="Retry previously failed items during resume"
+    ),
+    max_retries: int = typer.Option(
+        0, "--max-retries", help="Extra retries per item after first failure"
+    ),
+    concurrency: int = typer.Option(1, "--concurrency", help="Parallel item workers"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
 ):
     """Generate multiple methodology diagrams from a manifest file (YAML or JSON)."""
@@ -962,6 +972,12 @@ def batch(
             f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
+    if max_retries < 0:
+        console.print("[red]Error: --max-retries must be >= 0[/red]")
+        raise typer.Exit(1)
+    if concurrency < 1:
+        console.print("[red]Error: --concurrency must be >= 1[/red]")
+        raise typer.Exit(1)
 
     configure_logging(verbose=verbose)
     manifest_path = Path(manifest)
@@ -969,8 +985,17 @@ def batch(
         console.print(f"[red]Error: Manifest not found: {manifest}[/red]")
         raise typer.Exit(1)
 
-    from paperbanana.core.batch import generate_batch_id, load_batch_manifest
-    from paperbanana.core.utils import ensure_dir, save_json
+    from paperbanana.core.batch import (
+        checkpoint_progress,
+        generate_batch_id,
+        init_or_load_checkpoint,
+        load_batch_manifest,
+        mark_item_failure,
+        mark_item_running,
+        mark_item_success,
+        select_items_for_run,
+    )
+    from paperbanana.core.utils import ensure_dir
 
     try:
         items = load_batch_manifest(manifest_path)
@@ -978,8 +1003,18 @@ def batch(
         console.print(f"[red]Error loading manifest: {e}[/red]")
         raise typer.Exit(1)
 
-    batch_id = generate_batch_id()
-    batch_dir = Path(output_dir) / batch_id
+    is_resume = bool(resume_batch)
+    if is_resume:
+        resume_ref = Path(resume_batch)
+        if resume_ref.is_dir():
+            batch_dir = resume_ref.resolve()
+            batch_id = batch_dir.name
+        else:
+            batch_id = resume_batch.strip()
+            batch_dir = (Path(output_dir) / batch_id).resolve()
+    else:
+        batch_id = generate_batch_id()
+        batch_dir = (Path(output_dir) / batch_id).resolve()
     ensure_dir(batch_dir)
 
     overrides = {"output_dir": str(batch_dir), "output_format": format}
@@ -1025,110 +1060,123 @@ def batch(
 
     console.print(
         Panel.fit(
-            f"[bold]PaperBanana[/bold] — Batch Generation\n\n"
+            f"[bold]PaperBanana[/bold] — {'Resume ' if is_resume else ''}Batch Generation\n\n"
             f"Manifest: {manifest_path.name}\n"
             f"Items: {len(items)}\n"
-            f"Output: {batch_dir}",
+            f"Output: {batch_dir}\n"
+            f"Concurrency: {concurrency}",
             border_style="blue",
         )
     )
     console.print()
 
     from paperbanana.core.pipeline import PaperBananaPipeline
+    from paperbanana.core.source_loader import load_methodology_source
 
-    report = {
-        "batch_id": batch_id,
-        "manifest": str(manifest_path),
-        "batch_kind": "methodology",
-        "items": [],
-    }
-    total_start = time.perf_counter()
-
-    for idx, item in enumerate(items):
-        item_id = item["id"]
-        input_path = Path(item["input"])
-        if not input_path.exists():
-            console.print(f"[red]Skipping item '{item_id}': input not found: {input_path}[/red]")
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "input": item["input"],
-                    "caption": item["caption"],
-                    "run_id": None,
-                    "output_path": None,
-                    "error": "input file not found",
-                }
-            )
-            continue
-        from paperbanana.core.source_loader import load_methodology_source
-
-        try:
-            source_context = load_methodology_source(input_path, pdf_pages=item.get("pdf_pages"))
-        except ImportError as e:
-            console.print(f"[red]Skipping item '{item_id}': {e}[/red]")
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "input": item["input"],
-                    "caption": item["caption"],
-                    "run_id": None,
-                    "output_path": None,
-                    "error": str(e),
-                }
-            )
-            continue
-        except ValueError as e:
-            console.print(f"[red]Skipping item '{item_id}': {e}[/red]")
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "input": item["input"],
-                    "caption": item["caption"],
-                    "run_id": None,
-                    "output_path": None,
-                    "error": str(e),
-                }
-            )
-            continue
-
-        gen_input = GenerationInput(
-            source_context=source_context,
-            communicative_intent=item["caption"],
-            diagram_type=DiagramType.METHODOLOGY,
+    try:
+        state = init_or_load_checkpoint(
+            batch_dir=batch_dir,
+            batch_id=batch_id,
+            manifest_path=manifest_path,
+            batch_kind="methodology",
+            items=items,
+            resume=is_resume,
         )
-        console.print(f"[bold]Item {idx + 1}/{len(items)}[/bold] — {item_id}")
-        pipeline = PaperBananaPipeline(settings=settings)
-        try:
-            result = asyncio.run(pipeline.generate(gen_input))
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "input": item["input"],
-                    "caption": item["caption"],
-                    "run_id": result.metadata.get("run_id"),
-                    "output_path": result.image_path,
-                    "iterations": len(result.iterations),
-                }
-            )
-            console.print(f"  [green]✓[/green] [dim]{result.image_path}[/dim]\n")
-        except Exception as e:
-            console.print(f"  [red]✗[/red] {e}\n")
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "input": item["input"],
-                    "caption": item["caption"],
-                    "run_id": None,
-                    "output_path": None,
-                    "error": str(e),
-                }
-            )
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    total_start = time.perf_counter()
+    planned = select_items_for_run(state, retry_failed=retry_failed)
+    if not planned:
+        checkpoint_progress(batch_dir=batch_dir, state=state, mark_complete=True)
+        console.print("[yellow]Nothing to run: all items already completed.[/yellow]")
+        console.print(f"  Report: [bold]{batch_dir / 'batch_report.json'}[/bold]")
+        return
+
+    async def _run_all() -> None:
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _run_one(idx: int, item: dict[str, object]) -> None:
+            item_key = str(item["_item_key"])
+            item_id = str(item["id"])
+            async with sem:
+                for attempt in range(max_retries + 1):
+                    mark_item_running(state, item_key)
+                    checkpoint_progress(
+                        batch_dir=batch_dir,
+                        state=state,
+                        total_seconds=time.perf_counter() - total_start,
+                    )
+                    input_path = Path(str(item["input"]))
+                    if not input_path.exists():
+                        mark_item_failure(state, item_key, "input file not found")
+                        checkpoint_progress(
+                            batch_dir=batch_dir,
+                            state=state,
+                            total_seconds=time.perf_counter() - total_start,
+                        )
+                        console.print(
+                            f"[red]Item {idx + 1}/{len(items)} {item_id}: input missing[/red]"
+                        )
+                        return
+                    try:
+                        source_context = load_methodology_source(
+                            input_path, pdf_pages=item.get("pdf_pages")
+                        )
+                        gen_input = GenerationInput(
+                            source_context=source_context,
+                            communicative_intent=str(item["caption"]),
+                            diagram_type=DiagramType.METHODOLOGY,
+                        )
+                        result = await PaperBananaPipeline(settings=settings).generate(gen_input)
+                        mark_item_success(
+                            state,
+                            item_key,
+                            result.metadata.get("run_id"),
+                            result.image_path,
+                            len(result.iterations),
+                        )
+                        checkpoint_progress(
+                            batch_dir=batch_dir,
+                            state=state,
+                            total_seconds=time.perf_counter() - total_start,
+                        )
+                        console.print(
+                            f"[green]Item {idx + 1}/{len(items)} {item_id}: ok[/green] "
+                            f"[dim]{result.image_path}[/dim]"
+                        )
+                        return
+                    except Exception as e:
+                        mark_item_failure(state, item_key, str(e))
+                        checkpoint_progress(
+                            batch_dir=batch_dir,
+                            state=state,
+                            total_seconds=time.perf_counter() - total_start,
+                        )
+                        if attempt < max_retries:
+                            console.print(
+                                f"[yellow]Item {item_id}: retry {attempt + 1}/{max_retries} "
+                                f"after {e}[/yellow]"
+                            )
+                            continue
+                        console.print(
+                            f"[red]Item {idx + 1}/{len(items)} {item_id}: failed - {e}[/red]"
+                        )
+                        return
+
+        await asyncio.gather(*[_run_one(idx, item) for idx, item, _ in planned])
+
+    asyncio.run(_run_all())
 
     total_elapsed = time.perf_counter() - total_start
-    report["total_seconds"] = round(total_elapsed, 1)
+    report = checkpoint_progress(
+        batch_dir=batch_dir,
+        state=state,
+        total_seconds=total_elapsed,
+        mark_complete=True,
+    )
     report_path = batch_dir / "batch_report.json"
-    save_json(report, report_path)
-
     succeeded = sum(1 for x in report["items"] if x.get("output_path"))
     console.print(
         f"[green]Batch complete.[/green] [dim]{total_elapsed:.1f}s · "
@@ -1250,6 +1298,16 @@ def plot_batch(
         "-ar",
         help="Default aspect ratio when not set per manifest item",
     ),
+    resume_batch: Optional[str] = typer.Option(
+        None, "--resume-batch", help="Batch ID or batch directory to resume"
+    ),
+    retry_failed: bool = typer.Option(
+        False, "--retry-failed", help="Retry previously failed items during resume"
+    ),
+    max_retries: int = typer.Option(
+        0, "--max-retries", help="Extra retries per item after first failure"
+    ),
+    concurrency: int = typer.Option(1, "--concurrency", help="Parallel item workers"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
 ):
     """Generate multiple statistical plots from a manifest (data + intent per item)."""
@@ -1261,6 +1319,12 @@ def plot_batch(
             f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
+    if max_retries < 0:
+        console.print("[red]Error: --max-retries must be >= 0[/red]")
+        raise typer.Exit(1)
+    if concurrency < 1:
+        console.print("[red]Error: --concurrency must be >= 1[/red]")
+        raise typer.Exit(1)
 
     configure_logging(verbose=verbose)
     manifest_path = Path(manifest)
@@ -1268,9 +1332,18 @@ def plot_batch(
         console.print(f"[red]Error: Manifest not found: {manifest}[/red]")
         raise typer.Exit(1)
 
-    from paperbanana.core.batch import generate_batch_id, load_plot_batch_manifest
+    from paperbanana.core.batch import (
+        checkpoint_progress,
+        generate_batch_id,
+        init_or_load_checkpoint,
+        load_plot_batch_manifest,
+        mark_item_failure,
+        mark_item_running,
+        mark_item_success,
+        select_items_for_run,
+    )
     from paperbanana.core.plot_data import load_statistical_plot_payload
-    from paperbanana.core.utils import ensure_dir, save_json
+    from paperbanana.core.utils import ensure_dir
 
     try:
         items = load_plot_batch_manifest(manifest_path)
@@ -1278,8 +1351,18 @@ def plot_batch(
         console.print(f"[red]Error loading manifest: {e}[/red]")
         raise typer.Exit(1)
 
-    batch_id = generate_batch_id()
-    batch_dir = Path(output_dir) / batch_id
+    is_resume = bool(resume_batch)
+    if is_resume:
+        resume_ref = Path(resume_batch)
+        if resume_ref.is_dir():
+            batch_dir = resume_ref.resolve()
+            batch_id = batch_dir.name
+        else:
+            batch_id = resume_batch.strip()
+            batch_dir = (Path(output_dir) / batch_id).resolve()
+    else:
+        batch_id = generate_batch_id()
+        batch_dir = (Path(output_dir) / batch_id).resolve()
     ensure_dir(batch_dir)
 
     overrides: dict = {
@@ -1316,10 +1399,11 @@ def plot_batch(
 
     console.print(
         Panel.fit(
-            f"[bold]PaperBanana[/bold] — Batch Plot Generation\n\n"
+            f"[bold]PaperBanana[/bold] — {'Resume ' if is_resume else ''}Batch Plot Generation\n\n"
             f"Manifest: {manifest_path.name}\n"
             f"Items: {len(items)}\n"
-            f"Output: {batch_dir}",
+            f"Output: {batch_dir}\n"
+            f"Concurrency: {concurrency}",
             border_style="green",
         )
     )
@@ -1327,88 +1411,110 @@ def plot_batch(
 
     from paperbanana.core.pipeline import PaperBananaPipeline
 
-    report: dict = {
-        "batch_id": batch_id,
-        "manifest": str(manifest_path),
-        "batch_kind": "statistical_plot",
-        "items": [],
-    }
-    total_start = time.perf_counter()
-
-    for idx, item in enumerate(items):
-        item_id = item["id"]
-        data_path = Path(item["data"])
-        if not data_path.exists():
-            console.print(f"[red]Skipping item '{item_id}': data file not found: {data_path}[/red]")
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "data": item["data"],
-                    "caption": item["intent"],
-                    "run_id": None,
-                    "output_path": None,
-                    "error": "data file not found",
-                }
-            )
-            continue
-
-        try:
-            source_context, raw_data = load_statistical_plot_payload(data_path)
-        except (ValueError, OSError) as e:
-            console.print(f"[red]Skipping item '{item_id}': {e}[/red]")
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "data": item["data"],
-                    "caption": item["intent"],
-                    "run_id": None,
-                    "output_path": None,
-                    "error": str(e),
-                }
-            )
-            continue
-
-        ar = item.get("aspect_ratio") or aspect_ratio
-        gen_input = GenerationInput(
-            source_context=source_context,
-            communicative_intent=item["intent"],
-            diagram_type=DiagramType.STATISTICAL_PLOT,
-            raw_data={"data": raw_data},
-            aspect_ratio=ar,
+    try:
+        state = init_or_load_checkpoint(
+            batch_dir=batch_dir,
+            batch_id=batch_id,
+            manifest_path=manifest_path,
+            batch_kind="statistical_plot",
+            items=items,
+            resume=is_resume,
         )
-        console.print(f"[bold]Item {idx + 1}/{len(items)}[/bold] — {item_id}")
-        pipeline = PaperBananaPipeline(settings=settings)
-        try:
-            result = asyncio.run(pipeline.generate(gen_input))
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "data": item["data"],
-                    "caption": item["intent"],
-                    "run_id": result.metadata.get("run_id"),
-                    "output_path": result.image_path,
-                    "iterations": len(result.iterations),
-                }
-            )
-            console.print(f"  [green]✓[/green] [dim]{result.image_path}[/dim]\n")
-        except Exception as e:
-            console.print(f"  [red]✗[/red] {e}\n")
-            report["items"].append(
-                {
-                    "id": item_id,
-                    "data": item["data"],
-                    "caption": item["intent"],
-                    "run_id": None,
-                    "output_path": None,
-                    "error": str(e),
-                }
-            )
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+    total_start = time.perf_counter()
+    planned = select_items_for_run(state, retry_failed=retry_failed)
+    if not planned:
+        checkpoint_progress(batch_dir=batch_dir, state=state, mark_complete=True)
+        console.print("[yellow]Nothing to run: all items already completed.[/yellow]")
+        console.print(f"  Report: [bold]{batch_dir / 'batch_report.json'}[/bold]")
+        return
+
+    async def _run_all() -> None:
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _run_one(idx: int, item: dict[str, object]) -> None:
+            item_key = str(item["_item_key"])
+            item_id = str(item["id"])
+            async with sem:
+                for attempt in range(max_retries + 1):
+                    mark_item_running(state, item_key)
+                    checkpoint_progress(
+                        batch_dir=batch_dir,
+                        state=state,
+                        total_seconds=time.perf_counter() - total_start,
+                    )
+                    data_path = Path(str(item["data"]))
+                    if not data_path.exists():
+                        mark_item_failure(state, item_key, "data file not found")
+                        checkpoint_progress(
+                            batch_dir=batch_dir,
+                            state=state,
+                            total_seconds=time.perf_counter() - total_start,
+                        )
+                        console.print(
+                            f"[red]Item {idx + 1}/{len(items)} {item_id}: data missing[/red]"
+                        )
+                        return
+                    try:
+                        source_context, raw_data = load_statistical_plot_payload(data_path)
+                        ar = item.get("aspect_ratio") or aspect_ratio
+                        gen_input = GenerationInput(
+                            source_context=source_context,
+                            communicative_intent=str(item["intent"]),
+                            diagram_type=DiagramType.STATISTICAL_PLOT,
+                            raw_data={"data": raw_data},
+                            aspect_ratio=ar,
+                        )
+                        result = await PaperBananaPipeline(settings=settings).generate(gen_input)
+                        mark_item_success(
+                            state,
+                            item_key,
+                            result.metadata.get("run_id"),
+                            result.image_path,
+                            len(result.iterations),
+                        )
+                        checkpoint_progress(
+                            batch_dir=batch_dir,
+                            state=state,
+                            total_seconds=time.perf_counter() - total_start,
+                        )
+                        console.print(
+                            f"[green]Item {idx + 1}/{len(items)} {item_id}: ok[/green] "
+                            f"[dim]{result.image_path}[/dim]"
+                        )
+                        return
+                    except Exception as e:
+                        mark_item_failure(state, item_key, str(e))
+                        checkpoint_progress(
+                            batch_dir=batch_dir,
+                            state=state,
+                            total_seconds=time.perf_counter() - total_start,
+                        )
+                        if attempt < max_retries:
+                            console.print(
+                                f"[yellow]Item {item_id}: retry {attempt + 1}/{max_retries} "
+                                f"after {e}[/yellow]"
+                            )
+                            continue
+                        console.print(
+                            f"[red]Item {idx + 1}/{len(items)} {item_id}: failed - {e}[/red]"
+                        )
+                        return
+
+        await asyncio.gather(*[_run_one(idx, item) for idx, item, _ in planned])
+
+    asyncio.run(_run_all())
 
     total_elapsed = time.perf_counter() - total_start
-    report["total_seconds"] = round(total_elapsed, 1)
+    report = checkpoint_progress(
+        batch_dir=batch_dir,
+        state=state,
+        total_seconds=total_elapsed,
+        mark_complete=True,
+    )
     report_path = batch_dir / "batch_report.json"
-    save_json(report, report_path)
-
     succeeded = sum(1 for x in report["items"] if x.get("output_path"))
     console.print(
         f"[green]Plot batch complete.[/green] [dim]{total_elapsed:.1f}s · "
