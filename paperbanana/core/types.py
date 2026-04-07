@@ -135,6 +135,39 @@ class GenerationOutput(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class DiagramIRNode(BaseModel):
+    """A node in an editable diagram intermediate representation."""
+
+    id: str
+    label: str
+    lane: Optional[str] = None
+
+
+class DiagramIREdge(BaseModel):
+    """A directed edge in the diagram intermediate representation."""
+
+    source: str
+    target: str
+    label: Optional[str] = None
+
+
+class DiagramIRGroup(BaseModel):
+    """A visual lane/group container in the diagram IR."""
+
+    id: str
+    label: str
+    node_ids: list[str] = Field(default_factory=list)
+
+
+class DiagramIR(BaseModel):
+    """Lightweight intermediate representation for editable exports."""
+
+    title: str
+    nodes: list[DiagramIRNode] = Field(default_factory=list)
+    edges: list[DiagramIREdge] = Field(default_factory=list)
+    groups: list[DiagramIRGroup] = Field(default_factory=list)
+
+
 VALID_WINNERS = {"Model", "Human", "Both are good", "Both are bad"}
 
 WINNER_SCORE_MAP: dict[str, float] = {

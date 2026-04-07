@@ -70,6 +70,32 @@ def test_generate_accepts_progress_json_flag():
         Path(input_path).unlink(missing_ok=True)
 
 
+def test_generate_dry_run_accepts_svg_format():
+    """paperbanana generate accepts --format svg."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Sample methodology text for testing.")
+        input_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--input",
+                input_path,
+                "--caption",
+                "test",
+                "--dry-run",
+                "--format",
+                "svg",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Dry Run" in result.output
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
 def test_sweep_dry_run_writes_report(tmp_path):
     """sweep --dry-run plans variants and writes sweep_report.json."""
     input_path = tmp_path / "input.txt"

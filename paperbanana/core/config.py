@@ -9,7 +9,7 @@ import yaml
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
-OutputFormat = Literal["png", "jpeg", "webp"]
+OutputFormat = Literal["png", "jpeg", "webp", "svg"]
 ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
 Venue = Literal["neurips", "icml", "acl", "ieee", "custom"]
 
@@ -166,12 +166,12 @@ class Settings(BaseSettings):
     @field_validator("output_format", mode="before")
     @classmethod
     def validate_output_format(cls, v: Any) -> str:
-        """Validate output_format is png, jpeg, or webp (case-insensitive)."""
+        """Validate output_format is png, jpeg, webp, or svg (case-insensitive)."""
         if v is None:
             return "png"
         v = str(v).lower()
-        if v not in ("png", "jpeg", "webp"):
-            raise ValueError(f"output_format must be png, jpeg, or webp. Got: {v}")
+        if v not in ("png", "jpeg", "webp", "svg"):
+            raise ValueError(f"output_format must be png, jpeg, webp, or svg. Got: {v}")
         return v
 
     @field_validator("exemplar_retrieval_top_k")

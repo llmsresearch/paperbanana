@@ -12,6 +12,7 @@ import structlog
 from paperbanana.agents.critic import CriticAgent
 from paperbanana.agents.optimizer import InputOptimizerAgent
 from paperbanana.agents.planner import PlannerAgent
+from paperbanana.agents.ir_planner import IRPlannerAgent
 from paperbanana.agents.retriever import RetrieverAgent
 from paperbanana.agents.stylist import StylistAgent
 from paperbanana.agents.visualizer import VisualizerAgent
@@ -27,6 +28,11 @@ from paperbanana.core.types import (
     PipelineProgressStage,
     ReferenceExample,
     RunMetadata,
+)
+from paperbanana.core.diagram_ir import (
+    extract_diagram_ir,
+    save_raster_wrapped_svg,
+    save_svg_from_ir,
 )
 from paperbanana.core.utils import (
     ensure_dir,
@@ -186,6 +192,9 @@ class PaperBananaPipeline:
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
         self.planner = PlannerAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
+        self.ir_planner = IRPlannerAgent(
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
         self.stylist = StylistAgent(
@@ -723,9 +732,29 @@ class PaperBananaPipeline:
 
         if iterations:
             final_image = iterations[-1].image_path
-            # Load and save in desired format (handles PNG→JPEG/WebP conversion)
-            img = load_image(final_image)
-            save_image(img, final_output_path, format=output_format)
+            if output_format == "svg":
+                if input.diagram_type == DiagramType.METHODOLOGY:
+                    try:
+                        diagram_ir = await self.ir_planner.run(
+                            source_context=input.source_context,
+                            caption=input.communicative_intent,
+                            styled_description=current_description,
+                        )
+                        logger.info("IR planner produced structured diagram IR")
+                    except Exception as e:
+                        logger.warning("IR planner failed; falling back to heuristic IR", error=str(e))
+                        diagram_ir = extract_diagram_ir(
+                            current_description,
+                            title=input.communicative_intent or "Methodology Diagram",
+                        )
+                    save_json(diagram_ir.model_dump(), self._run_dir / "diagram_ir.json")
+                    save_svg_from_ir(diagram_ir, final_output_path)
+                else:
+                    save_raster_wrapped_svg(final_image, final_output_path)
+            else:
+                # Load and save in desired format (handles PNG→JPEG/WebP conversion)
+                img = load_image(final_image)
+                save_image(img, final_output_path, format=output_format)
         else:
             # Budget exceeded before any iteration could complete
             final_output_path = ""
@@ -1032,8 +1061,28 @@ class PaperBananaPipeline:
 
         if iterations:
             final_image = iterations[-1].image_path
-            img = load_image(final_image)
-            save_image(img, final_output_path, format=output_format)
+            if output_format == "svg":
+                if resume_state.diagram_type == DiagramType.METHODOLOGY:
+                    try:
+                        diagram_ir = await self.ir_planner.run(
+                            source_context=resume_state.source_context,
+                            caption=resume_state.communicative_intent,
+                            styled_description=current_description,
+                        )
+                        logger.info("IR planner produced structured diagram IR")
+                    except Exception as e:
+                        logger.warning("IR planner failed; falling back to heuristic IR", error=str(e))
+                        diagram_ir = extract_diagram_ir(
+                            current_description,
+                            title=resume_state.communicative_intent or "Methodology Diagram",
+                        )
+                    save_json(diagram_ir.model_dump(), run_dir / "diagram_ir.json")
+                    save_svg_from_ir(diagram_ir, final_output_path)
+                else:
+                    save_raster_wrapped_svg(final_image, final_output_path)
+            else:
+                img = load_image(final_image)
+                save_image(img, final_output_path, format=output_format)
         else:
             # Budget exceeded before any iteration could complete
             final_output_path = ""

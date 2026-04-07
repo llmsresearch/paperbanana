@@ -115,7 +115,7 @@ def generate(
         "png",
         "--format",
         "-f",
-        help="Output image format (png, jpeg, or webp)",
+        help="Output image format (png, jpeg, webp, or svg)",
     ),
     vector: bool = typer.Option(
         False,
@@ -208,8 +208,8 @@ def generate(
     ),
 ):
     """Generate a methodology diagram from a text description."""
-    if format not in ("png", "jpeg", "webp"):
-        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+    if format not in ("png", "jpeg", "webp", "svg"):
+        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {format}[/red]")
         raise typer.Exit(1)
 
     if feedback and not continue_run and not continue_last:
@@ -713,8 +713,8 @@ def sweep(
     the number of critic suggestions on the **final** refinement iteration. This is a rough
     proxy for comparing runs, not a substitute for human evaluation.
     """
-    if format not in ("png", "jpeg", "webp"):
-        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+    if format not in ("png", "jpeg", "webp", "svg"):
+        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {format}[/red]")
         raise typer.Exit(1)
     if max_variants is not None and max_variants < 1:
         console.print("[red]Error: --max-variants must be >= 1[/red]")
@@ -966,8 +966,8 @@ def batch(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress per-item status table"),
 ):
     """Generate multiple methodology diagrams from a manifest file (YAML or JSON)."""
-    if format not in ("png", "jpeg", "webp"):
-        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+    if format not in ("png", "jpeg", "webp", "svg"):
+        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {format}[/red]")
         raise typer.Exit(1)
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
         console.print(
@@ -1420,8 +1420,8 @@ def plot_batch(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
 ):
     """Generate multiple statistical plots from a manifest (data + intent per item)."""
-    if format not in ("png", "jpeg", "webp"):
-        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+    if format not in ("png", "jpeg", "webp", "svg"):
+        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {format}[/red]")
         raise typer.Exit(1)
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
         console.print(
@@ -1643,7 +1643,7 @@ def plot(
         "png",
         "--format",
         "-f",
-        help="Output image format (png, jpeg, or webp)",
+        help="Output image format (png, jpeg, webp, or svg)",
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
@@ -1687,8 +1687,8 @@ def plot(
     ),
 ):
     """Generate a statistical plot from data."""
-    if format not in ("png", "jpeg", "webp"):
-        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+    if format not in ("png", "jpeg", "webp", "svg"):
+        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {format}[/red]")
         raise typer.Exit(1)
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
         console.print(
@@ -2295,8 +2295,8 @@ def benchmark(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
 ):
     """Run generation + evaluation across PaperBananaBench entries."""
-    if image_format not in ("png", "jpeg", "webp"):
-        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {image_format}[/red]")
+    if image_format not in ("png", "jpeg", "webp", "svg"):
+        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {image_format}[/red]")
         raise typer.Exit(1)
     if concurrency < 1:
         console.print("[red]Error: --concurrency must be at least 1[/red]")
