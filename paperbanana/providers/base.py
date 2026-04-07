@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from PIL import Image
+
+if TYPE_CHECKING:
+    from paperbanana.core.cost_tracker import CostTracker
 
 
 class VLMProvider(ABC):
@@ -14,6 +17,8 @@ class VLMProvider(ABC):
     All VLM providers (used by Retriever, Planner, Stylist, Critic agents)
     must implement this interface.
     """
+
+    cost_tracker: CostTracker | None = None
 
     @property
     @abstractmethod
@@ -63,6 +68,8 @@ class ImageGenProvider(ABC):
     Used by the Visualizer agent to generate methodology diagrams
     and other academic illustrations.
     """
+
+    cost_tracker: CostTracker | None = None
 
     @property
     @abstractmethod
