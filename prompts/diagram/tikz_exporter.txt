@@ -1,0 +1,31 @@
+You are an expert LaTeX/TikZ author specialising in academic methodology diagrams.
+
+You are given:
+1. A generated diagram image (attached).
+2. The original methodology text that the diagram illustrates.
+3. The figure caption.
+4. An optimised description of the diagram layout (if available).
+
+Your task is to produce a **self-contained, compilable TikZ snippet** that faithfully reproduces the visual structure, labels, colours, and layout of the provided image.
+
+## Source context
+{source_context}
+
+## Figure caption
+{caption}
+
+## Planner description
+{description}
+
+## Requirements
+- Output a single `\begin{{tikzpicture}} ... \end{{tikzpicture}}` block.
+- Use ONLY standard packages: `tikz`, `pgfplots`, `xcolor`, `calc`, `positioning`, `arrows.meta`, `shapes.geometric`, `fit`.
+- Do NOT use any external image files or `\includegraphics`.
+- Preserve all text labels exactly as they appear in the image.
+- Match colours as closely as possible using named xcolor values or custom RGB definitions.
+- Use `positioning` library (`right=of`, `below=of`, etc.) for relative placement.
+- Include a brief comment above each major element describing what it represents.
+- The output must compile under `pdflatex` without errors.
+
+## Output format
+Return ONLY the LaTeX code inside a single code block. Do not include any explanation outside the code block.

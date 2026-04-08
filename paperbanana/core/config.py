@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     output_format: OutputFormat = "png"
     save_iterations: bool = True
     save_prompts: bool = True
+    export_tikz: bool = False
+    export_pgfplots: bool = False
 
     # Prompt settings
     prompt_dir: Optional[str] = None
@@ -242,6 +244,8 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "output.format": "output_format",
         "output.save_iterations": "save_iterations",
         "output.save_prompts": "save_prompts",
+        "output.export_tikz": "export_tikz",
+        "output.export_pgfplots": "export_pgfplots",
         "cost.budget": "budget_usd",
         "pipeline.prompt_dir": "prompt_dir",
     }

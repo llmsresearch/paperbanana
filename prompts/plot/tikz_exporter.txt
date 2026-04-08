@@ -1,0 +1,32 @@
+You are an expert LaTeX/PGFPlots author specialising in academic statistical figures.
+
+You are given:
+1. A generated statistical plot image (attached).
+2. The source context describing what the plot shows.
+3. The figure caption.
+4. An optimised description of the plot layout (if available).
+
+Your task is to produce a **self-contained, compilable PGFPlots snippet** that faithfully reproduces the axes, data series, labels, legend, and styling of the provided image.
+
+## Source context
+{source_context}
+
+## Figure caption
+{caption}
+
+## Planner description
+{description}
+
+## Requirements
+- Output a single `\begin{{tikzpicture}} ... \end{{tikzpicture}}` block containing a `\begin{{axis}} ... \end{{axis}}` environment.
+- Use ONLY standard packages: `pgfplots`, `pgfplotstable`, `tikz`, `xcolor`.
+- Set `\pgfplotsset{{compat=1.18}}` or later.
+- Reproduce axis labels, tick labels, title, and legend exactly as shown.
+- Match line styles (solid, dashed, dotted), markers, and colours.
+- For bar charts, use `ybar` or `xbar` with appropriate `bar width`.
+- For scatter plots, use `only marks` with appropriate `mark` styles.
+- Include inline `\addplot coordinates {{ ... }}` with representative data points read from the image.
+- The output must compile under `pdflatex` without errors.
+
+## Output format
+Return ONLY the LaTeX code inside a single code block. Do not include any explanation outside the code block.

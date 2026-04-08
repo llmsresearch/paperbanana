@@ -35,6 +35,8 @@ class PipelineProgressStage(str, Enum):
     VISUALIZER_END = "visualizer_end"
     CRITIC_START = "critic_start"
     CRITIC_END = "critic_end"
+    TIKZ_EXPORTER_START = "tikz_exporter_start"
+    TIKZ_EXPORTER_END = "tikz_exporter_end"
 
 
 class PipelineProgressEvent(BaseModel):
@@ -133,6 +135,10 @@ class GenerationOutput(BaseModel):
         default_factory=list, description="History of refinement iterations"
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
+    tikz_path: Optional[str] = Field(
+        default=None,
+        description="Path to the exported LaTeX/TikZ source file, if generated",
+    )
 
 
 VALID_WINNERS = {"Model", "Human", "Both are good", "Both are bad"}
