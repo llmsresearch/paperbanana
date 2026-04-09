@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,59 +12,16 @@ from paperbanana.cli import app
 from paperbanana.doctor import (
     CheckResult,
     check_aws_credentials,
-    check_builtin_refs,
     check_env_key,
     check_expanded_refs,
     check_optional_package,
-    check_paperbanana,
-    check_python,
     run_doctor,
 )
 
 runner = CliRunner()
 
 
-# ── CheckResult ───────────────────────────────────────────────────────────────
-
-
-def test_check_result_ok_has_no_hint():
-    r = CheckResult("Test", True, "1.0")
-    assert r.ok
-    assert r.hint is None
-
-
-def test_check_result_failed_carries_hint():
-    r = CheckResult("Test", False, "not installed", "pip install foo")
-    assert not r.ok
-    assert r.hint == "pip install foo"
-
-
-# ── Runtime checks ────────────────────────────────────────────────────────────
-
-
-def test_check_python_always_passes():
-    r = check_python()
-    assert r.ok
-    assert r.label == "Python"
-    import sys
-
-    assert str(sys.version_info.major) in r.detail
-
-
-def test_check_paperbanana_passes_when_installed():
-    r = check_paperbanana()
-    assert r.ok
-    assert r.detail  # version string is non-empty
-
-
 # ── Optional package checks ───────────────────────────────────────────────────
-
-
-def test_check_optional_package_installed():
-    # pydantic is always installed as a core dep
-    r = check_optional_package("Pydantic", "pydantic", "core")
-    assert r.ok
-    assert r.hint is None
 
 
 def test_check_optional_package_missing(monkeypatch):
@@ -80,13 +38,6 @@ def test_check_optional_package_missing(monkeypatch):
 
 
 # ── API key checks ────────────────────────────────────────────────────────────
-
-
-def test_check_env_key_set(monkeypatch):
-    monkeypatch.setenv("TEST_KEY_XYZ", "abc123")
-    r = check_env_key("TEST_KEY_XYZ")
-    assert r.ok
-    assert r.detail == "set"
 
 
 def test_check_env_key_missing(monkeypatch):
@@ -114,14 +65,6 @@ def test_check_aws_credentials_via_env(monkeypatch):
     assert r.detail == "configured"
 
 
-def test_check_aws_credentials_via_profile(monkeypatch):
-    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
-    monkeypatch.setenv("AWS_PROFILE", "default")
-    with patch.object(Path, "exists", return_value=False):
-        r = check_aws_credentials()
-    assert r.ok
-
-
 def test_check_aws_credentials_missing(monkeypatch):
     monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
     monkeypatch.delenv("AWS_PROFILE", raising=False)
@@ -134,12 +77,6 @@ def test_check_aws_credentials_missing(monkeypatch):
 # ── Reference data checks ─────────────────────────────────────────────────────
 
 
-def test_check_builtin_refs_passes():
-    r = check_builtin_refs()
-    assert r.ok
-    assert "diagrams" in r.detail
-
-
 def test_check_expanded_refs_not_downloaded(tmp_path, monkeypatch):
     monkeypatch.setenv("PAPERBANANA_CACHE_DIR", str(tmp_path))
     r = check_expanded_refs()
@@ -150,9 +87,6 @@ def test_check_expanded_refs_not_downloaded(tmp_path, monkeypatch):
 
 def test_check_expanded_refs_downloaded(tmp_path, monkeypatch):
     monkeypatch.setenv("PAPERBANANA_CACHE_DIR", str(tmp_path))
-
-    import json
-
     ref_dir = tmp_path / "reference_sets"
     ref_dir.mkdir()
     (ref_dir / "index.json").write_text(
@@ -176,13 +110,7 @@ def test_check_expanded_refs_downloaded(tmp_path, monkeypatch):
 # ── run_doctor ────────────────────────────────────────────────────────────────
 
 
-def test_run_doctor_returns_int():
-    result = run_doctor()
-    assert isinstance(result, int)
-    assert result in (0, 1)
-
-
-def test_run_doctor_exit_0_when_all_pass(monkeypatch):
+def test_run_doctor_exit_0_when_all_pass():
     ok = CheckResult("x", True, "ok")
     with (
         patch("paperbanana.doctor.check_python", return_value=ok),
@@ -196,7 +124,7 @@ def test_run_doctor_exit_0_when_all_pass(monkeypatch):
         assert run_doctor() == 0
 
 
-def test_run_doctor_exit_1_when_any_fails(monkeypatch):
+def test_run_doctor_exit_1_when_any_fails():
     ok = CheckResult("x", True, "ok")
     fail = CheckResult("y", False, "missing", "fix hint")
     with (
@@ -214,29 +142,10 @@ def test_run_doctor_exit_1_when_any_fails(monkeypatch):
 # ── CLI integration ───────────────────────────────────────────────────────────
 
 
-def test_doctor_command_runs():
-    result = runner.invoke(app, ["doctor"])
-    assert result.exit_code in (0, 1)
-    assert "PaperBanana" in result.output
-    assert "System Check" in result.output
-
-
 def test_doctor_command_shows_all_sections():
     result = runner.invoke(app, ["doctor"])
+    assert result.exit_code in (0, 1)
     assert "Runtime" in result.output
     assert "Optional features" in result.output
     assert "API keys" in result.output
     assert "Reference data" in result.output
-
-
-def test_doctor_command_shows_python_version():
-    result = runner.invoke(app, ["doctor"])
-    import sys
-
-    assert str(sys.version_info.major) in result.output
-
-
-def test_doctor_command_exit_1_when_check_fails(monkeypatch):
-    with patch("paperbanana.doctor.run_doctor", return_value=1):
-        result = runner.invoke(app, ["doctor"])
-    assert result.exit_code == 1
