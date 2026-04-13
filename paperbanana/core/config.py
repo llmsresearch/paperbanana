@@ -12,6 +12,7 @@ from pydantic_settings import BaseSettings
 OutputFormat = Literal["png", "jpeg", "webp"]
 ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
 Venue = Literal["neurips", "icml", "acl", "ieee", "custom"]
+VectorExportMode = Literal["none", "svg", "pdf", "both"]
 
 
 class VLMConfig(BaseSettings):
@@ -78,6 +79,7 @@ class Settings(BaseSettings):
     exemplar_retrieval_timeout_seconds: float = 20.0
     exemplar_retrieval_max_retries: int = 2
     venue: Venue = "neurips"
+    vector_export: VectorExportMode = "none"
 
     # Reference settings
     reference_set_path: str = "data/reference_sets"
@@ -201,6 +203,17 @@ class Settings(BaseSettings):
             raise ValueError("exemplar_retrieval_max_retries must be >= 0")
         return v
 
+    @field_validator("vector_export", mode="before")
+    @classmethod
+    def validate_vector_export(cls, v: Any) -> str:
+        """Validate vector_export mode."""
+        if v is None:
+            return "none"
+        v = str(v).lower()
+        if v not in ("none", "svg", "pdf", "both"):
+            raise ValueError(f"vector_export must be none, svg, pdf, or both. Got: {v}")
+        return v
+
     @field_validator("venue", mode="before")
     @classmethod
     def validate_venue(cls, v: Any) -> str:
@@ -251,6 +264,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "reference.path": "reference_set_path",
         "reference.guidelines_path": "guidelines_path",
         "pipeline.venue": "venue",
+        "pipeline.vector_export": "vector_export",
         "output.dir": "output_dir",
         "output.format": "output_format",
         "output.vector_export": "vector_export",
