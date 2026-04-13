@@ -279,9 +279,7 @@ def generate(
         )
         raise typer.Exit(1)
     if vector_export and vector_export.lower() not in ("none", "svg", "pdf", "both"):
-        console.print(
-            "[red]Error: --vector-export must be none, svg, pdf, or both[/red]"
-        )
+        console.print("[red]Error: --vector-export must be none, svg, pdf, or both[/red]")
         raise typer.Exit(1)
     if pdf_pages and (continue_last or continue_run):
         console.print(
