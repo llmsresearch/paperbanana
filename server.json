@@ -30,6 +30,10 @@
     {
       "name": "evaluate_diagram",
       "description": "Compare a generated diagram against a human reference on 4 dimensions"
+    },
+    {
+      "name": "evaluate_plot",
+      "description": "Compare a generated statistical plot against a human reference on 4 dimensions"
     }
   ]
 }

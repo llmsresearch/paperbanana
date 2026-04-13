@@ -629,3 +629,28 @@ def test_batch_prints_status_table_on_partial_failure(tmp_path, monkeypatch):
     assert "1 failed" in result.output
     assert "✓" in result.output
     assert "✗" in result.output
+
+
+def test_evaluate_plot_rejects_missing_data_file(tmp_path):
+    """evaluate-plot fails early when the data file does not exist."""
+    generated = tmp_path / "generated.png"
+    reference = tmp_path / "reference.png"
+    generated.write_bytes(b"fake-image")
+    reference.write_bytes(b"fake-image")
+
+    result = runner.invoke(
+        app,
+        [
+            "evaluate-plot",
+            "--generated",
+            str(generated),
+            "--reference",
+            str(reference),
+            "--data",
+            str(tmp_path / "missing.csv"),
+            "--intent",
+            "Compare method variants",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Data file not found" in result.output
