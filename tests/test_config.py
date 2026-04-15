@@ -30,12 +30,6 @@ def test_output_format_valid_webp():
     assert settings.output_format == "webp"
 
 
-def test_output_format_valid_svg():
-    """output_format accepts svg."""
-    settings = Settings(output_format="svg")
-    assert settings.output_format == "svg"
-
-
 def test_output_format_case_insensitive():
     """output_format normalizes to lowercase."""
     settings = Settings(output_format="JPEG")
@@ -44,7 +38,7 @@ def test_output_format_case_insensitive():
 
 def test_output_format_invalid_rejected():
     """Invalid output_format is rejected with clear error."""
-    with pytest.raises(ValidationError, match="output_format must be png, jpeg, webp, or svg"):
+    with pytest.raises(ValidationError, match="output_format must be png, jpeg, or webp"):
         Settings(output_format="gif")
 
 
@@ -64,11 +58,11 @@ def test_output_format_from_yaml():
 def test_output_format_from_yaml_invalid():
     """Invalid output_format in YAML is rejected."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-        yaml.safe_dump({"output": {"format": "gif"}}, f)
+        yaml.safe_dump({"output": {"format": "svg"}}, f)
         path = f.name
 
     try:
-        with pytest.raises(ValidationError, match="output_format must be png, jpeg, webp, or svg"):
+        with pytest.raises(ValidationError, match="output_format must be png, jpeg, or webp"):
             Settings.from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)

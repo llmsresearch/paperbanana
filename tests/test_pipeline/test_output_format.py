@@ -285,7 +285,7 @@ def test_cli_invalid_format_rejected():
     # Either file-not-found or format validation - we want format to be validated
     # Format check runs before file load, so we should get format error
     assert result.exit_code != 0
-    assert "png, jpeg, webp, or svg" in result.output
+    assert "png, jpeg, or webp" in result.output
 
 
 @pytest.mark.asyncio
@@ -294,10 +294,10 @@ async def test_pipeline_svg_generate_writes_ir_and_svg(empty_reference_dir, monk
     settings = Settings(
         reference_set_path=str(empty_reference_dir),
         output_dir=str(empty_reference_dir / "out"),
-        output_format="svg",
         refinement_iterations=1,
         save_iterations=True,
     )
+    settings.output_format = "svg"  # exercise explicit SVG pipeline branch
     pipeline = PaperBananaPipeline(
         settings=settings,
         vlm_client=FakeVLM(),
@@ -366,10 +366,10 @@ async def test_pipeline_svg_continue_ir_planner_failure_fallback_recorded(
     continue_settings = Settings(
         reference_set_path=str(empty_reference_dir),
         output_dir=str(base_out),
-        output_format="svg",
         refinement_iterations=1,
         save_iterations=True,
     )
+    continue_settings.output_format = "svg"  # exercise explicit SVG continue branch
     continue_pipeline = PaperBananaPipeline(
         settings=continue_settings,
         vlm_client=FakeVLM(),
