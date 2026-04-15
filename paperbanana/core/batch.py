@@ -24,21 +24,15 @@ def generate_batch_id() -> str:
     return f"batch_{ts}_{short_uuid}"
 
 
-def load_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
-    """Load a batch manifest (YAML or JSON) and return a list of items.
+def _parse_manifest_raw(manifest_path: Path) -> tuple[list, dict[str, Any] | None]:
+    """Parse a manifest file and return (items_list, full_data_dict_or_None).
 
-    Each item is a dict with:
-      - input: path to methodology text or PDF file (resolved relative to manifest parent)
-      - caption: figure caption / communicative intent
-      - id: optional string identifier for the item (default: index-based)
-      - pdf_pages: optional 1-based page selection for PDF inputs (e.g. "1-5" or "2,4,6-8")
-
-    Paths in the manifest are resolved relative to the manifest file's directory.
+    The full data dict is returned when the manifest is an object (not a bare list)
+    so callers can inspect extra keys like 'composite'.
     """
     manifest_path = Path(manifest_path).resolve()
     if not manifest_path.exists():
         raise FileNotFoundError(f"Manifest not found: {manifest_path}")
-    parent = manifest_path.parent
     raw = manifest_path.read_text(encoding="utf-8")
     suffix = manifest_path.suffix.lower()
     if suffix in (".yaml", ".yml"):
@@ -51,8 +45,6 @@ def load_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
                 "PyYAML is required for YAML manifests. Install with: pip install pyyaml"
             )
     elif suffix == ".json":
-        import json
-
         data = json.loads(raw)
     else:
         raise ValueError(f"Manifest must be .yaml, .yml, or .json. Got: {manifest_path.suffix}")
@@ -60,11 +52,28 @@ def load_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
     if data is None:
         raise ValueError("Manifest is empty")
     if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict) and "items" in data:
-        items = data["items"]
-    else:
-        raise ValueError("Manifest must be a list of items or an object with an 'items' list")
+        return data, None
+    if isinstance(data, dict) and "items" in data:
+        return data["items"], data
+    raise ValueError("Manifest must be a list of items or an object with an 'items' list")
+
+
+def load_batch_manifest(
+    manifest_path: Path,
+) -> list[dict[str, Any]]:
+    """Load a batch manifest (YAML or JSON) and return a list of items.
+
+    Each item is a dict with:
+      - input: path to methodology text or PDF file (resolved relative to manifest parent)
+      - caption: figure caption / communicative intent
+      - id: optional string identifier for the item (default: index-based)
+      - pdf_pages: optional 1-based page selection for PDF inputs (e.g. "1-5" or "2,4,6-8")
+
+    Paths in the manifest are resolved relative to the manifest file's directory.
+    """
+    manifest_path = Path(manifest_path).resolve()
+    parent = manifest_path.parent
+    items, _ = _parse_manifest_raw(manifest_path)
 
     result = []
     for i, entry in enumerate(items):
@@ -89,6 +98,24 @@ def load_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def load_batch_manifest_with_composite(
+    manifest_path: Path,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Load a batch manifest and return (items, composite_config).
+
+    composite_config is None when the manifest has no ``composite`` section.
+    """
+    from paperbanana.core.composite import parse_composite_config
+
+    manifest_path = Path(manifest_path).resolve()
+    items = load_batch_manifest(manifest_path)
+    _, full_data = _parse_manifest_raw(manifest_path)
+    composite_config = None
+    if full_data is not None:
+        composite_config = parse_composite_config(full_data)
+    return items, composite_config
 
 
 def load_plot_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:

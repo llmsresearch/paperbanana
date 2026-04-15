@@ -6,6 +6,7 @@ import base64
 import datetime
 import hashlib
 import json
+import re
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -169,6 +170,63 @@ def detect_image_mime_type(path: str | Path) -> str:
     # Fall back to extension-based guess.
     mime, _ = mimetypes.guess_type(str(path))
     return mime or "application/octet-stream"
+
+
+def _try_parse_json(text: str) -> dict | list | None:
+    """Attempt json.loads, return None on failure."""
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _scan_bracket_json(text: str, open_ch: str, close_ch: str) -> dict | list | None:
+    """Find the first valid JSON substring delimited by matching brackets."""
+    pos = 0
+    while (start := text.find(open_ch, pos)) != -1:
+        depth, in_str, esc = 0, False, False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == open_ch:
+                depth += 1
+            elif ch == close_ch:
+                depth -= 1
+                if depth == 0:
+                    result = _try_parse_json(text[start : i + 1])
+                    if result is not None:
+                        return result
+                    break
+        pos = start + 1
+    return None
+
+
+def extract_json(text: str) -> dict | list | None:
+    """Best-effort JSON extraction from free-form VLM output."""
+    text = text.strip()
+    result = _try_parse_json(text)
+    if result is not None:
+        return result
+    for pattern in [r"```json\s*\n(.*?)```", r"```\s*\n(.*?)```"]:
+        m = re.search(pattern, text, re.DOTALL)
+        if m:
+            result = _try_parse_json(m.group(1).strip())
+            if result is not None:
+                return result
+    for open_ch, close_ch in [("{", "}"), ("[", "]")]:
+        result = _scan_bracket_json(text, open_ch, close_ch)
+        if result is not None:
+            return result
+    return None
 
 
 def find_prompt_dir() -> str:
