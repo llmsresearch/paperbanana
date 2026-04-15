@@ -29,8 +29,6 @@ class OllamaVLM(VLMProvider):
         self._json_mode = json_mode
         self._client: httpx.AsyncClient | None = None
 
-    # ── Provider identity ────────────────────────────────────────────
-
     @property
     def name(self) -> str:
         return "ollama"
@@ -43,37 +41,22 @@ class OllamaVLM(VLMProvider):
     def supports_json_mode(self) -> bool:
         return self._json_mode
 
-    # ── HTTP client ──────────────────────────────────────────────────
-
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            # 300 s gives CPU-only machines a fair chance before we retry.
-            self._client = httpx.AsyncClient(
-                base_url=self._base_url,
-                timeout=300.0,
-            )
+            self._client = httpx.AsyncClient(base_url=self._base_url, timeout=300.0)
         return self._client
 
     async def close(self) -> None:
-        """Release the underlying HTTP connection pool."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
 
     def is_available(self) -> bool:
-        """Ollama needs no API key — just confirm the server is reachable."""
         try:
-            # Strip /v1 to hit the Ollama root health endpoint rather than
-            # the OpenAI-compat prefix, which isn't always a valid GET target.
-            root_url = self._base_url
-            if root_url.endswith("/v1"):
-                root_url = root_url[:-3]
-            resp = httpx.get(root_url, timeout=3.0)
-            return resp.status_code == 200
+            root = self._base_url[:-3] if self._base_url.endswith("/v1") else self._base_url
+            return httpx.get(root, timeout=3.0).status_code == 200
         except (httpx.ConnectError, httpx.TimeoutException):
             return False
-
-    # ── Generation ───────────────────────────────────────────────────
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=2, max=15))
     async def generate(
@@ -85,43 +68,30 @@ class OllamaVLM(VLMProvider):
         max_tokens: int = 4096,
         response_format: Optional[str] = None,
     ) -> str:
-        client = self._get_client()
-
-        messages = []
+        messages: list[dict] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-
-        # Build the multimodal content block — same wire format as OpenAI.
-        content: list[dict] = []
-        if images:
-            for img in images:
-                b64 = image_to_base64(img)
-                content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{b64}"},
-                    }
-                )
+        content: list[dict] = [
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{image_to_base64(img)}"},
+            }
+            for img in (images or [])
+        ]
         content.append({"type": "text", "text": prompt})
         messages.append({"role": "user", "content": content})
-
         payload: dict = {
             "model": self._model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-
         if response_format == "json" and self._json_mode:
             payload["response_format"] = {"type": "json_object"}
+        resp = await self._get_client().post("/chat/completions", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
 
-        response = await client.post("/chat/completions", json=payload)
-        response.raise_for_status()
-
-        data = response.json()
-        text = data["choices"][0]["message"]["content"]
-
-        # usage is a plain dict from the JSON body — .get() not getattr().
         usage = data.get("usage")
         logger.debug("Ollama response", model=self._model, usage=usage)
 
@@ -133,4 +103,4 @@ class OllamaVLM(VLMProvider):
                 output_tokens=usage.get("completion_tokens", 0),
             )
 
-        return text
+        return data["choices"][0]["message"]["content"]

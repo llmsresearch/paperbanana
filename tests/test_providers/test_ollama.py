@@ -85,3 +85,11 @@ async def test_json_mode_toggle(json_mode, expect_key):
     vlm._client = _FakeClient('{"k":"v"}')
     await vlm.generate("Return JSON", response_format="json")
     assert ("response_format" in vlm._client.captured["json"]) is expect_key
+
+
+@pytest.mark.asyncio
+async def test_close(vlm: OllamaVLM):
+    client = _FakeClient()
+    vlm._client = client
+    await vlm.close()
+    assert client.closed and vlm._client is None
