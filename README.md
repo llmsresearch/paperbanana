@@ -261,6 +261,25 @@ items:
 
 Paths in the manifest are resolved relative to the manifest file's directory.
 
+**Composite figures:** Add an optional `composite` section to automatically stitch all generated panels into a single labeled figure after the batch completes:
+
+```yaml
+composite:
+  layout: "1x3"          # rows x cols, or "auto"
+  labels: auto            # (a), (b), (c)... or explicit list, or null
+  spacing: 20             # pixels between panels
+  label_position: bottom  # top or bottom
+  output: "composite.png"
+
+items:
+  - input: method_encoder.txt
+    caption: "Encoder architecture"
+    id: panel_a
+  # ...
+```
+
+The composite image is saved alongside the individual panels in the batch output directory. See `examples/composite_batch_manifest.yaml` for a complete example.
+
 **Generate a human-readable report** from an existing batch run (Markdown or HTML):
 
 ```bash
@@ -322,6 +341,29 @@ Paths are resolved relative to the manifest file’s directory.
 | `--venue` | | Venue style (neurips, icml, acl, ieee, custom) |
 | `--aspect-ratio` | `-ar` | Default aspect ratio when not set in the manifest |
 | `--verbose` | `-v` | Verbose logging |
+
+### `paperbanana composite` -- Compose Multi-Panel Figures
+
+Stitch multiple images into a single labeled figure with `(a)`, `(b)`, `(c)` sub-panel labels:
+
+```bash
+paperbanana composite \
+  panel_a.png panel_b.png panel_c.png \
+  --layout 1x3 \
+  --output figure2.png
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `IMAGES` | | Positional: paths to images to compose |
+| `--layout` | `-l` | Grid layout: `RxC` (e.g. `1x3`, `2x2`) or `auto` (default: auto) |
+| `--labels` | | Comma-separated labels, or `none` to disable (default: auto `(a),(b),...`) |
+| `--spacing` | `-s` | Pixel spacing between panels (default: 20) |
+| `--label-position` | | `top` or `bottom` (default: bottom) |
+| `--label-font-size` | | Font size for labels (default: 32) |
+| `--output` | `-o` | Output path (default: composite_output.png) |
+
+This command works on any existing images — no API calls needed. It is also triggered automatically when a batch manifest includes a `composite` section (see `paperbanana batch` above).
 
 ### `paperbanana evaluate` -- Quality Assessment
 

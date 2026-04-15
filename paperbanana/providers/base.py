@@ -57,6 +57,11 @@ class VLMProvider(ABC):
         """
         ...
 
+    @property
+    def supports_json_mode(self) -> bool:
+        """Whether this provider reliably handles response_format='json'."""
+        return True
+
     def is_available(self) -> bool:
         """Check if this provider is configured and available."""
         return True

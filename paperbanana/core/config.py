@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     # Output settings
     output_dir: str = "outputs"
     output_format: OutputFormat = "png"
+    vector_export: bool = False
     save_iterations: bool = True
     save_prompts: bool = True
 
@@ -114,6 +115,15 @@ class Settings(BaseSettings):
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
     openai_vlm_model: Optional[str] = Field(default=None, alias="OPENAI_VLM_MODEL")
     openai_image_model: Optional[str] = Field(default=None, alias="OPENAI_IMAGE_MODEL")
+
+    ollama_base_url: str = Field(default="http://localhost:11434/v1", alias="OLLAMA_BASE_URL")
+    ollama_model: Optional[str] = Field(default=None, alias="OLLAMA_MODEL")
+    ollama_json_mode: bool = Field(default=False, alias="OLLAMA_JSON_MODE")
+    openai_local_base_url: str = Field(
+        default="http://localhost:8000/v1",
+        alias="OPENAI_LOCAL_BASE_URL",
+    )
+    openai_local_json_mode: bool = Field(default=False, alias="OPENAI_LOCAL_JSON_MODE")
 
     # AWS Bedrock settings
     aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
@@ -240,6 +250,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "pipeline.venue": "venue",
         "output.dir": "output_dir",
         "output.format": "output_format",
+        "output.vector_export": "vector_export",
         "output.save_iterations": "save_iterations",
         "output.save_prompts": "save_prompts",
         "cost.budget": "budget_usd",
