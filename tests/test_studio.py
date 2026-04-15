@@ -55,3 +55,88 @@ def test_build_studio_app():
     _ = gradio
     demo = build_studio_app(default_output_dir="outputs", config_path=None)
     assert demo is not None
+
+
+def test_run_composite_smoke(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p1 = tmp_path / "a.png"
+    p2 = tmp_path / "b.png"
+    Image.new("RGB", (100, 80), (255, 0, 0)).save(str(p1))
+    Image.new("RGB", (100, 80), (0, 255, 0)).save(str(p2))
+
+    out_dir = tmp_path / "out"
+    log, output_path = run_composite(
+        [str(p1), str(p2)],
+        output_dir=str(out_dir),
+        layout="1x2",
+        output_filename="result.png",
+    )
+    assert output_path is not None
+    assert (out_dir / "result.png").exists()
+    assert "Done." in log
+
+
+def test_run_composite_no_files_returns_error(tmp_path):
+    from paperbanana.studio.runner import run_composite
+
+    log, output_path = run_composite(
+        [],
+        output_dir=str(tmp_path),
+    )
+    assert output_path is None
+    assert "No valid image" in log
+
+
+def test_run_composite_invalid_label_position(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p = tmp_path / "x.png"
+    Image.new("RGB", (50, 50), (0, 0, 255)).save(str(p))
+    log, output_path = run_composite(
+        [str(p)],
+        output_dir=str(tmp_path),
+        label_position="left",
+    )
+    assert output_path is None
+    assert "label_position" in log
+
+
+def test_run_composite_explicit_labels(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p1 = tmp_path / "a.png"
+    p2 = tmp_path / "b.png"
+    Image.new("RGB", (60, 60), (255, 0, 0)).save(str(p1))
+    Image.new("RGB", (60, 60), (0, 255, 0)).save(str(p2))
+
+    log, output_path = run_composite(
+        [str(p1), str(p2)],
+        output_dir=str(tmp_path / "out"),
+        labels="Fig A, Fig B",
+        layout="1x2",
+    )
+    assert output_path is not None
+    assert "Done." in log
+
+
+def test_run_composite_disable_labels(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p = tmp_path / "x.png"
+    Image.new("RGB", (60, 60), (0, 0, 255)).save(str(p))
+    log, output_path = run_composite(
+        [str(p)],
+        output_dir=str(tmp_path / "out"),
+        labels="none",
+    )
+    assert output_path is not None
+    assert "Done." in log

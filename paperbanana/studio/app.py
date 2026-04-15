@@ -14,6 +14,7 @@ from paperbanana.studio.runner import (
     build_settings,
     merge_context,
     run_batch,
+    run_composite,
     run_continue,
     run_evaluate,
     run_methodology,
@@ -646,6 +647,89 @@ def build_studio_app(
                         b_concurrency,
                     ],
                     outputs=[b_log, b_dir],
+                )
+
+            # ── Composite multi-panel figure ──────────────────────────────
+            with gr.Tab("Composite"):
+                gr.Markdown(
+                    "Compose multiple images into a single labeled multi-panel figure with "
+                    "`(a)`, `(b)`, `(c)` sub-panels. No API calls — pure local image processing."
+                )
+                cmp_files = gr.File(
+                    label="Panel images",
+                    file_count="multiple",
+                    file_types=[".png", ".jpg", ".jpeg", ".webp"],
+                )
+                with gr.Row():
+                    cmp_layout = gr.Dropdown(
+                        label="Layout",
+                        choices=["auto", "1x2", "1x3", "1x4", "2x2", "2x3", "3x3"],
+                        value="auto",
+                        allow_custom_value=True,
+                    )
+                    cmp_label_pos = gr.Radio(
+                        label="Label position",
+                        choices=["bottom", "top"],
+                        value="bottom",
+                    )
+                cmp_labels = gr.Textbox(
+                    label="Labels",
+                    placeholder="Comma-separated (e.g. (a),(b),(c)), empty=auto, 'none'=disable",
+                    value="",
+                )
+                with gr.Row():
+                    cmp_spacing = gr.Number(label="Spacing (px)", value=20, precision=0)
+                    cmp_font = gr.Number(label="Label font size", value=32, precision=0)
+                cmp_filename = gr.Textbox(label="Output filename", value="composite.png")
+                cmp_go = gr.Button("Compose figure", variant="primary")
+                cmp_log = gr.Textbox(label="Log", lines=8)
+                cmp_out = gr.Image(label="Composite output", type="filepath")
+
+                def _do_composite(
+                    od,
+                    files,
+                    layout,
+                    labels,
+                    spacing,
+                    label_pos,
+                    font_size,
+                    filename,
+                ):
+                    _dotenv()
+                    paths = []
+                    if files:
+                        for f in files:
+                            p = _upload_path(f)
+                            if p:
+                                paths.append(p)
+                    try:
+                        log, out_path = run_composite(
+                            paths,
+                            output_dir=od or default_output_dir,
+                            layout=str(layout) if layout else "auto",
+                            labels=labels or "",
+                            spacing=int(spacing or 20),
+                            label_position=str(label_pos or "bottom"),
+                            label_font_size=int(font_size or 32),
+                            output_filename=filename or "composite.png",
+                        )
+                        return log, out_path
+                    except Exception as e:
+                        return f"{type(e).__name__}: {e}", None
+
+                cmp_go.click(
+                    _do_composite,
+                    inputs=[
+                        out_dir,
+                        cmp_files,
+                        cmp_layout,
+                        cmp_labels,
+                        cmp_spacing,
+                        cmp_label_pos,
+                        cmp_font,
+                        cmp_filename,
+                    ],
+                    outputs=[cmp_log, cmp_out],
                 )
 
             # ── Runs browser ──────────────────────────────────────────────
