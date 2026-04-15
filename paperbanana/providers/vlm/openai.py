@@ -26,15 +26,19 @@ class OpenAIVLM(VLMProvider):
         api_key: Optional[str] = None,
         model: str = "gpt-5.2",
         base_url: str = "https://api.openai.com/v1",
+        json_mode: bool = True,
+        provider_name: str = "openai",
     ):
         self._api_key = api_key
         self._model = model
         self._base_url = base_url
+        self._json_mode = json_mode
+        self._provider_name = provider_name
         self._client = None
 
     @property
     def name(self) -> str:
-        return "openai"
+        return self._provider_name
 
     @property
     def model_name(self) -> str:
@@ -55,6 +59,10 @@ class OpenAIVLM(VLMProvider):
                     "Install with: pip install 'paperbanana[openai]'"
                 )
         return self._client
+
+    @property
+    def supports_json_mode(self) -> bool:
+        return self._json_mode
 
     def is_available(self) -> bool:
         return self._api_key is not None
@@ -94,7 +102,7 @@ class OpenAIVLM(VLMProvider):
             "temperature": temperature,
         }
 
-        if response_format == "json":
+        if response_format == "json" and self._json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
         response = await client.chat.completions.create(**kwargs)

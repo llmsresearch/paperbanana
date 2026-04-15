@@ -127,6 +127,24 @@ class ProviderRegistry:
                 api_key=settings.anthropic_api_key,
                 model=settings.vlm_model,
             )
+        elif provider == "ollama":
+            from paperbanana.providers.vlm.ollama import OllamaVLM
+
+            return OllamaVLM(
+                model=settings.ollama_model or settings.vlm_model,
+                base_url=settings.ollama_base_url,
+                json_mode=settings.ollama_json_mode,
+            )
+        elif provider == "openai_local":
+            from paperbanana.providers.vlm.openai import OpenAIVLM
+
+            return OpenAIVLM(
+                api_key=settings.openai_api_key or "not-needed",
+                model=settings.openai_vlm_model or settings.vlm_model,
+                base_url=settings.openai_local_base_url,
+                json_mode=settings.openai_local_json_mode,
+                provider_name="openai_local",
+            )
         elif provider == "claude_code":
             from paperbanana.providers.vlm.claude_code import ClaudeCodeVLM
 
@@ -141,8 +159,8 @@ class ProviderRegistry:
         else:
             raise ValueError(
                 "Unknown VLM provider: "
-                f"{provider}. Available: gemini, openrouter,"
-                " openai, bedrock, anthropic, claude_code"
+                f"{provider}. Available: gemini, openrouter, openai, openai_local, "
+                f"bedrock, anthropic, ollama, claude_code"
             )
 
     @staticmethod
