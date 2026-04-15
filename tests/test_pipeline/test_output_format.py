@@ -303,6 +303,7 @@ async def test_pipeline_svg_generate_writes_ir_and_svg(empty_reference_dir, monk
         vlm_client=FakeVLM(),
         image_gen_fn=FakeImageGen(),
     )
+
     async def _ok_ir_planner_run(**kwargs):
         return DiagramIR(
             title="Test caption",
