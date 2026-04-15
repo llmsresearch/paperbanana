@@ -12,6 +12,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.table import Table
 
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
@@ -987,6 +988,7 @@ def batch(
     ),
     concurrency: int = typer.Option(1, "--concurrency", help="Parallel item workers"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress per-item status table"),
 ):
     """Generate multiple methodology diagrams from a manifest file (YAML or JSON)."""
     if format not in ("png", "jpeg", "webp"):
@@ -1205,12 +1207,36 @@ def batch(
         mark_complete=True,
     )
     report_path = batch_dir / "batch_report.json"
-    succeeded = sum(1 for x in report["items"] if x.get("output_path"))
+    ri = report["items"]
+    succeeded = sum(1 for x in ri if x.get("status") == "success")
+    failed = sum(1 for x in ri if x.get("status") == "failed")
+    skipped = len(ri) - succeeded - failed
     console.print(
         f"[green]Batch complete.[/green] [dim]{total_elapsed:.1f}s · "
-        f"{succeeded}/{len(items)} succeeded[/dim]"
+        f"{succeeded} succeeded · {failed} failed · {skipped} skipped[/dim]"
     )
     console.print(f"  Report: [bold]{report_path}[/bold]")
+    if not quiet:
+        large_batch = len(ri) > 20
+        t = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+        t.add_column("#", style="dim", width=4)
+        t.add_column("Item", min_width=20)
+        t.add_column("Status", width=10)
+        t.add_column("Output / Error")
+        for idx, item in enumerate(ri):
+            if large_batch and item.get("status") == "success":
+                continue
+            ok = item.get("status") == "success"
+            status_str = "[green]✓ done[/green]" if ok else "[red]✗ failed[/red]"
+            detail = str(item.get("output_path" if ok else "error") or "—")
+            t.add_row(str(idx + 1), str(item.get("id", "—")), status_str, detail)
+        if large_batch and succeeded > 0:
+            console.print(
+                f"[dim]{succeeded} succeeded (hidden), {failed} failed (shown above)[/dim]"
+            )
+        console.print(t)
+    if failed > 0:
+        raise typer.Exit(1)
 
     # Auto-composite if manifest has a composite section
     if composite_config is not None:
