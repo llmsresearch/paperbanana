@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     # Output settings
     output_dir: str = "outputs"
     output_format: OutputFormat = "png"
+    vector_export: bool = False
     save_iterations: bool = True
     save_prompts: bool = True
 
@@ -249,6 +250,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "pipeline.venue": "venue",
         "output.dir": "output_dir",
         "output.format": "output_format",
+        "output.vector_export": "vector_export",
         "output.save_iterations": "save_iterations",
         "output.save_prompts": "save_prompts",
         "cost.budget": "budget_usd",
