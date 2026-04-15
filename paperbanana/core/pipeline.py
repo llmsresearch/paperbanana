@@ -729,6 +729,8 @@ class PaperBananaPipeline:
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(self._run_dir / f"final_output.{ext}")
+        ir_planner_status: str | None = None
+        ir_planner_error: str | None = None
 
         if iterations:
             final_image = iterations[-1].image_path
@@ -740,8 +742,11 @@ class PaperBananaPipeline:
                             caption=input.communicative_intent,
                             styled_description=current_description,
                         )
+                        ir_planner_status = "success"
                         logger.info("IR planner produced structured diagram IR")
                     except Exception as e:
+                        ir_planner_status = "fallback"
+                        ir_planner_error = str(e)
                         logger.warning(
                             "IR planner failed; falling back to heuristic IR",
                             error=str(e),
@@ -809,6 +814,12 @@ class PaperBananaPipeline:
             "external_enabled": self.settings.exemplar_retrieval_enabled,
             "external_candidate_ids": external_candidate_ids,
         }
+        if ir_planner_status is not None:
+            metadata_dict["ir_planner"] = {
+                "status": ir_planner_status,
+                "fallback_used": ir_planner_status == "fallback",
+                "error": ir_planner_error,
+            }
 
         if self._cost_tracker:
             cost_summary = self._cost_tracker.summary()
@@ -1061,6 +1072,8 @@ class PaperBananaPipeline:
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(run_dir / f"final_output.{ext}")
+        ir_planner_status: str | None = None
+        ir_planner_error: str | None = None
 
         if iterations:
             final_image = iterations[-1].image_path
@@ -1072,8 +1085,11 @@ class PaperBananaPipeline:
                             caption=resume_state.communicative_intent,
                             styled_description=current_description,
                         )
+                        ir_planner_status = "success"
                         logger.info("IR planner produced structured diagram IR")
                     except Exception as e:
+                        ir_planner_status = "fallback"
+                        ir_planner_error = str(e)
                         logger.warning(
                             "IR planner failed; falling back to heuristic IR",
                             error=str(e),
@@ -1132,6 +1148,12 @@ class PaperBananaPipeline:
             "iterations": iteration_timings,
         }
         metadata_dict["continued_from_iteration"] = start_iter
+        if ir_planner_status is not None:
+            metadata_dict["ir_planner"] = {
+                "status": ir_planner_status,
+                "fallback_used": ir_planner_status == "fallback",
+                "error": ir_planner_error,
+            }
         if user_feedback:
             metadata_dict["user_feedback"] = user_feedback
 
