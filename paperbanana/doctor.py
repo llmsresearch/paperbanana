@@ -93,9 +93,7 @@ def check_expanded_refs() -> CheckResult:
 
         dm = DatasetManager()
     except Exception:
-        return CheckResult(
-            "Expanded set", False, "unable to check", "paperbanana data download"
-        )
+        return CheckResult("Expanded set", False, "unable to check", "paperbanana data download")
     if not dm.is_downloaded():
         return CheckResult("Expanded set", False, "not downloaded", "paperbanana data download")
     info = dm.get_info() or {}

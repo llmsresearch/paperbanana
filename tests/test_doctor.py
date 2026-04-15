@@ -143,9 +143,7 @@ def test_check_paperbanana_is_critical():
 def test_optional_package_is_not_critical():
     from importlib.metadata import PackageNotFoundError
 
-    with patch(
-        "paperbanana.doctor.pkg_version", side_effect=PackageNotFoundError("fakepkg")
-    ):
+    with patch("paperbanana.doctor.pkg_version", side_effect=PackageNotFoundError("fakepkg")):
         r = check_optional_package("FakePkg", "fakepkg", "fake")
     assert not r.critical
 
