@@ -702,15 +702,17 @@ def build_studio_app(
                             p = _upload_path(f)
                             if p:
                                 paths.append(p)
+                    spacing_int = int(spacing) if spacing is not None else 20
+                    font_int = int(font_size) if font_size is not None else 32
                     try:
                         log, out_path = run_composite(
                             paths,
                             output_dir=od or default_output_dir,
                             layout=str(layout) if layout else "auto",
                             labels=labels or "",
-                            spacing=int(spacing or 20),
+                            spacing=spacing_int,
                             label_position=str(label_pos or "bottom"),
-                            label_font_size=int(font_size or 32),
+                            label_font_size=font_int,
                             output_filename=filename or "composite.png",
                         )
                         return log, out_path

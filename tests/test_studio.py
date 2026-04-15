@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -140,3 +142,94 @@ def test_run_composite_disable_labels(tmp_path):
     )
     assert output_path is not None
     assert "Done." in log
+
+
+def test_run_composite_zero_spacing_allowed(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p1 = tmp_path / "a.png"
+    p2 = tmp_path / "b.png"
+    Image.new("RGB", (40, 40), (255, 0, 0)).save(str(p1))
+    Image.new("RGB", (40, 40), (0, 255, 0)).save(str(p2))
+
+    log, output_path = run_composite(
+        [str(p1), str(p2)],
+        output_dir=str(tmp_path / "out"),
+        layout="1x2",
+        spacing=0,
+    )
+    assert output_path is not None
+    assert "Done." in log
+
+
+def test_run_composite_negative_spacing_rejected(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p = tmp_path / "x.png"
+    Image.new("RGB", (40, 40), (255, 0, 0)).save(str(p))
+    log, output_path = run_composite(
+        [str(p)],
+        output_dir=str(tmp_path / "out"),
+        spacing=-5,
+    )
+    assert output_path is None
+    assert "spacing" in log
+
+
+def test_run_composite_invalid_font_size_rejected(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p = tmp_path / "x.png"
+    Image.new("RGB", (40, 40), (255, 0, 0)).save(str(p))
+    log, output_path = run_composite(
+        [str(p)],
+        output_dir=str(tmp_path / "out"),
+        label_font_size=0,
+    )
+    assert output_path is None
+    assert "label_font_size" in log
+
+
+def test_run_composite_path_traversal_sanitized(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p = tmp_path / "x.png"
+    Image.new("RGB", (40, 40), (255, 0, 0)).save(str(p))
+
+    out_dir = tmp_path / "out"
+    log, output_path = run_composite(
+        [str(p)],
+        output_dir=str(out_dir),
+        output_filename="../escape.png",
+    )
+    assert output_path is not None
+    # Output must stay inside the configured output_dir
+    assert Path(output_path).parent.resolve() == out_dir.resolve()
+    assert Path(output_path).name == "escape.png"
+    assert not (tmp_path / "escape.png").exists()
+
+
+def test_run_composite_dotdot_filename_falls_back(tmp_path):
+    from PIL import Image
+
+    from paperbanana.studio.runner import run_composite
+
+    p = tmp_path / "x.png"
+    Image.new("RGB", (40, 40), (255, 0, 0)).save(str(p))
+
+    out_dir = tmp_path / "out"
+    log, output_path = run_composite(
+        [str(p)],
+        output_dir=str(out_dir),
+        output_filename="..",
+    )
+    assert output_path is not None
+    assert Path(output_path).name == "composite.png"

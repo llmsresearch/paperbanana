@@ -654,6 +654,15 @@ def run_plot_batch(
     return "\n".join(lines), str(batch_dir.resolve())
 
 
+def _sanitize_output_filename(name: str) -> str:
+    """Strip directory components and reject traversal attempts."""
+    cleaned = (name or "").strip() or "composite.png"
+    base = Path(cleaned).name
+    if not base or base in (".", ".."):
+        return "composite.png"
+    return base
+
+
 def run_composite(
     image_paths: list[str],
     *,
@@ -669,6 +678,8 @@ def run_composite(
 
     Returns (log, output_path). output_path is None on failure.
     """
+    from typing import Literal, cast
+
     from paperbanana.core.composite import compose_images
 
     lines: list[str] = ["Starting composite figure generation…"]
@@ -689,18 +700,25 @@ def run_composite(
         lines.append(msg)
         return "\n".join(lines), None
 
+    if label_font_size <= 0:
+        msg = f"label_font_size must be > 0. Got: {label_font_size}"
+        lines.append(msg)
+        return "\n".join(lines), None
+
     label_list: Optional[list[str]] = None
     auto_label = True
-    if labels.strip():
-        if labels.strip().lower() == "none":
+    stripped_labels = labels.strip()
+    if stripped_labels:
+        if stripped_labels.lower() == "none":
             auto_label = False
         else:
             label_list = [item.strip() for item in labels.split(",") if item.strip()]
             auto_label = False
 
-    out_dir = Path(output_dir or "outputs").resolve()
+    out_dir_str = (output_dir or "").strip() or "outputs"
+    out_dir = Path(out_dir_str).resolve()
     ensure_dir(out_dir)
-    safe_name = output_filename.strip() or "composite.png"
+    safe_name = _sanitize_output_filename(output_filename)
     output_path = out_dir / safe_name
 
     lines.append(f"Panels: {len(valid_paths)}")
@@ -714,19 +732,17 @@ def run_composite(
             labels=label_list,
             auto_label=auto_label,
             spacing=spacing,
-            label_position=label_position,  # type: ignore[arg-type]
+            label_position=cast(Literal["top", "bottom"], label_position),
             label_font_size=label_font_size,
             output_path=output_path,
         )
     except (ValueError, OSError) as e:
-        err = f"{type(e).__name__}: {e}"
         lines.append("FAILED")
-        lines.append(err)
+        lines.append(f"{type(e).__name__}: {e}")
         return "\n".join(lines), None
     except Exception as e:
-        err = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
         lines.append("FAILED")
-        lines.append(err)
+        lines.append(f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}")
         return "\n".join(lines), None
 
     lines.append("Done.")
