@@ -40,6 +40,36 @@ data_app = typer.Typer(
 app.add_typer(data_app, name="data")
 
 
+def _require_pdf_dep() -> None:
+    """Raise a clean error if PyMuPDF is not installed."""
+    try:
+        import fitz  # noqa: F401
+    except ImportError:
+        console.print(
+            "[red]PDF input requires PyMuPDF.[/red] Install it with:\n"
+            r"  pip install 'paperbanana\[pdf]'"
+        )
+        raise typer.Exit(1)
+
+
+def _check_pdf_dep(path: Path) -> None:
+    """Raise a clean error if PyMuPDF is not installed and the path is a PDF."""
+    if path.suffix.lower() == ".pdf":
+        _require_pdf_dep()
+
+
+def _require_studio_dep() -> None:
+    """Raise a clean error if Gradio is not installed."""
+    try:
+        import gradio  # noqa: F401
+    except ImportError:
+        console.print(
+            "[red]PaperBanana Studio requires Gradio. Install with:[/red]\n"
+            r"  pip install 'paperbanana\[studio]'"
+        )
+        raise typer.Exit(1)
+
+
 def _upsert_env_vars(env_path: Path, updates: dict[str, str]) -> None:
     """Update or append environment variables in a .env file."""
     if env_path.exists():
@@ -404,6 +434,7 @@ def generate(
     if not input_path.exists():
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
+    _check_pdf_dep(input_path)
 
     from paperbanana.core.source_loader import load_methodology_source
 
@@ -726,6 +757,7 @@ def sweep(
     if not input_path.exists():
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
+    _check_pdf_dep(input_path)
 
     from dotenv import load_dotenv
 
@@ -1004,6 +1036,9 @@ def batch(
     except (ValueError, FileNotFoundError, RuntimeError) as e:
         console.print(f"[red]Error loading manifest: {e}[/red]")
         raise typer.Exit(1)
+
+    if any(str(item.get("input", "")).lower().endswith(".pdf") for item in items):
+        _require_pdf_dep()
 
     is_resume = bool(resume_batch)
     if is_resume:
@@ -2001,6 +2036,7 @@ def ablate_retrieval(
     if not input_path.exists():
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
+    _check_pdf_dep(input_path)
 
     reference_path: Optional[Path] = None
     if reference:
@@ -2557,15 +2593,9 @@ def studio(
     ),
 ):
     """Launch PaperBanana Studio — local web UI for diagrams, plots, and evaluation."""
-    try:
-        from paperbanana.studio.app import launch_studio as launch_studio_ui
-    except ImportError as e:
-        console.print(
-            "[red]PaperBanana Studio requires Gradio. Install with:[/red]\n"
-            "  pip install 'paperbanana[studio]'"
-        )
-        console.print(f"[dim]{e}[/dim]")
-        raise typer.Exit(1)
+    _require_studio_dep()
+
+    from paperbanana.studio.app import launch_studio as launch_studio_ui
 
     configure_logging(verbose=False)
     from dotenv import load_dotenv
