@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ class CheckResult:
     ok: bool
     detail: str
     hint: Optional[str] = field(default=None)
+    critical: bool = field(default=False)
 
 
 # ── Individual checks ─────────────────────────────────────────────────────────
@@ -32,15 +34,15 @@ class CheckResult:
 
 def check_python() -> CheckResult:
     v = sys.version_info
-    return CheckResult("Python", True, f"{v.major}.{v.minor}.{v.micro}")
+    return CheckResult("Python", True, f"{v.major}.{v.minor}.{v.micro}", critical=True)
 
 
 def check_paperbanana() -> CheckResult:
     try:
         v = pkg_version("paperbanana")
-        return CheckResult("paperbanana", True, v)
+        return CheckResult("paperbanana", True, v, critical=True)
     except PackageNotFoundError:
-        return CheckResult("paperbanana", False, "not found")
+        return CheckResult("paperbanana", False, "not found", critical=True)
 
 
 def check_optional_package(label: str, package: str, extra: str) -> CheckResult:
@@ -71,26 +73,29 @@ def check_aws_credentials() -> CheckResult:
 
 
 def check_builtin_refs() -> CheckResult:
-    from paperbanana.data.manager import resolve_reference_path
-
-    ref_path = Path(resolve_reference_path("data/reference_sets"))
-    index = ref_path / "index.json"
-    if not index.exists():
-        return CheckResult("Built-in set", False, "index missing")
     try:
-        import json
+        from paperbanana.data.manager import resolve_reference_path
 
+        ref_path = Path(resolve_reference_path("data/reference_sets"))
+        index = ref_path / "index.json"
+        if not index.exists():
+            return CheckResult("Built-in set", False, "index missing", critical=True)
         data = json.loads(index.read_text(encoding="utf-8"))
         count = len(data.get("examples", []))
-        return CheckResult("Built-in set", True, f"{count} diagrams")
+        return CheckResult("Built-in set", True, f"{count} diagrams", critical=True)
     except Exception:
-        return CheckResult("Built-in set", False, "unreadable")
+        return CheckResult("Built-in set", False, "unreadable", critical=True)
 
 
 def check_expanded_refs() -> CheckResult:
-    from paperbanana.data.manager import DatasetManager
+    try:
+        from paperbanana.data.manager import DatasetManager
 
-    dm = DatasetManager()
+        dm = DatasetManager()
+    except Exception:
+        return CheckResult(
+            "Expanded set", False, "unable to check", "paperbanana data download"
+        )
     if not dm.is_downloaded():
         return CheckResult("Expanded set", False, "not downloaded", "paperbanana data download")
     info = dm.get_info() or {}
@@ -139,29 +144,65 @@ _API_KEYS = [
 ]
 
 
-def run_doctor() -> int:
-    """Run all health checks. Returns 0 if healthy, 1 if any check fails."""
-    from paperbanana import __version__
+def run_doctor(output_json: bool = False) -> int:
+    """Run all health checks.
 
-    console.print(f"\n[bold]PaperBanana v{__version__}[/bold] — System Check")
+    Returns 0 if all *critical* checks pass, 1 otherwise.
+    Optional features and API keys that are missing do NOT cause a failure
+    exit code — they are informational.
+    """
+    from paperbanana import __version__
 
     runtime = [check_python(), check_paperbanana()]
     optional = [check_optional_package(*args) for args in _OPTIONAL_PACKAGES]
     api_keys = [check_env_key(k) for k in _API_KEYS] + [check_aws_credentials()]
     refs = [check_builtin_refs(), check_expanded_refs()]
 
+    all_results = runtime + optional + api_keys + refs
+
+    # ── JSON output for CI ────────────────────────────────────────────────
+    if output_json:
+        payload = {
+            "version": __version__,
+            "ok": not any(r.critical and not r.ok for r in all_results),
+            "checks": [
+                {
+                    "label": r.label,
+                    "ok": r.ok,
+                    "detail": r.detail,
+                    "hint": r.hint,
+                    "critical": r.critical,
+                }
+                for r in all_results
+            ],
+        }
+        console.print_json(json.dumps(payload))
+        return 0 if payload["ok"] else 1
+
+    # ── Rich table output ─────────────────────────────────────────────────
+    console.print(f"\n[bold]PaperBanana v{__version__}[/bold] — System Check")
+
     _render_section("Runtime", runtime)
     _render_section("Optional features", optional)
     _render_section("API keys", api_keys)
     _render_section("Reference data", refs)
 
-    all_results = runtime + optional + api_keys + refs
     failures = [r for r in all_results if not r.ok]
+    critical_failures = [r for r in all_results if r.critical and not r.ok]
 
     console.print()
     if not failures:
         console.print("  [green]All checks passed.[/green]\n")
         return 0
 
-    console.print(f"  [red]{len(failures)} issue(s) found.[/red]\n")
-    return 1
+    if critical_failures:
+        console.print(f"  [red]{len(critical_failures)} critical issue(s) found.[/red]")
+    info_failures = [r for r in failures if not r.critical]
+    if info_failures:
+        console.print(
+            f"  [yellow]{len(info_failures)} optional feature(s) not configured.[/yellow]"
+        )
+    console.print()
+
+    # Exit 1 only when critical checks fail.
+    return 1 if critical_failures else 0
