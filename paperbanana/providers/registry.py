@@ -138,11 +138,24 @@ class ProviderRegistry:
                     " ensure `claude` is available on PATH."
                 )
             return vlm
+        elif provider == "ollama":
+            from paperbanana.providers.vlm.ollama import OllamaVLM
+
+            vlm = OllamaVLM(model=settings.vlm_model)
+            if not vlm.is_available():
+                raise ValueError(
+                    "Ollama server not reachable at http://localhost:11434.\n\n"
+                    "To fix this:\n"
+                    "  1. Install Ollama: https://ollama.com\n"
+                    "  2. Start the server: ollama serve\n"
+                    "  3. Pull a model: ollama pull qwen2.5-vl"
+                )
+            return vlm
         else:
             raise ValueError(
                 "Unknown VLM provider: "
                 f"{provider}. Available: gemini, openrouter,"
-                " openai, bedrock, anthropic, claude_code"
+                " openai, bedrock, anthropic, claude_code, ollama"
             )
 
     @staticmethod
