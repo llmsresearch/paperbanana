@@ -459,7 +459,7 @@ def test_batch_resume_retry_failed(tmp_path, monkeypatch):
         app,
         ["batch", "--manifest", str(manifest), "--output-dir", str(tmp_path)],
     )
-    assert first.exit_code == 0
+    assert first.exit_code == 1  # flaky failed → non-zero exit
     batches = sorted(tmp_path.glob("batch_*/batch_report.json"))
     assert len(batches) == 1
     batch_dir = batches[0].parent
@@ -549,3 +549,51 @@ def test_plot_batch_supports_concurrency_and_retries(tmp_path, monkeypatch):
     assert all(item.get("status") == "success" for item in report["items"])
     flaky = next(item for item in report["items"] if item["id"] == "p2")
     assert flaky.get("attempts", 0) >= 2
+
+
+def test_batch_prints_status_table_on_partial_failure(tmp_path, monkeypatch):
+    """batch prints per-item table, correct counts, and exits 1 when any item fails."""
+    from paperbanana.core.types import CritiqueResult, GenerationOutput, IterationRecord
+
+    txt = tmp_path / "input.txt"
+    txt.write_text("methodology text", encoding="utf-8")
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(
+        f"items:\n  - input: {txt.name}\n    caption: 'fig1'\n    id: item_ok\n"
+        f"  - input: {txt.name}\n    caption: 'fig2'\n    id: item_fail\n",
+        encoding="utf-8",
+    )
+    call_state = {"n": 0}
+
+    class _FakePipeline:
+        def __init__(self, settings=None, **kwargs):
+            pass
+
+        async def generate(self, gen_input):
+            call_state["n"] += 1
+            if call_state["n"] == 2:
+                raise RuntimeError("critic parse error")
+            img = str(tmp_path / "out.png")
+            return GenerationOutput(
+                image_path=img,
+                description="d",
+                iterations=[
+                    IterationRecord(
+                        iteration=1,
+                        description="d",
+                        image_path=img,
+                        critique=CritiqueResult(critic_suggestions=[]),
+                    )
+                ],
+                metadata={"run_id": "r1"},
+            )
+
+    monkeypatch.setattr("paperbanana.core.pipeline.PaperBananaPipeline", _FakePipeline)
+    result = runner.invoke(
+        app, ["batch", "--manifest", str(manifest), "--output-dir", str(tmp_path)]
+    )
+    assert result.exit_code == 1
+    assert "1 succeeded" in result.output
+    assert "1 failed" in result.output
+    assert "✓" in result.output
+    assert "✗" in result.output
