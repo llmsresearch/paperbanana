@@ -8,11 +8,11 @@ from typing import Optional
 import structlog
 
 from paperbanana.core.types import (
+    DimensionResult,
     DiagramType,
+    EvaluationScore,
     VALID_WINNERS,
     WINNER_SCORE_MAP,
-    DimensionResult,
-    EvaluationScore,
 )
 from paperbanana.core.utils import extract_json, load_image
 from paperbanana.providers.base import VLMProvider

@@ -1984,7 +1984,12 @@ def evaluate_plot(
         help="Path to source data file used for plotting (CSV or JSON)",
     ),
     intent: str = typer.Option(..., "--intent", help="Communicative intent used for the plot"),
-    reference: str = typer.Option(..., "--reference", "-r", help="Path to human reference plot image"),
+    reference: str = typer.Option(
+        ...,
+        "--reference",
+        "-r",
+        help="Path to human reference plot image",
+    ),
     vlm_provider: str = typer.Option(
         "gemini", "--vlm-provider", help="VLM provider for evaluation"
     ),
