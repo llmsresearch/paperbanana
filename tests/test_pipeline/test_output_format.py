@@ -10,7 +10,13 @@ from PIL import Image
 from paperbanana.core.config import Settings
 from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.resume import load_resume_state
-from paperbanana.core.types import DiagramIR, DiagramIREdge, DiagramIRNode, DiagramType, GenerationInput
+from paperbanana.core.types import (
+    DiagramIR,
+    DiagramIREdge,
+    DiagramIRNode,
+    DiagramType,
+    GenerationInput,
+)
 
 
 class FakeVLM:
