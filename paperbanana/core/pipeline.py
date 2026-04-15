@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 import structlog
+from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
 
 from paperbanana.agents.critic import CriticAgent
 from paperbanana.agents.ir_planner import IRPlannerAgent
@@ -25,6 +26,7 @@ from paperbanana.core.diagram_ir import (
 )
 from paperbanana.core.prompt_recorder import PromptRecorder
 from paperbanana.core.types import (
+    CritiqueResult,
     DiagramType,
     GenerationInput,
     GenerationOutput,
@@ -68,6 +70,29 @@ def _emit_progress(
         callback(event)
     except Exception:
         logger.warning("Progress callback failed", stage=event.stage, exc_info=True)
+
+
+async def _call_with_retry(label, fn, *args, max_attempts=3, **kwargs):
+    """Retry an async agent call with exponential backoff.
+
+    Complements provider-level retries by catching agent-level failures
+    (e.g. response parsing errors, unexpected formats) that survive
+    the lower-level HTTP retry layer.
+    """
+    async for attempt in AsyncRetrying(
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_exponential(min=2, max=30),
+        reraise=True,
+    ):
+        with attempt:
+            attempt_num = attempt.retry_state.attempt_number
+            if attempt_num > 1:
+                logger.warning(
+                    f"Retrying {label}",
+                    attempt=attempt_num,
+                    max_attempts=max_attempts,
+                )
+            return await fn(*args, **kwargs)
 
 
 def _apply_ssl_skip():
@@ -349,48 +374,64 @@ class PaperBananaPipeline:
             )
             self._emit_progress("phase0_optimize_started")
             optimize_start = time.perf_counter()
-            optimized = await self.optimizer.run(
-                source_context=input.source_context,
-                caption=input.communicative_intent,
-                diagram_type=input.diagram_type,
-            )
-            optimize_seconds = time.perf_counter() - optimize_start
-            _emit_progress(
-                progress_callback,
-                PipelineProgressEvent(
-                    stage=PipelineProgressStage.OPTIMIZER_END,
-                    message="Optimizer done",
-                    seconds=optimize_seconds,
-                ),
-            )
-            logger.info(
-                "[Optimizer] done",
-                seconds=round(optimize_seconds, 1),
-            )
-            self._emit_progress(
-                "phase0_optimize_completed",
-                seconds=round(optimize_seconds, 1),
-            )
-
-            # Save originals and apply optimized versions
-            if self.settings.save_iterations:
-                save_json(
-                    {
-                        "original_context": input.source_context,
-                        "original_caption": input.communicative_intent,
-                        "optimized_context": optimized["optimized_context"],
-                        "optimized_caption": optimized["optimized_caption"],
-                    },
-                    self._run_dir / "optimization.json",
+            try:
+                optimized = await self.optimizer.run(
+                    source_context=input.source_context,
+                    caption=input.communicative_intent,
+                    diagram_type=input.diagram_type,
+                )
+                optimize_seconds = time.perf_counter() - optimize_start
+                _emit_progress(
+                    progress_callback,
+                    PipelineProgressEvent(
+                        stage=PipelineProgressStage.OPTIMIZER_END,
+                        message="Optimizer done",
+                        seconds=optimize_seconds,
+                    ),
+                )
+                logger.info(
+                    "[Optimizer] done",
+                    seconds=round(optimize_seconds, 1),
+                )
+                self._emit_progress(
+                    "phase0_optimize_completed",
+                    seconds=round(optimize_seconds, 1),
                 )
 
-            input = GenerationInput(
-                source_context=optimized["optimized_context"],
-                communicative_intent=optimized["optimized_caption"],
-                diagram_type=input.diagram_type,
-                raw_data=input.raw_data,
-                aspect_ratio=input.aspect_ratio,
-            )
+                # Save originals and apply optimized versions
+                if self.settings.save_iterations:
+                    save_json(
+                        {
+                            "original_context": input.source_context,
+                            "original_caption": input.communicative_intent,
+                            "optimized_context": optimized["optimized_context"],
+                            "optimized_caption": optimized["optimized_caption"],
+                        },
+                        self._run_dir / "optimization.json",
+                    )
+
+                input = GenerationInput(
+                    source_context=optimized["optimized_context"],
+                    communicative_intent=optimized["optimized_caption"],
+                    diagram_type=input.diagram_type,
+                    raw_data=input.raw_data,
+                    aspect_ratio=input.aspect_ratio,
+                )
+            except Exception:
+                optimize_seconds = time.perf_counter() - optimize_start
+                logger.warning(
+                    "Optimizer failed, continuing with original input",
+                    seconds=round(optimize_seconds, 1),
+                    exc_info=True,
+                )
+                _emit_progress(
+                    progress_callback,
+                    PipelineProgressEvent(
+                        stage=PipelineProgressStage.OPTIMIZER_END,
+                        message="Optimizer failed, using original input",
+                        seconds=optimize_seconds,
+                    ),
+                )
 
         # ── Phase 1: Linear Planning ─────────────────────────────────
 
@@ -416,7 +457,9 @@ class PaperBananaPipeline:
         if retrieval_mode == "external_only":
             examples = candidates[: self.settings.num_retrieval_examples]
         else:
-            examples = await self.retriever.run(
+            examples = await _call_with_retry(
+                "retriever",
+                self.retriever.run,
                 source_context=input.source_context,
                 caption=input.communicative_intent,
                 candidates=candidates,
@@ -459,7 +502,9 @@ class PaperBananaPipeline:
         )
         self._emit_progress("phase1_planning_started")
         planning_start = time.perf_counter()
-        description, planner_ratio = await self.planner.run(
+        description, planner_ratio = await _call_with_retry(
+            "planner",
+            self.planner.run,
             source_context=input.source_context,
             caption=input.communicative_intent,
             examples=examples,
@@ -495,13 +540,22 @@ class PaperBananaPipeline:
         )
         self._emit_progress("phase1_styling_started")
         styling_start = time.perf_counter()
-        optimized_description = await self.stylist.run(
-            description=description,
-            guidelines=guidelines,
-            source_context=input.source_context,
-            caption=input.communicative_intent,
-            diagram_type=input.diagram_type,
-        )
+        try:
+            optimized_description = await _call_with_retry(
+                "stylist",
+                self.stylist.run,
+                description=description,
+                guidelines=guidelines,
+                source_context=input.source_context,
+                caption=input.communicative_intent,
+                diagram_type=input.diagram_type,
+            )
+        except Exception:
+            logger.warning(
+                "Stylist failed after retries, falling back to planner output",
+                exc_info=True,
+            )
+            optimized_description = description
         styling_seconds = time.perf_counter() - styling_start
         _emit_progress(
             progress_callback,
@@ -591,7 +645,9 @@ class PaperBananaPipeline:
                 ),
             )
             visualizer_start = time.perf_counter()
-            image_path = await self.visualizer.run(
+            image_path = await _call_with_retry(
+                "visualizer",
+                self.visualizer.run,
                 description=current_description,
                 diagram_type=input.diagram_type,
                 raw_data=input.raw_data,
@@ -632,13 +688,23 @@ class PaperBananaPipeline:
                 ),
             )
             critic_start = time.perf_counter()
-            critique = await self.critic.run(
-                image_path=image_path,
-                description=current_description,
-                source_context=input.source_context,
-                caption=input.communicative_intent,
-                diagram_type=input.diagram_type,
-            )
+            try:
+                critique = await _call_with_retry(
+                    "critic",
+                    self.critic.run,
+                    image_path=image_path,
+                    description=current_description,
+                    source_context=input.source_context,
+                    caption=input.communicative_intent,
+                    diagram_type=input.diagram_type,
+                )
+            except Exception:
+                logger.warning(
+                    "Critic failed after retries, accepting current image",
+                    iteration=iter_index,
+                    exc_info=True,
+                )
+                critique = CritiqueResult()
             critic_seconds = time.perf_counter() - critic_start
             _emit_progress(
                 progress_callback,
@@ -932,7 +998,9 @@ class PaperBananaPipeline:
                 ),
             )
             visualizer_start = time.perf_counter()
-            image_path = await self.visualizer.run(
+            image_path = await _call_with_retry(
+                "visualizer",
+                self.visualizer.run,
                 description=current_description,
                 diagram_type=resume_state.diagram_type,
                 raw_data=resume_state.raw_data,
@@ -974,14 +1042,24 @@ class PaperBananaPipeline:
                 ),
             )
             critic_start = time.perf_counter()
-            critique = await self.critic.run(
-                image_path=image_path,
-                description=current_description,
-                source_context=resume_state.source_context,
-                caption=resume_state.communicative_intent,
-                diagram_type=resume_state.diagram_type,
-                user_feedback=user_feedback,
-            )
+            try:
+                critique = await _call_with_retry(
+                    "critic",
+                    self.critic.run,
+                    image_path=image_path,
+                    description=current_description,
+                    source_context=resume_state.source_context,
+                    caption=resume_state.communicative_intent,
+                    diagram_type=resume_state.diagram_type,
+                    user_feedback=user_feedback,
+                )
+            except Exception:
+                logger.warning(
+                    "Critic failed after retries, accepting current image",
+                    iteration=iter_num,
+                    exc_info=True,
+                )
+                critique = CritiqueResult()
             critic_seconds = time.perf_counter() - critic_start
             _emit_progress(
                 progress_callback,
