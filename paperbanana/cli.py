@@ -1682,7 +1682,6 @@ def plot(
         "--venue",
         help="Target venue style (neurips, icml, acl, ieee, custom)",
     ),
-<<<<<<< HEAD
     cost_only: bool = typer.Option(
         False,
         "--cost-only",
@@ -1692,16 +1691,11 @@ def plot(
         None,
         "--budget",
         help="Budget cap in USD; pipeline aborts gracefully when exceeded",
-=======
+    ),
     generate_caption: bool = typer.Option(
         False,
         "--generate-caption",
-<<<<<<< HEAD
-        help="Auto-generate a publication-ready figure caption after generation (one extra VLM call)",
->>>>>>> 43d46a4 (feat: add CaptionAgent for auto-generating publication-ready figure captions)
-=======
         help="Auto-generate a publication-ready figure caption (one extra VLM call)",
->>>>>>> e4ba4dc (fix: address review and CI failures)
     ),
 ):
     """Generate a statistical plot from data."""
