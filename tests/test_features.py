@@ -232,6 +232,46 @@ def test_optimizer_from_yaml():
         Path(path).unlink(missing_ok=True)
 
 
+# ── Vector export settings tests ─────────────────────────────────
+
+
+def test_vector_export_defaults_false():
+    """vector_export defaults to False."""
+    settings = Settings()
+    assert settings.vector_export is False
+
+
+def test_vector_export_can_be_enabled():
+    """vector_export can be enabled via constructor."""
+    settings = Settings(vector_export=True)
+    assert settings.vector_export is True
+
+
+def test_vector_export_from_yaml():
+    """output.vector_export loads from YAML config."""
+    import yaml
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.safe_dump({"output": {"vector_export": True}}, f)
+        path = f.name
+    try:
+        settings = Settings.from_yaml(path)
+        assert settings.vector_export is True
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_visualizer_run_signature_has_vector_formats():
+    """VisualizerAgent.run() exposes a vector_formats parameter."""
+    import inspect
+
+    from paperbanana.agents.visualizer import VisualizerAgent
+
+    sig = inspect.signature(VisualizerAgent.run)
+    assert "vector_formats" in sig.parameters
+    assert sig.parameters["vector_formats"].default is None
+
+
 def test_run_input_json_structure():
     """run_input.json has the expected structure."""
     data = {

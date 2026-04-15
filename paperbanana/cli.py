@@ -117,6 +117,11 @@ def generate(
         "-f",
         help="Output image format (png, jpeg, or webp)",
     ),
+    vector: bool = typer.Option(
+        False,
+        "--vector/--no-vector",
+        help="Export SVG and PDF vector formats for statistical plots.",
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
     save_prompts: Optional[bool] = typer.Option(
         None,
@@ -256,6 +261,8 @@ def generate(
     if output:
         overrides["output_dir"] = str(Path(output).parent)
     overrides["output_format"] = format
+    if vector:
+        overrides["vector_export"] = True
     if exemplar_retrieval:
         overrides["exemplar_retrieval_enabled"] = True
     if exemplar_endpoint:
@@ -1697,6 +1704,11 @@ def plot(
         "--generate-caption",
         help="Auto-generate a publication-ready figure caption (one extra VLM call)",
     ),
+    vector: bool = typer.Option(
+        False,
+        "--vector/--no-vector",
+        help="Also export SVG and PDF vector formats alongside the raster output.",
+    ),
 ):
     """Generate a statistical plot from data."""
     if format not in ("png", "jpeg", "webp"):
@@ -1736,6 +1748,7 @@ def plot(
         venue=venue,
         budget_usd=budget,
         generate_caption=generate_caption,
+        vector_export=vector,
     )
 
     gen_input = GenerationInput(
@@ -1785,6 +1798,9 @@ def plot(
 
     result = asyncio.run(_run())
     console.print(f"\n[green]Done![/green] Plot saved to: [bold]{result.image_path}[/bold]")
+    vector_paths = result.metadata.get("vector_output_paths", {})
+    for fmt, path in vector_paths.items():
+        console.print(f"[green]Vector ({fmt.upper()}):[/green] [bold]{path}[/bold]")
     if result.generated_caption:
         console.print("\n  [bold]Generated Caption:[/bold]")
         console.print(f"  {result.generated_caption}")
