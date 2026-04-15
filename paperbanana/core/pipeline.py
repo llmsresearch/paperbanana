@@ -750,9 +750,7 @@ class PaperBananaPipeline:
         tikz_path: str | None = None
         should_export = (
             input.diagram_type == DiagramType.METHODOLOGY and self.settings.export_tikz
-        ) or (
-            input.diagram_type == DiagramType.STATISTICAL_PLOT and self.settings.export_pgfplots
-        )
+        ) or (input.diagram_type == DiagramType.STATISTICAL_PLOT and self.settings.export_pgfplots)
 
         if should_export and final_output_path:
             if self._cost_tracker:

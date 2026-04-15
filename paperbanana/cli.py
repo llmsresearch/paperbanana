@@ -1710,20 +1710,14 @@ def tikz(
     vlm_provider: Optional[str] = typer.Option(
         None, "--vlm-provider", help="VLM provider (gemini, openai, anthropic, …)"
     ),
-    vlm_model: Optional[str] = typer.Option(
-        None, "--vlm-model", help="VLM model name override"
-    ),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name override"),
     venue: Optional[str] = typer.Option(
         None,
         "--venue",
         help="Target venue style (neurips, icml, acl, ieee, custom)",
     ),
-    config: Optional[str] = typer.Option(
-        None, "--config", help="Path to a YAML config file"
-    ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Show detailed progress"
-    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to a YAML config file"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
 ):
     """Convert an existing generated image to a compilable LaTeX/TikZ source file."""
     from pathlib import Path as _Path
@@ -1785,7 +1779,7 @@ def tikz(
             f"[bold]PaperBanana[/bold] — Export to LaTeX/TikZ\n\n"
             f"Input:  {input_path}\n"
             f"Output: {tex_path}\n"
-            f"Type:   {'TikZ (methodology)' if dtype == DiagramType.METHODOLOGY else 'PGFPlots (plot)'}\n"
+            f"Type:   {'TikZ' if dtype == DiagramType.METHODOLOGY else 'PGFPlots'}\n"
             f"VLM:    {settings.vlm_provider} / {settings.effective_vlm_model}",
             border_style="blue",
         )

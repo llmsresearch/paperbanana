@@ -549,3 +549,118 @@ def test_plot_batch_supports_concurrency_and_retries(tmp_path, monkeypatch):
     assert all(item.get("status") == "success" for item in report["items"])
     flaky = next(item for item in report["items"] if item["id"] == "p2")
     assert flaky.get("attempts", 0) >= 2
+
+
+# ── TikZ export CLI tests ──────────────────────────────────────────
+
+
+def test_generate_dry_run_accepts_export_tikz_flag():
+    """paperbanana generate accepts --export-tikz in dry-run mode."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Sample methodology text for testing.")
+        input_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--input",
+                input_path,
+                "--caption",
+                "test",
+                "--dry-run",
+                "--export-tikz",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Dry Run" in result.output
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
+def test_tikz_subcommand_missing_input():
+    """paperbanana tikz exits with error when input file is missing."""
+    result = runner.invoke(
+        app,
+        ["tikz", "--input", "/nonexistent/image.png"],
+    )
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()
+
+
+def test_tikz_subcommand_invalid_diagram_type():
+    """paperbanana tikz rejects invalid --diagram-type values."""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        # Write a minimal PNG header so the file exists
+        f.write(b"\x89PNG\r\n\x1a\n")
+        img_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            ["tikz", "--input", img_path, "--diagram-type", "invalid"],
+        )
+        assert result.exit_code == 1
+        assert "diagram" in result.output.lower() or "plot" in result.output.lower()
+    finally:
+        Path(img_path).unlink(missing_ok=True)
+
+
+def test_tikz_subcommand_invalid_venue():
+    """paperbanana tikz rejects invalid --venue values."""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        f.write(b"\x89PNG\r\n\x1a\n")
+        img_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            ["tikz", "--input", img_path, "--venue", "arxiv"],
+        )
+        assert result.exit_code == 1
+        assert "venue" in result.output.lower()
+    finally:
+        Path(img_path).unlink(missing_ok=True)
+
+
+def test_tikz_subcommand_missing_source_context():
+    """paperbanana tikz exits with error when --source-context file is missing."""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        f.write(b"\x89PNG\r\n\x1a\n")
+        img_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "tikz",
+                "--input",
+                img_path,
+                "--source-context",
+                "/nonexistent/method.txt",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+    finally:
+        Path(img_path).unlink(missing_ok=True)
+
+
+def test_tikz_subcommand_help():
+    """paperbanana tikz --help shows expected options."""
+    result = runner.invoke(app, ["tikz", "--help"])
+    assert result.exit_code == 0
+    assert "--input" in result.output
+    assert "--output" in result.output
+    assert "--source-context" in result.output
+    assert "--diagram-type" in result.output
+    assert "--vlm-provider" in result.output
+    assert "--venue" in result.output
+
+
+def test_plot_accepts_export_pgfplots_flag(tmp_path):
+    """paperbanana plot --help shows --export-pgfplots flag."""
+    result = runner.invoke(app, ["plot", "--help"])
+    assert result.exit_code == 0
+    assert "--export-pgfplots" in result.output

@@ -14,10 +14,10 @@ Convert the provided statistical plot image into compilable PGFPlots source code
 - The snippet must compile without errors under `pdflatex` or `xelatex` using only `pgfplots` and standard packages.
 
 **Self-contained snippet:**
-- Output a single `\begin{tikzpicture} \begin{axis} ... \end{axis} \end{tikzpicture}` block.
-- Declare `\usepgfplotslibrary{...}` and `\pgfplotsset{compat=1.18}` at the top of the snippet.
+- Output a single `\begin{{tikzpicture}} \begin{{axis}} ... \end{{axis}} \end{{tikzpicture}}` block.
+- Declare `\usepgfplotslibrary{{...}}` and `\pgfplotsset{{compat=1.18}}` at the top of the snippet.
 - Do not use any `\input` or `\include` directives.
-- Do not use `\documentclass` or `\begin{document}`.
+- Do not use `\documentclass` or `\begin{{document}}`.
 
 **Fidelity:**
 - Use `\addplot` for each data series; approximate data values from the chart.
@@ -47,10 +47,10 @@ Convert the provided statistical plot image into compilable PGFPlots source code
 Return **only** the PGFPlots snippet inside a fenced code block — nothing else:
 
 ```tikz
-\pgfplotsset{compat=1.18}
-\begin{tikzpicture}
-  \begin{axis}[...]
+\pgfplotsset{{compat=1.18}}
+\begin{{tikzpicture}}
+  \begin{{axis}}[...]
     \addplot ...
-  \end{axis}
-\end{tikzpicture}
+  \end{{axis}}
+\end{{tikzpicture}}
 ```

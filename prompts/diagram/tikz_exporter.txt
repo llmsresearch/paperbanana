@@ -14,8 +14,8 @@ Convert the provided methodology diagram image into compilable TikZ source code 
 - The snippet must compile without errors under `pdflatex` or `xelatex` using only standard packages (tikz, pgf, xcolor, amsmath, amssymb are acceptable).
 
 **Self-contained snippet:**
-- Output a single `\begin{tikzpicture} ... \end{tikzpicture}` block — no `\documentclass`, no `\begin{document}`.
-- Declare all required TikZ libraries inside the snippet with `\usetikzlibrary{...}`.
+- Output a single `\begin{{tikzpicture}} ... \end{{tikzpicture}}` block — no `\documentclass`, no `\begin{{document}}`.
+- Declare all required TikZ libraries inside the snippet with `\usetikzlibrary{{...}}`.
 - Do not use any `\input` or `\include` directives.
 
 **Fidelity:**
@@ -48,8 +48,8 @@ The following context may help you recover labels and structure that are partial
 Return **only** the TikZ snippet inside a fenced code block — nothing else:
 
 ```tikz
-\usetikzlibrary{...}
-\begin{tikzpicture}
+\usetikzlibrary{{...}}
+\begin{{tikzpicture}}
   ...
-\end{tikzpicture}
+\end{{tikzpicture}}
 ```
