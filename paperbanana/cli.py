@@ -982,7 +982,7 @@ def batch(
         checkpoint_progress,
         generate_batch_id,
         init_or_load_checkpoint,
-        load_batch_manifest,
+        load_batch_manifest_with_composite,
         mark_item_failure,
         mark_item_running,
         mark_item_success,
@@ -991,7 +991,7 @@ def batch(
     from paperbanana.core.utils import ensure_dir
 
     try:
-        items = load_batch_manifest(manifest_path)
+        items, composite_config = load_batch_manifest_with_composite(manifest_path)
     except (ValueError, FileNotFoundError, RuntimeError) as e:
         console.print(f"[red]Error loading manifest: {e}[/red]")
         raise typer.Exit(1)
@@ -1177,6 +1177,28 @@ def batch(
     )
     console.print(f"  Report: [bold]{report_path}[/bold]")
 
+    # Auto-composite if manifest has a composite section
+    if composite_config is not None:
+        output_paths = [x["output_path"] for x in report["items"] if x.get("output_path")]
+        if output_paths:
+            from paperbanana.core.composite import compose_images
+
+            comp_output = composite_config.get("output") or "composite.png"
+            comp_path = batch_dir / comp_output
+            try:
+                compose_images(
+                    image_paths=output_paths,
+                    layout=composite_config.get("layout", "auto"),
+                    labels=composite_config.get("labels"),
+                    auto_label=composite_config.get("auto_label", True),
+                    spacing=composite_config.get("spacing", 20),
+                    label_position=composite_config.get("label_position", "bottom"),
+                    output_path=comp_path,
+                )
+                console.print(f"  Composite: [bold]{comp_path}[/bold]")
+            except Exception as e:
+                console.print(f"  [yellow]Composite failed: {e}[/yellow]")
+
 
 @app.command("batch-report")
 def batch_report(
@@ -1238,6 +1260,67 @@ def batch_report(
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
+
+
+@app.command()
+def composite(
+    images: list[str] = typer.Argument(..., help="Paths to images to compose into a single figure"),
+    layout: str = typer.Option(
+        "auto", "--layout", "-l", help="Grid layout: 'RxC' (e.g. '1x3', '2x2') or 'auto'"
+    ),
+    labels: Optional[str] = typer.Option(
+        None,
+        "--labels",
+        help="Comma-separated labels (e.g. '(a),(b),(c)') or 'none' to disable",
+    ),
+    spacing: int = typer.Option(20, "--spacing", "-s", help="Pixel spacing between panels"),
+    label_position: str = typer.Option(
+        "bottom", "--label-position", help="Label placement: 'top' or 'bottom'"
+    ),
+    label_font_size: int = typer.Option(32, "--label-font-size", help="Font size for panel labels"),
+    output: str = typer.Option(
+        "composite_output.png", "--output", "-o", help="Output path for the composite image"
+    ),
+):
+    """Compose multiple images into a single labeled multi-panel figure."""
+    if label_position not in ("top", "bottom"):
+        console.print(
+            f"[red]Error: --label-position must be 'top' or 'bottom'. Got: {label_position}[/red]"
+        )
+        raise typer.Exit(1)
+
+    for img_path in images:
+        if not Path(img_path).exists():
+            console.print(f"[red]Error: Image not found: {img_path}[/red]")
+            raise typer.Exit(1)
+
+    from paperbanana.core.composite import compose_images
+
+    label_list: list[str] | None = None
+    auto_label = True
+    if labels is not None:
+        if labels.lower() == "none":
+            auto_label = False
+        else:
+            label_list = [item.strip() for item in labels.split(",")]
+            auto_label = False
+
+    try:
+        compose_images(
+            image_paths=images,
+            layout=layout,
+            labels=label_list,
+            auto_label=auto_label,
+            spacing=spacing,
+            label_position=label_position,
+            label_font_size=label_font_size,
+            output_path=output,
+        )
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Composite saved to:[/green] [bold]{output}[/bold]")
 
 
 @app.command("plot-batch")
