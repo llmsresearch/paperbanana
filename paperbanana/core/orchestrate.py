@@ -15,8 +15,8 @@ from typing import Any, Callable
 
 from paperbanana.core.config import Settings
 from paperbanana.core.plot_data import load_statistical_plot_payload
-from paperbanana.core.types import DiagramType, GenerationInput
 from paperbanana.core.source_loader import load_methodology_source
+from paperbanana.core.types import DiagramType, GenerationInput
 
 _HEADING_NUMBERED_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)\s+(.+?)\s*$")
 _HEADING_SIMPLE_RE = re.compile(r"^\s*([A-Z][A-Za-z0-9 ,:/()\-]{3,100})\s*$")
