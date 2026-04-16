@@ -47,6 +47,14 @@ references_app = typer.Typer(
 )
 app.add_typer(references_app, name="references")
 
+# ── Runs subcommand group ─────────────────────────────────────────
+runs_app = typer.Typer(
+    name="runs",
+    help="Inspect and manage prior outputs (runs and batches).",
+    no_args_is_help=True,
+)
+app.add_typer(runs_app, name="runs")
+
 
 def _require_pdf_dep() -> None:
     """Raise a clean error if PyMuPDF is not installed."""
@@ -102,6 +110,87 @@ def _upsert_env_vars(env_path: Path, updates: dict[str, str]) -> None:
             lines.append(new_line)
 
     env_path.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+
+
+def _format_mtime(path: Path) -> str:
+    try:
+        ts = path.stat().st_mtime
+    except OSError:
+        return "?"
+    # Keep it simple: local time, second resolution.
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+
+
+def _safe_read_json(path: Path) -> dict:
+    try:
+        return json_mod.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json_mod.JSONDecodeError):
+        return {}
+
+
+def _summarize_run_row(output_dir: Path, run_id: str) -> dict[str, str]:
+    run_dir = output_dir / run_id
+    info = _safe_read_json(run_dir / "run_input.json")
+    caption = str(info.get("communicative_intent", "")).strip()
+    if len(caption) > 60:
+        caption = caption[:57] + "..."
+    diagram_type = str(info.get("diagram_type", "")).strip()
+
+    final_image = None
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        p = run_dir / f"final_output.{ext}"
+        if p.is_file():
+            final_image = p
+            break
+    status = "ok" if final_image else "no_final"
+
+    # Best-effort: count iter dirs.
+    try:
+        iters = len([d for d in run_dir.iterdir() if d.is_dir() and d.name.startswith("iter_")])
+    except OSError:
+        iters = 0
+
+    return {
+        "id": run_id,
+        "modified": _format_mtime(run_dir),
+        "type": diagram_type or "?",
+        "iters": str(iters),
+        "status": status,
+        "caption": caption or "(no caption found)",
+    }
+
+
+def _summarize_batch_row(output_dir: Path, batch_id: str) -> dict[str, str]:
+    batch_dir = output_dir / batch_id
+    report = _safe_read_json(batch_dir / "batch_report.json")
+    kind = str(report.get("batch_kind") or "").strip() or "?"
+    items = report.get("items") if isinstance(report, dict) else None
+    n_items = len(items) if isinstance(items, list) else 0
+
+    status_counts: dict[str, int] = {}
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            status = item.get("status")
+            if not status:
+                status = "success" if item.get("output_path") else "failed"
+            status_counts[str(status)] = status_counts.get(str(status), 0) + 1
+
+    status = "?"
+    if status_counts:
+        parts = [f"{k}:{v}" for k, v in sorted(status_counts.items())]
+        status = ", ".join(parts)
+        if len(status) > 60:
+            status = status[:57] + "..."
+
+    return {
+        "id": batch_id,
+        "modified": _format_mtime(batch_dir),
+        "kind": kind,
+        "items": str(n_items),
+        "status": status,
+    }
 
 
 @app.command()
@@ -2897,6 +2986,250 @@ def benchmark(
     else:
         report_path = Path(settings.output_dir) / report.created_at.replace(":", "")
     console.print(f"\nReport: [bold]{report_path / 'benchmark_report.json'}[/bold]")
+
+
+# ── Runs subcommands ──────────────────────────────────────────────
+
+
+@runs_app.command("list")
+def runs_list(
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Output directory containing run_* / batch_* folders",
+    ),
+    kind: str = typer.Option(
+        "run",
+        "--kind",
+        help="What to list: run, batch, or all",
+    ),
+    limit: int = typer.Option(50, "--limit", help="Max rows to show (per kind)"),
+    oldest_first: bool = typer.Option(False, "--oldest-first", help="Sort oldest→newest"),
+    plain: bool = typer.Option(
+        False,
+        "--plain",
+        help="Plain text output (newline-delimited, easier to parse in scripts/tests).",
+    ),
+) -> None:
+    """List recent runs and/or batch outputs under an output directory."""
+    from paperbanana.studio.runs import list_batch_ids, list_run_ids
+
+    out = Path(output_dir)
+    kind_norm = kind.strip().lower()
+    if kind_norm not in {"run", "batch", "all"}:
+        console.print("[red]Error:[/red] --kind must be one of: run, batch, all")
+        raise typer.Exit(1)
+
+    if not out.exists():
+        console.print(f"[red]Error:[/red] Output directory not found: {output_dir}")
+        raise typer.Exit(1)
+
+    if kind_norm in {"run", "all"}:
+        runs = list_run_ids(str(out))
+        if not oldest_first:
+            runs = list(reversed(runs))
+        if limit > 0:
+            runs = runs[:limit]
+
+        if plain:
+            if not runs:
+                console.print("No runs found.")
+            for run_id in runs:
+                row = _summarize_run_row(out, run_id)
+                console.print(
+                    "\t".join(
+                        [
+                            row["id"],
+                            row["modified"],
+                            row["type"],
+                            row["iters"],
+                            row["status"],
+                            row["caption"],
+                        ]
+                    )
+                )
+        else:
+            table = Table(title="Runs", show_lines=False)
+            table.add_column("run_id", style="bold")
+            table.add_column("modified", style="dim")
+            table.add_column("type")
+            table.add_column("iters", justify="right")
+            table.add_column("status")
+            table.add_column("caption")
+
+            for run_id in runs:
+                row = _summarize_run_row(out, run_id)
+                table.add_row(
+                    row["id"],
+                    row["modified"],
+                    row["type"],
+                    row["iters"],
+                    row["status"],
+                    row["caption"],
+                )
+
+            if runs:
+                console.print(table)
+            else:
+                console.print("No runs found.")
+
+    if kind_norm in {"batch", "all"}:
+        batches = list_batch_ids(str(out))
+        if not oldest_first:
+            batches = list(reversed(batches))
+        if limit > 0:
+            batches = batches[:limit]
+
+        if plain:
+            if not batches:
+                console.print("No batches found.")
+            for batch_id in batches:
+                row = _summarize_batch_row(out, batch_id)
+                console.print(
+                    "\t".join([row["id"], row["modified"], row["kind"], row["items"], row["status"]])
+                )
+        else:
+            table = Table(title="Batches", show_lines=False)
+            table.add_column("batch_id", style="bold")
+            table.add_column("modified", style="dim")
+            table.add_column("kind")
+            table.add_column("items", justify="right")
+            table.add_column("status")
+
+            for batch_id in batches:
+                row = _summarize_batch_row(out, batch_id)
+                table.add_row(row["id"], row["modified"], row["kind"], row["items"], row["status"])
+
+            if batches:
+                console.print(table)
+            else:
+                console.print("No batches found.")
+
+
+@runs_app.command("show")
+def runs_show(
+    id: str = typer.Argument(..., help="Run or batch id (e.g. run_..., batch_...)"),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Output directory containing run_* / batch_* folders",
+    ),
+    kind: Optional[str] = typer.Option(
+        None,
+        "--kind",
+        help="Optional override: run or batch. If omitted, inferred from the id prefix.",
+    ),
+) -> None:
+    """Show details for a single run or batch output."""
+    from paperbanana.studio.runs import load_batch_summary, load_run_summary
+
+    out = Path(output_dir)
+    if not out.exists():
+        console.print(f"[red]Error:[/red] Output directory not found: {output_dir}")
+        raise typer.Exit(1)
+
+    inferred = "batch" if id.startswith("batch_") else "run"
+    kind_norm = (kind.strip().lower() if kind else inferred)
+    if kind_norm not in {"run", "batch"}:
+        console.print("[red]Error:[/red] --kind must be one of: run, batch")
+        raise typer.Exit(1)
+
+    if kind_norm == "run":
+        summary = load_run_summary(str(out), id)
+        if not summary.get("exists"):
+            console.print(f"[red]Error:[/red] {summary.get('error')}")
+            raise typer.Exit(1)
+
+        lines = [
+            f"[bold]Run[/bold] {summary.get('run_id')}",
+            f"Directory: {summary.get('run_dir')}",
+            f"Final image: {summary.get('final_image') or '(none)'}",
+            f"Metadata: {summary.get('metadata_path') or '(none)'}",
+        ]
+        if summary.get("iteration_images"):
+            lines.append(f"Iterations: {len(summary['iteration_images'])}")
+
+        console.print(Panel.fit("\n".join(lines), border_style="green"))
+        if summary.get("run_input_preview"):
+            console.print("\n[bold]run_input.json (preview)[/bold]")
+            console.print(summary["run_input_preview"])
+        if summary.get("metadata_preview"):
+            console.print("\n[bold]metadata.json (preview)[/bold]")
+            console.print(summary["metadata_preview"])
+        return
+
+    summary = load_batch_summary(str(out), id)
+    if not summary.get("exists"):
+        console.print(f"[red]Error:[/red] {summary.get('error')}")
+        raise typer.Exit(1)
+
+    status_counts = summary.get("status_counts") or {}
+    status_line = ", ".join([f"{k}:{v}" for k, v in sorted(status_counts.items())]) if status_counts else "?"
+    lines = [
+        f"[bold]Batch[/bold] {summary.get('batch_id')}",
+        f"Directory: {summary.get('batch_dir')}",
+        f"Status: {status_line}",
+    ]
+    console.print(Panel.fit("\n".join(lines), border_style="blue"))
+    if summary.get("report_preview"):
+        console.print("\n[bold]batch_report.json (preview)[/bold]")
+        console.print(summary["report_preview"])
+
+
+@runs_app.command("delete")
+def runs_delete(
+    id: str = typer.Argument(..., help="Run or batch id to delete"),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Output directory containing run_* / batch_* folders",
+    ),
+    kind: Optional[str] = typer.Option(
+        None,
+        "--kind",
+        help="Optional override: run or batch. If omitted, inferred from the id prefix.",
+    ),
+    yes: bool = typer.Option(False, "--yes", help="Confirm deletion (required)"),
+) -> None:
+    """Delete a run_* or batch_* folder under the output directory."""
+    import shutil
+
+    if not yes:
+        console.print("[red]Error:[/red] Refusing to delete without --yes")
+        raise typer.Exit(1)
+
+    out = Path(output_dir)
+    if not out.exists():
+        console.print(f"[red]Error:[/red] Output directory not found: {output_dir}")
+        raise typer.Exit(1)
+
+    inferred = "batch" if id.startswith("batch_") else "run"
+    kind_norm = (kind.strip().lower() if kind else inferred)
+    if kind_norm not in {"run", "batch"}:
+        console.print("[red]Error:[/red] --kind must be one of: run, batch")
+        raise typer.Exit(1)
+
+    if kind_norm == "run" and not id.startswith("run_"):
+        console.print("[red]Error:[/red] Run ids must start with run_ (or pass --kind batch)")
+        raise typer.Exit(1)
+    if kind_norm == "batch" and not id.startswith("batch_"):
+        console.print("[red]Error:[/red] Batch ids must start with batch_ (or pass --kind run)")
+        raise typer.Exit(1)
+
+    target = (out / id).resolve()
+    root = out.resolve()
+    if root not in target.parents:
+        console.print("[red]Error:[/red] Refusing to delete outside output directory")
+        raise typer.Exit(1)
+    if not target.is_dir():
+        console.print("[red]Error:[/red] Target directory not found")
+        raise typer.Exit(1)
+
+    shutil.rmtree(target)
+    console.print(f"[green]Deleted[/green] {target}")
 
 
 # ── Data subcommands ──────────────────────────────────────────────
