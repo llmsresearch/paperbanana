@@ -652,3 +652,98 @@ def run_plot_batch(
     lines.append(f"Succeeded: {ok}/{len(items)}")
     lines.append(f"Total time: {report['total_seconds']}s")
     return "\n".join(lines), str(batch_dir.resolve())
+
+
+def _sanitize_output_filename(name: str) -> str:
+    """Strip directory components and reject traversal attempts."""
+    cleaned = (name or "").strip() or "composite.png"
+    base = Path(cleaned).name
+    if not base or base in (".", ".."):
+        return "composite.png"
+    return base
+
+
+def run_composite(
+    image_paths: list[str],
+    *,
+    output_dir: str,
+    layout: str = "auto",
+    labels: str = "",
+    spacing: int = 20,
+    label_position: str = "bottom",
+    label_font_size: int = 32,
+    output_filename: str = "composite.png",
+) -> tuple[str, Optional[str]]:
+    """Compose multiple uploaded images into a single labeled multi-panel figure.
+
+    Returns (log, output_path). output_path is None on failure.
+    """
+    from typing import Literal, cast
+
+    from paperbanana.core.composite import compose_images
+
+    lines: list[str] = ["Starting composite figure generation…"]
+
+    valid_paths = [p for p in image_paths if p and Path(p).is_file()]
+    if not valid_paths:
+        msg = "No valid image files provided. Upload at least one image."
+        lines.append(msg)
+        return "\n".join(lines), None
+
+    if label_position not in ("top", "bottom"):
+        msg = f"label_position must be 'top' or 'bottom'. Got: {label_position!r}"
+        lines.append(msg)
+        return "\n".join(lines), None
+
+    if spacing < 0:
+        msg = f"spacing must be >= 0. Got: {spacing}"
+        lines.append(msg)
+        return "\n".join(lines), None
+
+    if label_font_size <= 0:
+        msg = f"label_font_size must be > 0. Got: {label_font_size}"
+        lines.append(msg)
+        return "\n".join(lines), None
+
+    label_list: Optional[list[str]] = None
+    auto_label = True
+    stripped_labels = labels.strip()
+    if stripped_labels:
+        if stripped_labels.lower() == "none":
+            auto_label = False
+        else:
+            label_list = [item.strip() for item in labels.split(",") if item.strip()]
+            auto_label = False
+
+    out_dir_str = (output_dir or "").strip() or "outputs"
+    out_dir = Path(out_dir_str).resolve()
+    ensure_dir(out_dir)
+    safe_name = _sanitize_output_filename(output_filename)
+    output_path = out_dir / safe_name
+
+    lines.append(f"Panels: {len(valid_paths)}")
+    lines.append(f"Layout: {layout}")
+    lines.append(f"Output: {output_path}")
+
+    try:
+        compose_images(
+            image_paths=valid_paths,
+            layout=layout,
+            labels=label_list,
+            auto_label=auto_label,
+            spacing=spacing,
+            label_position=cast(Literal["top", "bottom"], label_position),
+            label_font_size=label_font_size,
+            output_path=output_path,
+        )
+    except (ValueError, OSError) as e:
+        lines.append("FAILED")
+        lines.append(f"{type(e).__name__}: {e}")
+        return "\n".join(lines), None
+    except Exception as e:
+        lines.append("FAILED")
+        lines.append(f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}")
+        return "\n".join(lines), None
+
+    lines.append("Done.")
+    return "\n".join(lines), str(output_path)
