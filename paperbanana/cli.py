@@ -3139,7 +3139,7 @@ def runs_show(
         raise typer.Exit(1)
 
     inferred = "batch" if id.startswith("batch_") else "run"
-    kind_norm = (kind.strip().lower() if kind else inferred)
+    kind_norm = kind.strip().lower() if kind else inferred
     if kind_norm not in {"run", "batch"}:
         console.print("[red]Error:[/red] --kind must be one of: run, batch")
         raise typer.Exit(1)
@@ -3175,11 +3175,7 @@ def runs_show(
 
     status_counts = summary.get("status_counts") or {}
     status_line = (
-        ", ".join(
-            [f"{k}:{v}" for k, v in sorted(status_counts.items())]
-        )
-        if status_counts
-        else "?"
+        ", ".join([f"{k}:{v}" for k, v in sorted(status_counts.items())]) if status_counts else "?"
     )
     lines = [
         f"[bold]Batch[/bold] {summary.get('batch_id')}",
@@ -3221,7 +3217,7 @@ def runs_delete(
         raise typer.Exit(1)
 
     inferred = "batch" if id.startswith("batch_") else "run"
-    kind_norm = (kind.strip().lower() if kind else inferred)
+    kind_norm = kind.strip().lower() if kind else inferred
     if kind_norm not in {"run", "batch"}:
         console.print("[red]Error:[/red] --kind must be one of: run, batch")
         raise typer.Exit(1)

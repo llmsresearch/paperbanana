@@ -96,4 +96,3 @@ def test_runs_list_show_delete_batch(tmp_path: Path):
     )
     assert deleted.exit_code == 0
     assert not (out / "batch_20260101_000000_beef00").exists()
-
