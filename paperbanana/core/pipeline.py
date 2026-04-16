@@ -265,6 +265,19 @@ class PaperBananaPipeline:
             except Exception:
                 logger.warning("Progress callback raised", progress_event=event)
 
+    def _check_budget(self, context: str, iteration: int | None = None) -> bool:
+        """Return True if the cost tracker is over budget, logging a warning."""
+        if not (self._cost_tracker and self._cost_tracker.is_over_budget):
+            return False
+        if iteration is not None:
+            logger.warning(
+                f"Budget exceeded {context}, stopping early",
+                iteration=iteration,
+            )
+        else:
+            logger.warning(f"Budget exceeded {context}, skipping iterations")
+        return True
+
     @property
     def _run_dir(self) -> Path:
         """Directory for this run's outputs."""
@@ -669,12 +682,8 @@ class PaperBananaPipeline:
         else:
             total_iters = self.settings.refinement_iterations
 
-        budget_exceeded = False
-
         # Check budget after pre-iteration phases (retriever, planner, stylist)
-        if self._cost_tracker and self._cost_tracker.is_over_budget:
-            logger.warning("Budget exceeded after planning phases, skipping iterations")
-            budget_exceeded = True
+        budget_exceeded = self._check_budget("after planning phases")
 
         for i in range(total_iters):
             if budget_exceeded:
@@ -843,11 +852,7 @@ class PaperBananaPipeline:
             )
 
             # Check budget between iterations
-            if self._cost_tracker and self._cost_tracker.is_over_budget:
-                logger.warning(
-                    "Budget exceeded between iterations, stopping early",
-                    iteration=iter_index,
-                )
+            if self._check_budget("between iterations", iteration=iter_index):
                 budget_exceeded = True
                 break
 
@@ -1212,11 +1217,7 @@ class PaperBananaPipeline:
             )
 
             # Check budget between iterations
-            if self._cost_tracker and self._cost_tracker.is_over_budget:
-                logger.warning(
-                    "Budget exceeded between iterations, stopping early",
-                    iteration=iter_num,
-                )
+            if self._check_budget("between iterations", iteration=iter_num):
                 budget_exceeded = True
                 break
 
