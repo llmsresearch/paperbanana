@@ -285,11 +285,14 @@ def run_evaluate(
     reference_path: str,
     source_context: str,
     caption: str,
+    evaluation_task: DiagramType = DiagramType.METHODOLOGY,
+    plot_data_path: str = "",
     verbose_logging: bool = False,
 ) -> tuple[str, str]:
     """VLM judge comparative evaluation. Returns (log, formatted results)."""
     configure_logging(verbose=verbose_logging)
-    lines: list[str] = ["Starting comparative evaluation (VLM judge)…"]
+    task_label = "plot" if evaluation_task == DiagramType.STATISTICAL_PLOT else "diagram"
+    lines: list[str] = [f"Starting comparative evaluation ({task_label}, VLM judge)…"]
     gp = Path(generated_path)
     rp = Path(reference_path)
     if not gp.is_file():
@@ -300,7 +303,21 @@ def run_evaluate(
         msg = f"Reference image not found: {reference_path}"
         lines.append(msg)
         return "\n".join(lines), msg
-    if not source_context.strip():
+    effective_context = source_context
+    if evaluation_task == DiagramType.STATISTICAL_PLOT:
+        plot_path = Path(plot_data_path)
+        if not plot_path.is_file():
+            msg = f"Plot data file not found: {plot_data_path}"
+            lines.append(msg)
+            return "\n".join(lines), msg
+        try:
+            effective_context, _ = load_statistical_plot_payload(plot_path)
+        except ValueError as e:
+            msg = f"Invalid plot data: {e}"
+            lines.append(msg)
+            return "\n".join(lines), msg
+
+    if not effective_context.strip():
         msg = "Source context is empty."
         lines.append(msg)
         return "\n".join(lines), msg
@@ -312,15 +329,16 @@ def run_evaluate(
         async def _go():
             return await judge.evaluate(
                 image_path=str(gp),
-                source_context=source_context,
+                source_context=effective_context,
                 caption=caption.strip(),
                 reference_path=str(rp),
+                task=evaluation_task,
             )
 
         scores = asyncio.run(_go())
         lines.append("Done.")
         dims = ["faithfulness", "conciseness", "readability", "aesthetics"]
-        out_parts = ["## Results\n"]
+        out_parts = [f"## Results ({task_label})\n"]
         for dim in dims:
             r = getattr(scores, dim)
             out_parts.append(f"**{dim}** — {r.winner} (score {r.score:.0f})\n")

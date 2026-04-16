@@ -7,6 +7,7 @@ Tools:
     generate_diagram    — Generate a methodology diagram from text
     generate_plot       — Generate a statistical plot from JSON data
     evaluate_diagram    — Evaluate a generated diagram against a reference
+    evaluate_plot       — Evaluate a generated plot against a reference
     download_references — Download expanded reference set (~294 examples)
 
 Usage:
@@ -302,10 +303,55 @@ async def evaluate_diagram(
         source_context=context,
         caption=caption,
         reference_path=reference_path,
+        task=DiagramType.METHODOLOGY,
     )
 
     lines = [
         "Evaluation Results",
+        "=" * 40,
+        f"Faithfulness:  {scores.faithfulness.winner} — {scores.faithfulness.reasoning}",
+        f"Conciseness:   {scores.conciseness.winner} — {scores.conciseness.reasoning}",
+        f"Readability:   {scores.readability.winner} — {scores.readability.reasoning}",
+        f"Aesthetics:    {scores.aesthetics.winner} — {scores.aesthetics.reasoning}",
+        "-" * 40,
+        f"Overall Winner: {scores.overall_winner} (score: {scores.overall_score})",
+    ]
+    return "\n".join(lines)
+
+
+@mcp.tool
+async def evaluate_plot(
+    generated_path: str,
+    reference_path: str,
+    data_json: str,
+    intent: str,
+) -> str:
+    """Evaluate a generated statistical plot against a human reference on 4 dimensions.
+
+    Args:
+        generated_path: File path to the model-generated plot.
+        reference_path: File path to the human reference plot.
+        data_json: JSON string containing the source data used to generate the plot.
+        intent: Communicative intent used for plot generation.
+
+    Returns:
+        Formatted evaluation scores with per-dimension results and overall winner.
+    """
+    settings = Settings()
+    vlm = ProviderRegistry.create_vlm(settings)
+    judge = VLMJudge(vlm_provider=vlm, prompt_dir=find_prompt_dir())
+    source_context = f"Data for plotting:\n{data_json}"
+
+    scores = await judge.evaluate(
+        image_path=generated_path,
+        source_context=source_context,
+        caption=intent,
+        reference_path=reference_path,
+        task=DiagramType.STATISTICAL_PLOT,
+    )
+
+    lines = [
+        "Plot Evaluation Results",
         "=" * 40,
         f"Faithfulness:  {scores.faithfulness.winner} — {scores.faithfulness.reasoning}",
         f"Conciseness:   {scores.conciseness.winner} — {scores.conciseness.reasoning}",
