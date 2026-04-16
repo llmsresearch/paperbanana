@@ -10,6 +10,7 @@ from paperbanana.agents.base import BaseAgent
 from paperbanana.core.diagram_ir import DiagramIR
 
 logger = structlog.get_logger()
+MAX_STRUCTURER_CONTEXT_CHARS = 8000
 
 
 def _extract_json_blob(text: str) -> str:
@@ -53,7 +54,7 @@ class StructurerAgent(BaseAgent):
                 template,
                 prompt_label=f"structurer_attempt_{attempt + 1}",
                 description=description,
-                source_context=source_context[:8000],
+                source_context=source_context[:MAX_STRUCTURER_CONTEXT_CHARS],
                 caption=caption,
                 repair_section=repair_section,
             )
