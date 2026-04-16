@@ -2621,5 +2621,17 @@ def studio(
     )
 
 
+@app.command()
+def doctor(
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit machine-readable JSON (for CI pipelines)."
+    ),
+) -> None:
+    """Check system health: optional dependencies, API keys, and reference data."""
+    from paperbanana.doctor import run_doctor
+
+    raise typer.Exit(run_doctor(output_json=json_output))
+
+
 if __name__ == "__main__":
     app()
