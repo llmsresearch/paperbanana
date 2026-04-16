@@ -40,6 +40,36 @@ data_app = typer.Typer(
 app.add_typer(data_app, name="data")
 
 
+def _require_pdf_dep() -> None:
+    """Raise a clean error if PyMuPDF is not installed."""
+    try:
+        import fitz  # noqa: F401
+    except ImportError:
+        console.print(
+            "[red]PDF input requires PyMuPDF.[/red] Install it with:\n"
+            r"  pip install 'paperbanana\[pdf]'"
+        )
+        raise typer.Exit(1)
+
+
+def _check_pdf_dep(path: Path) -> None:
+    """Raise a clean error if PyMuPDF is not installed and the path is a PDF."""
+    if path.suffix.lower() == ".pdf":
+        _require_pdf_dep()
+
+
+def _require_studio_dep() -> None:
+    """Raise a clean error if Gradio is not installed."""
+    try:
+        import gradio  # noqa: F401
+    except ImportError:
+        console.print(
+            "[red]PaperBanana Studio requires Gradio. Install with:[/red]\n"
+            r"  pip install 'paperbanana\[studio]'"
+        )
+        raise typer.Exit(1)
+
+
 def _upsert_env_vars(env_path: Path, updates: dict[str, str]) -> None:
     """Update or append environment variables in a .env file."""
     if env_path.exists():
@@ -116,6 +146,11 @@ def generate(
         "--format",
         "-f",
         help="Output image format (png, jpeg, or webp)",
+    ),
+    vector: bool = typer.Option(
+        False,
+        "--vector/--no-vector",
+        help="Export SVG and PDF vector formats for statistical plots.",
     ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
     save_prompts: Optional[bool] = typer.Option(
@@ -251,6 +286,8 @@ def generate(
     if output:
         overrides["output_dir"] = str(Path(output).parent)
     overrides["output_format"] = format
+    if vector:
+        overrides["vector_export"] = True
     if exemplar_retrieval:
         overrides["exemplar_retrieval_enabled"] = True
     if exemplar_endpoint:
@@ -397,6 +434,7 @@ def generate(
     if not input_path.exists():
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
+    _check_pdf_dep(input_path)
 
     from paperbanana.core.source_loader import load_methodology_source
 
@@ -719,6 +757,7 @@ def sweep(
     if not input_path.exists():
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
+    _check_pdf_dep(input_path)
 
     from dotenv import load_dotenv
 
@@ -997,6 +1036,9 @@ def batch(
     except (ValueError, FileNotFoundError, RuntimeError) as e:
         console.print(f"[red]Error loading manifest: {e}[/red]")
         raise typer.Exit(1)
+
+    if any(str(item.get("input", "")).lower().endswith(".pdf") for item in items):
+        _require_pdf_dep()
 
     is_resume = bool(resume_batch)
     if is_resume:
@@ -1673,6 +1715,11 @@ def plot(
         "--budget",
         help="Budget cap in USD; pipeline aborts gracefully when exceeded",
     ),
+    vector: bool = typer.Option(
+        False,
+        "--vector/--no-vector",
+        help="Also export SVG and PDF vector formats alongside the raster output.",
+    ),
 ):
     """Generate a statistical plot from data."""
     if format not in ("png", "jpeg", "webp"):
@@ -1711,6 +1758,7 @@ def plot(
         save_prompts=True if save_prompts is None else save_prompts,
         venue=venue,
         budget_usd=budget,
+        vector_export=vector,
     )
 
     gen_input = GenerationInput(
@@ -1760,6 +1808,9 @@ def plot(
 
     result = asyncio.run(_run())
     console.print(f"\n[green]Done![/green] Plot saved to: [bold]{result.image_path}[/bold]")
+    vector_paths = result.metadata.get("vector_output_paths", {})
+    for fmt, path in vector_paths.items():
+        console.print(f"[green]Vector ({fmt.upper()}):[/green] [bold]{path}[/bold]")
 
     cost_data = result.metadata.get("cost")
     if cost_data:
@@ -1985,6 +2036,7 @@ def ablate_retrieval(
     if not input_path.exists():
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
+    _check_pdf_dep(input_path)
 
     reference_path: Optional[Path] = None
     if reference:
@@ -2541,15 +2593,9 @@ def studio(
     ),
 ):
     """Launch PaperBanana Studio — local web UI for diagrams, plots, and evaluation."""
-    try:
-        from paperbanana.studio.app import launch_studio as launch_studio_ui
-    except ImportError as e:
-        console.print(
-            "[red]PaperBanana Studio requires Gradio. Install with:[/red]\n"
-            "  pip install 'paperbanana[studio]'"
-        )
-        console.print(f"[dim]{e}[/dim]")
-        raise typer.Exit(1)
+    _require_studio_dep()
+
+    from paperbanana.studio.app import launch_studio as launch_studio_ui
 
     configure_logging(verbose=False)
     from dotenv import load_dotenv
@@ -2573,6 +2619,18 @@ def studio(
         default_output_dir=output_dir,
         root_path=root_path,
     )
+
+
+@app.command()
+def doctor(
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit machine-readable JSON (for CI pipelines)."
+    ),
+) -> None:
+    """Check system health: optional dependencies, API keys, and reference data."""
+    from paperbanana.doctor import run_doctor
+
+    raise typer.Exit(run_doctor(output_json=json_output))
 
 
 if __name__ == "__main__":
