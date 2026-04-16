@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import os
 import re
+import shutil
+import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+from paperbanana.core.config import Settings
+from paperbanana.core.plot_data import load_statistical_plot_payload
+from paperbanana.core.types import DiagramType, GenerationInput
 from paperbanana.core.source_loader import load_methodology_source
 
 _HEADING_NUMBERED_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)\s+(.+?)\s*$")
 _HEADING_SIMPLE_RE = re.compile(r"^\s*([A-Z][A-Za-z0-9 ,:/()\-]{3,100})\s*$")
+_PAGE_NUMBER_RE = re.compile(r"^\s*(?:page\s+)?\d+(?:\s*/\s*\d+)?\s*$", re.IGNORECASE)
 
 _METHOD_FIGURE_HINTS: list[tuple[str, str]] = [
     ("overview", "System overview and major processing blocks"),
@@ -93,13 +100,38 @@ def _looks_like_heading(line: str) -> bool:
     return False
 
 
+def _is_pdf_noise_line(line: str, repeated_count: int) -> bool:
+    """Filter common PDF extraction noise like page numbers and running headers."""
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if _PAGE_NUMBER_RE.match(stripped):
+        return True
+    if stripped.lower().startswith("page ") and any(ch.isdigit() for ch in stripped):
+        return True
+    if repeated_count > 1 and not _HEADING_NUMBERED_RE.match(stripped):
+        lowered = stripped.lower()
+        if lowered not in {"abstract", "introduction", "conclusion", "references"}:
+            return True
+    return False
+
+
 def split_paper_sections(paper_text: str) -> list[dict[str, str]]:
     """Split paper text into section chunks by heading heuristics."""
     lines = paper_text.splitlines()
+    counts: dict[str, int] = {}
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            counts[stripped] = counts.get(stripped, 0) + 1
+
     headings: list[tuple[int, str]] = []
     for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if _is_pdf_noise_line(stripped, counts.get(stripped, 0)):
+            continue
         if _looks_like_heading(line):
-            heading = line.strip()
+            heading = stripped
             if headings and headings[-1][1] == heading:
                 continue
             headings.append((idx, heading))
@@ -113,7 +145,13 @@ def split_paper_sections(paper_text: str) -> list[dict[str, str]]:
     sections: list[dict[str, str]] = []
     for i, (start, heading) in enumerate(headings):
         end = headings[i + 1][0] if i + 1 < len(headings) else len(lines)
-        content = "\n".join(lines[start + 1 : end]).strip()
+        content_lines = []
+        for raw in lines[start + 1 : end]:
+            stripped = raw.strip()
+            if _is_pdf_noise_line(stripped, counts.get(stripped, 0)):
+                continue
+            content_lines.append(raw)
+        content = "\n".join(content_lines).strip()
         if not content:
             continue
         sections.append({"heading": heading, "content": content})
@@ -241,6 +279,69 @@ def build_orchestration_plan(
         "methodology_items": method_items,
         "plot_items": plot_items,
     }
+
+
+def prepare_orchestration_plan(
+    *,
+    paper: str | None,
+    resume_orchestrate: str | None,
+    output_dir: str,
+    data_dir: str | None,
+    max_method_figures: int,
+    max_plot_figures: int,
+    pdf_pages: str | None,
+) -> tuple[str, Path, dict[str, Any], Path, bool]:
+    """Resolve directories and load/create orchestration plan."""
+    is_resume = bool(resume_orchestrate)
+    if is_resume:
+        resume_ref = Path(str(resume_orchestrate))
+        if resume_ref.is_dir():
+            orchestrate_dir = resume_ref.resolve()
+            orchestration_id = orchestrate_dir.name
+        else:
+            orchestration_id = str(resume_orchestrate).strip()
+            orchestrate_dir = (Path(output_dir) / orchestration_id).resolve()
+        plan_path = orchestrate_dir / "orchestration_plan.json"
+        if not plan_path.exists():
+            raise FileNotFoundError(f"orchestration plan not found: {plan_path}")
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            raise ValueError(f"Error loading orchestration plan: {e}") from e
+        return orchestration_id, orchestrate_dir, plan, plan_path, True
+
+    paper_path = Path(str(paper))
+    if not paper_path.exists():
+        raise FileNotFoundError(f"Paper file not found: {paper}")
+    if pdf_pages and paper_path.suffix.lower() != ".pdf":
+        raise ValueError("--pdf-pages can only be used with PDF papers")
+
+    data_root = Path(data_dir).resolve() if data_dir else None
+    if data_root is not None and not data_root.exists():
+        raise FileNotFoundError(f"Data directory not found: {data_root}")
+    if data_root is not None and not data_root.is_dir():
+        raise ValueError(f"--data-dir must be a directory: {data_root}")
+
+    orchestration_id = generate_orchestration_id()
+    orchestrate_dir = Path(output_dir).resolve() / orchestration_id
+    contexts_dir = orchestrate_dir / "contexts"
+    contexts_dir.mkdir(parents=True, exist_ok=True)
+    paper_text = load_paper_text(paper_path, pdf_pages=pdf_pages)
+    plan = build_orchestration_plan(
+        paper_path=paper_path,
+        paper_text=paper_text,
+        data_dir=data_root,
+        max_method_figures=max_method_figures,
+        max_plot_figures=max_plot_figures,
+    )
+    for item in plan["methodology_items"]:
+        context_path = contexts_dir / f"{item['id']}.txt"
+        context_path.write_text(item["context"], encoding="utf-8")
+        item["context_path"] = str(context_path)
+
+    plan_path = orchestrate_dir / "orchestration_plan.json"
+    _atomic_json_write(plan_path, plan)
+    return orchestration_id, orchestrate_dir, plan, plan_path, False
 
 
 def _utc_now() -> str:
@@ -456,6 +557,181 @@ def checkpoint_orchestration_progress(
     }
     _atomic_json_write(report_path, report)
     return report
+
+
+def render_orchestration_sidecars(orchestrate_dir: Path, report: dict[str, Any]) -> None:
+    """Render human-facing package sidecar files from a report."""
+    write_latex_figure_snippets(
+        output_path=Path(orchestrate_dir) / "figures.tex",
+        title=str(report.get("paper_title") or ""),
+        generated_items=report.get("generated_items", []),
+    )
+    write_caption_sheet(
+        output_path=Path(orchestrate_dir) / "captions.md",
+        title=str(report.get("paper_title") or ""),
+        generated_items=report.get("generated_items", []),
+    )
+
+
+async def _run_orchestration_async(
+    *,
+    state: dict[str, Any],
+    settings: Settings,
+    orchestrate_dir: Path,
+    package_assets_dir: Path,
+    planned: list[tuple[int, dict[str, Any], dict[str, Any]]],
+    total_items: int,
+    max_retries: int,
+    concurrency: int,
+    previous_seconds: float,
+    progress_callback: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    from paperbanana.core.pipeline import PaperBananaPipeline
+
+    ext = "jpg" if settings.output_format == "jpeg" else settings.output_format
+    run_start = time.perf_counter()
+    checkpoint_lock = asyncio.Lock()
+    sem = asyncio.Semaphore(concurrency)
+
+    def emit(message: str) -> None:
+        if progress_callback is not None:
+            progress_callback(message)
+
+    async def _checkpoint() -> None:
+        checkpoint_orchestration_progress(
+            orchestrate_dir=orchestrate_dir,
+            state=state,
+            total_seconds=previous_seconds + (time.perf_counter() - run_start),
+        )
+
+    async def _run_one(task_index: int, task: dict[str, Any]) -> None:
+        item = dict(task)
+        kind = str(item["kind"])
+        item_id = str(item["id"])
+        task_key = str(item["_task_key"])
+        async with sem:
+            for attempt in range(max_retries + 1):
+                async with checkpoint_lock:
+                    mark_orchestration_item_running(state, task_key)
+                    await _checkpoint()
+
+                try:
+                    pipeline = PaperBananaPipeline(settings=settings)
+                    if kind == "methodology":
+                        source_context = str(item.get("context") or "")
+                        if not source_context:
+                            context_path = Path(str(item.get("context_path") or ""))
+                            if not context_path.is_file():
+                                raise FileNotFoundError(
+                                    f"Context file not found for {item_id}: {context_path}"
+                                )
+                            source_context = context_path.read_text(encoding="utf-8")
+                        gen_input = GenerationInput(
+                            source_context=source_context,
+                            communicative_intent=str(item["caption"]),
+                            diagram_type=DiagramType.METHODOLOGY,
+                        )
+                    else:
+                        data_path = Path(str(item["data"]))
+                        if not data_path.is_file():
+                            raise FileNotFoundError(f"Data file not found: {data_path}")
+                        source_context, raw_data = load_statistical_plot_payload(data_path)
+                        gen_input = GenerationInput(
+                            source_context=source_context,
+                            communicative_intent=str(item["intent"]),
+                            diagram_type=DiagramType.STATISTICAL_PLOT,
+                            raw_data={"data": raw_data},
+                        )
+                    result = await pipeline.generate(gen_input)
+                    final_path = Path(result.image_path)
+                    if not final_path.exists():
+                        raise RuntimeError("Pipeline returned no final output image")
+                    output_name = f"{item_id}.{ext}"
+                    packaged_path = package_assets_dir / output_name
+                    shutil.copy2(final_path, packaged_path)
+                    relative_path = f"figures/{output_name}"
+
+                    async with checkpoint_lock:
+                        mark_orchestration_item_success(
+                            state,
+                            task_key,
+                            run_id=str(result.metadata.get("run_id") or pipeline.run_id),
+                            source_output=str(final_path),
+                            relative_path=relative_path,
+                            absolute_path=str(packaged_path),
+                        )
+                        await _checkpoint()
+                    emit(
+                        f"[green]{task_index + 1}/{total_items} {item_id}: ok[/green] "
+                        f"[dim]{packaged_path}[/dim]"
+                    )
+                    return
+                except Exception as e:
+                    async with checkpoint_lock:
+                        # We checkpoint each failed attempt before retrying so interrupted runs
+                        # preserve the latest error, even if a subsequent retry has not started yet.
+                        mark_orchestration_item_failure(state, task_key, str(e))
+                        await _checkpoint()
+                    if attempt < max_retries:
+                        emit(
+                            f"[yellow]{task_index + 1}/{total_items} {item_id}: retry "
+                            f"{attempt + 1}/{max_retries} after {e}[/yellow]"
+                        )
+                        continue
+                    emit(f"[red]{task_index + 1}/{total_items} {item_id}: failed - {e}[/red]")
+                    return
+
+    await asyncio.gather(*[_run_one(idx, task) for idx, task, _ in planned])
+    total_seconds = previous_seconds + (time.perf_counter() - run_start)
+    return checkpoint_orchestration_progress(
+        orchestrate_dir=orchestrate_dir,
+        state=state,
+        total_seconds=total_seconds,
+        mark_complete=True,
+    )
+
+
+def run_orchestration(
+    *,
+    state: dict[str, Any],
+    plan: dict[str, Any],
+    settings: Settings,
+    orchestrate_dir: Path,
+    retry_failed: bool,
+    max_retries: int,
+    concurrency: int,
+    progress_callback: Callable[[str], None] | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Execute orchestration tasks and return (report, had_work)."""
+    package_assets_dir = Path(orchestrate_dir) / "figures"
+    package_assets_dir.mkdir(parents=True, exist_ok=True)
+    planned = select_orchestration_tasks(state, retry_failed=retry_failed)
+    if not planned:
+        report = checkpoint_orchestration_progress(
+            orchestrate_dir=orchestrate_dir,
+            state=state,
+            total_seconds=float(state.get("total_seconds") or 0.0),
+            mark_complete=True,
+        )
+        render_orchestration_sidecars(orchestrate_dir, report)
+        return report, False
+
+    report = asyncio.run(
+        _run_orchestration_async(
+            state=state,
+            settings=settings,
+            orchestrate_dir=orchestrate_dir,
+            package_assets_dir=package_assets_dir,
+            planned=planned,
+            total_items=len(flatten_plan_tasks(plan)),
+            max_retries=max_retries,
+            concurrency=concurrency,
+            previous_seconds=float(state.get("total_seconds") or 0.0),
+            progress_callback=progress_callback,
+        )
+    )
+    render_orchestration_sidecars(orchestrate_dir, report)
+    return report, True
 
 
 def write_latex_figure_snippets(
