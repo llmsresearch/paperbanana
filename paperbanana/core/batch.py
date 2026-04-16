@@ -229,8 +229,7 @@ def validate_manifest(
                 detected = "batch"
         if detected is None:
             return [
-                "Cannot auto-detect manifest type from first item. "
-                "Use --type batch or --type plot."
+                "Cannot auto-detect manifest type from first item. Use --type batch or --type plot."
             ]
     else:
         detected = manifest_type  # type: ignore[assignment]
@@ -288,9 +287,7 @@ def validate_manifest(
             if raw_path:
                 sfx = Path(raw_path).suffix.lower()
                 if sfx not in (".csv", ".json"):
-                    errors.append(
-                        f"{prefix}: 'data' must be a .csv or .json file, got '{sfx}'"
-                    )
+                    errors.append(f"{prefix}: 'data' must be a .csv or .json file, got '{sfx}'")
             # aspect_ratio
             ar = entry.get("aspect_ratio")
             if ar is not None:

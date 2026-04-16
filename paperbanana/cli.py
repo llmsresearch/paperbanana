@@ -2760,7 +2760,9 @@ def validate_manifest(
     from paperbanana.core.batch import validate_manifest as _validate
 
     if manifest_type not in ("batch", "plot", "auto"):
-        console.print(f"[red]Error: --type must be 'batch', 'plot', or 'auto'. Got: {manifest_type}[/red]")
+        console.print(
+            f"[red]Error: --type must be 'batch', 'plot', or 'auto'. Got: {manifest_type}[/red]"
+        )
         raise typer.Exit(1)
 
     manifest_path = Path(manifest)

@@ -434,4 +434,3 @@ def test_validate_manifest_auto_detect_plot(tmp_path: Path) -> None:
     )
     errors = validate_manifest(m)
     assert errors == []
-    assert "<!DOCTYPE html>" in written.read_text(encoding="utf-8")
