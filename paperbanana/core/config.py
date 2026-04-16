@@ -96,7 +96,6 @@ class Settings(BaseSettings):
     # Output settings
     output_dir: str = "outputs"
     output_format: OutputFormat = "png"
-    vector_export: bool = False
     save_iterations: bool = True
     save_prompts: bool = True
 
@@ -209,10 +208,17 @@ class Settings(BaseSettings):
         """Validate vector_export mode."""
         if v is None:
             return "none"
-        v = str(v).lower()
-        if v not in ("none", "svg", "pdf", "both"):
-            raise ValueError(f"vector_export must be none, svg, pdf, or both. Got: {v}")
-        return v
+        if isinstance(v, bool):
+            return "both" if v else "none"
+        v_str = str(v).strip().lower()
+        # Backward compatibility for legacy bool-like inputs from env/YAML/CLI tests.
+        if v_str in ("true", "1", "yes", "on"):
+            return "both"
+        if v_str in ("false", "0", "no", "off"):
+            return "none"
+        if v_str not in ("none", "svg", "pdf", "both"):
+            raise ValueError(f"vector_export must be none, svg, pdf, or both. Got: {v_str}")
+        return v_str
 
     @field_validator("venue", mode="before")
     @classmethod

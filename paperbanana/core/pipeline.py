@@ -835,7 +835,7 @@ class PaperBananaPipeline:
         current_description = optimized_description
         iterations: list[IterationRecord] = []
         iteration_timings = []
-        vector_formats = ["svg", "pdf"] if self.settings.vector_export else None
+        vector_formats = ["svg", "pdf"] if self.settings.vector_export != "none" else None
 
         if self.settings.auto_refine:
             total_iters = self.settings.max_iterations
@@ -1219,7 +1219,7 @@ class PaperBananaPipeline:
         iterations: list[IterationRecord] = []
         iteration_timings = []
         budget_exceeded = False
-        vector_formats = ["svg", "pdf"] if self.settings.vector_export else None
+        vector_formats = ["svg", "pdf"] if self.settings.vector_export != "none" else None
 
         for i in range(total_iters):
             if budget_exceeded:
