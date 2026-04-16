@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from paperbanana.core.diagram_ir import DiagramIR, DiagramNode, build_dot_id_map
+from paperbanana.core.types import DiagramIR, DiagramIREdge, DiagramIRNode
 from paperbanana.vector.graphviz_render import (
     diagram_ir_to_dot,
     find_dot_executable,
@@ -15,48 +15,45 @@ from paperbanana.vector.graphviz_render import (
 )
 
 
-def test_diagram_ir_validates_edges_reference_nodes() -> None:
-    with pytest.raises(ValueError, match="unknown source"):
-        DiagramIR(
-            nodes=[DiagramNode(id="a", label="A")],
-            edges=[{"source": "x", "target": "a"}],
-        )
-
-
-def test_diagram_ir_to_dot_rankdir_and_edges() -> None:
+def test_diagram_ir_to_dot_default_rankdir_and_edges() -> None:
     ir = DiagramIR(
-        layout_direction="TB",
+        title="Demo",
         nodes=[
-            DiagramNode(id="enc", label="Encoder"),
-            DiagramNode(id="dec", label="Decoder"),
+            DiagramIRNode(id="enc", label="Encoder"),
+            DiagramIRNode(id="dec", label="Decoder"),
         ],
-        edges=[{"source": "enc", "target": "dec", "label": "latent"}],
+        edges=[DiagramIREdge(source="enc", target="dec", label="latent")],
     )
     dot = diagram_ir_to_dot(ir)
-    assert "rankdir=TB" in dot
+    assert "rankdir=LR" in dot
     assert "enc" in dot and "dec" in dot
     assert "latent" in dot
 
 
-def test_build_dot_id_map_sanitizes_ids() -> None:
-    nodes = [
-        DiagramNode(id="a-b", label="X"),
-        DiagramNode(id="c.d", label="Y"),
-    ]
-    m = build_dot_id_map(nodes)
-    assert len(m) == 2
-    assert len(set(m.values())) == 2
+def test_diagram_ir_to_dot_sanitizes_node_ids() -> None:
+    ir = DiagramIR(
+        title="Sanitize IDs",
+        nodes=[
+            DiagramIRNode(id="a-b", label="X"),
+            DiagramIRNode(id="c.d", label="Y"),
+        ],
+        edges=[DiagramIREdge(source="a-b", target="c.d")],
+    )
+    dot = diagram_ir_to_dot(ir)
+    assert "a_b" in dot
+    assert "c_d" in dot
 
 
 def test_render_dot_to_file_when_graphviz_available(tmp_path: Path) -> None:
     if not find_dot_executable():
         pytest.skip("Graphviz `dot` not on PATH")
     ir = DiagramIR(
+        title="Render",
         nodes=[
-            DiagramNode(id="n1", label="One"),
-            DiagramNode(id="n2", label="Two"),
+            DiagramIRNode(id="n1", label="One"),
+            DiagramIRNode(id="n2", label="Two"),
         ],
-        edges=[{"source": "n1", "target": "n2"}],
+        edges=[DiagramIREdge(source="n1", target="n2")],
     )
     dot = diagram_ir_to_dot(ir)
     out = tmp_path / "out.svg"
@@ -68,7 +65,8 @@ def test_render_dot_to_file_when_graphviz_available(tmp_path: Path) -> None:
 
 def test_diagram_ir_json_roundtrip() -> None:
     ir = DiagramIR(
-        nodes=[DiagramNode(id="x", label="X")],
+        title="Roundtrip",
+        nodes=[DiagramIRNode(id="x", label="X")],
         edges=[],
     )
     data = json.loads(ir.model_dump_json())

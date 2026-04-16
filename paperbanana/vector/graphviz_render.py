@@ -10,7 +10,7 @@ from pathlib import Path
 
 import structlog
 
-from paperbanana.core.diagram_ir import DiagramIR, build_dot_id_map
+from paperbanana.core.types import DiagramIR
 
 logger = structlog.get_logger()
 
@@ -21,6 +21,28 @@ _SHAPE_MAP = {
     "cylinder": "cylinder",
     "plain": "plaintext",
 }
+
+
+def _sanitize_dot_name(raw: str, used: set[str]) -> str:
+    """Map a node id to a valid, unique Graphviz identifier."""
+    s = raw.strip()
+    base = re.sub(r"[^a-zA-Z0-9_]", "_", s)
+    if not base:
+        base = "node"
+    if base[0].isdigit():
+        base = "n_" + base
+    name = base
+    i = 0
+    while name in used:
+        i += 1
+        name = f"{base}_{i}"
+    used.add(name)
+    return name
+
+
+def _build_dot_id_map(ir: DiagramIR) -> dict[str, str]:
+    used: set[str] = set()
+    return {n.id: _sanitize_dot_name(n.id, used) for n in ir.nodes}
 
 
 def find_dot_executable() -> str | None:
@@ -36,8 +58,8 @@ def _escape_dot_label(text: str) -> str:
 
 def diagram_ir_to_dot(ir: DiagramIR) -> str:
     """Convert Diagram IR to a Graphviz digraph (UTF-8)."""
-    id_map = build_dot_id_map(list(ir.nodes))
-    rankdir = ir.layout_direction
+    id_map = _build_dot_id_map(ir)
+    rankdir = getattr(ir, "layout_direction", "LR")
 
     lines: list[str] = [
         "digraph G {",
@@ -55,8 +77,9 @@ def diagram_ir_to_dot(ir: DiagramIR) -> str:
         if n.id in grouped:
             continue
         gid = id_map[n.id]
-        shape = _SHAPE_MAP.get(n.shape, "box")
-        style = "rounded,filled" if n.shape == "rounded" else "filled"
+        node_shape = getattr(n, "shape", "rounded")
+        shape = _SHAPE_MAP.get(node_shape, "box")
+        style = "rounded,filled" if node_shape == "rounded" else "filled"
         fill = "#f8f9fa"
         lbl = _escape_dot_label(n.label)
         lines.append(
@@ -83,8 +106,9 @@ def diagram_ir_to_dot(ir: DiagramIR) -> str:
             if n.id not in g.node_ids:
                 continue
             gid = id_map[n.id]
-            shape = _SHAPE_MAP.get(n.shape, "box")
-            style = "rounded,filled" if n.shape == "rounded" else "filled"
+            node_shape = getattr(n, "shape", "rounded")
+            shape = _SHAPE_MAP.get(node_shape, "box")
+            style = "rounded,filled" if node_shape == "rounded" else "filled"
             fill = "#eef2ff"
             lbl = _escape_dot_label(n.label)
             lines.append(
