@@ -1557,9 +1557,10 @@ def orchestrate(
     package_assets_dir = ensure_dir(orchestrate_dir / "figures")
     runs_dir = ensure_dir(orchestrate_dir / "runs")
 
+    _orch_header = "Resume " if is_resume else ""
     console.print(
         Panel.fit(
-            f"[bold]PaperBanana[/bold] — {'Resume ' if is_resume else ''}Figure Package Orchestration\n\n"
+            f"[bold]PaperBanana[/bold] — {_orch_header}Figure Package Orchestration\n\n"
             f"Paper: {Path(str(plan.get('paper_path', 'paper'))).name}\n"
             f"Planned methodology figures: {len(plan['methodology_items'])}\n"
             f"Planned plot figures: {len(plan['plot_items'])}\n"
