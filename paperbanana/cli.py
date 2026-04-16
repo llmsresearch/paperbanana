@@ -2002,6 +2002,98 @@ def evaluate(
             console.print(f"\n[bold]{dim}[/bold]: {result.reasoning}")
 
 
+@app.command("evaluate-plot")
+def evaluate_plot(
+    generated: str = typer.Option(..., "--generated", "-g", help="Path to generated plot image"),
+    data: str = typer.Option(
+        ...,
+        "--data",
+        "-d",
+        help="Path to source data file used for plotting (CSV or JSON)",
+    ),
+    intent: str = typer.Option(..., "--intent", help="Communicative intent used for the plot"),
+    reference: str = typer.Option(
+        ...,
+        "--reference",
+        "-r",
+        help="Path to human reference plot image",
+    ),
+    vlm_provider: str = typer.Option(
+        "gemini", "--vlm-provider", help="VLM provider for evaluation"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed agent progress and timing"
+    ),
+):
+    """Evaluate a generated statistical plot vs human reference (comparative)."""
+    configure_logging(verbose=verbose)
+    from paperbanana.core.plot_data import load_statistical_plot_payload
+    from paperbanana.core.utils import find_prompt_dir
+    from paperbanana.evaluation.judge import VLMJudge
+
+    generated_path = Path(generated)
+    if not generated_path.exists():
+        console.print(f"[red]Error: Generated image not found: {generated}[/red]")
+        raise typer.Exit(1)
+
+    reference_path = Path(reference)
+    if not reference_path.exists():
+        console.print(f"[red]Error: Reference image not found: {reference}[/red]")
+        raise typer.Exit(1)
+
+    data_path = Path(data)
+    if not data_path.exists():
+        console.print(f"[red]Error: Data file not found: {data}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        source_context, _ = load_statistical_plot_payload(data_path)
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    settings = Settings(vlm_provider=vlm_provider)
+    from paperbanana.providers.registry import ProviderRegistry
+
+    vlm = ProviderRegistry.create_vlm(settings)
+    judge = VLMJudge(vlm, prompt_dir=find_prompt_dir())
+
+    async def _run():
+        return await judge.evaluate(
+            image_path=str(generated_path),
+            source_context=source_context,
+            caption=intent,
+            reference_path=str(reference_path),
+            task=DiagramType.STATISTICAL_PLOT,
+        )
+
+    scores = asyncio.run(_run())
+
+    dims = ["faithfulness", "conciseness", "readability", "aesthetics"]
+    dim_lines = []
+    for dim in dims:
+        result = getattr(scores, dim)
+        dim_lines.append(f"{dim.capitalize():14s} {result.winner}")
+
+    console.print(
+        Panel.fit(
+            "[bold]Evaluation Results (Plot Comparative)[/bold]\n\n"
+            + "\n".join(dim_lines)
+            + f"\n[bold]{'Overall':14s} {scores.overall_winner}[/bold]",
+            border_style="cyan",
+        )
+    )
+
+    for dim in dims:
+        result = getattr(scores, dim)
+        if result.reasoning:
+            console.print(f"\n[bold]{dim}[/bold]: {result.reasoning}")
+
+
 @app.command("ablate-retrieval")
 def ablate_retrieval(
     input: str = typer.Option(

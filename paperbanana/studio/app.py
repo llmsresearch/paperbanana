@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 from typing import Any, Optional
 
+from paperbanana.core.types import DiagramType
 from paperbanana.studio import runs as runs_mod
 from paperbanana.studio.runner import (
     ASPECT_RATIO_CHOICES,
@@ -374,12 +375,21 @@ def build_studio_app(
                     "Compare a **generated** image to a **human reference** using the "
                     "paper’s VLM-as-judge protocol (four dimensions + overall)."
                 )
+                ev_target = gr.Radio(
+                    label="Evaluation target",
+                    choices=["Methodology diagram", "Statistical plot"],
+                    value="Methodology diagram",
+                )
                 g_img = gr.Image(label="Generated diagram", type="filepath")
                 r_img = gr.Image(label="Human reference", type="filepath")
                 ev_ctx = gr.Textbox(label="Source context", lines=8)
                 ev_ctx_f = gr.File(
                     label="Context file (optional)",
                     file_types=[".txt", ".md"],
+                )
+                ev_plot_data_f = gr.File(
+                    label="Plot data file (required for statistical plot evaluation)",
+                    file_types=[".csv", ".json"],
                 )
                 ev_cap = gr.Textbox(label="Figure caption", lines=2)
                 ev_log = gr.Textbox(label="Log", lines=6)
@@ -400,10 +410,12 @@ def build_studio_app(
                     op,
                     sp,
                     sd,
+                    target,
                     gen,
                     ref,
                     etext,
                     efile,
+                    plot_data_file,
                     ecap,
                 ):
                     _dotenv()
@@ -412,7 +424,21 @@ def build_studio_app(
                         gp = _upload_path(gen) or ""
                         rp = _upload_path(ref) or ""
                         ctx = merge_context(etext, _upload_path(efile))
-                        log, res = run_evaluate(st, gp, rp, ctx, ecap or "", verbose_logging=False)
+                        task = (
+                            DiagramType.STATISTICAL_PLOT
+                            if target == "Statistical plot"
+                            else DiagramType.METHODOLOGY
+                        )
+                        log, res = run_evaluate(
+                            st,
+                            gp,
+                            rp,
+                            ctx,
+                            ecap or "",
+                            evaluation_task=task,
+                            plot_data_path=_upload_path(plot_data_file) or "",
+                            verbose_logging=False,
+                        )
                         return log, res
                     except Exception as e:
                         return f"{type(e).__name__}: {e}", str(e)
@@ -433,10 +459,12 @@ def build_studio_app(
                         opt_in,
                         save_pr,
                         seed_val,
+                        ev_target,
                         g_img,
                         r_img,
                         ev_ctx,
                         ev_ctx_f,
+                        ev_plot_data_f,
                         ev_cap,
                     ],
                     outputs=[ev_log, ev_out],

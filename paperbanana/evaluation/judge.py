@@ -10,6 +10,7 @@ import structlog
 from paperbanana.core.types import (
     VALID_WINNERS,
     WINNER_SCORE_MAP,
+    DiagramType,
     DimensionResult,
     EvaluationScore,
 )
@@ -23,6 +24,17 @@ DIMENSIONS = ["faithfulness", "conciseness", "readability", "aesthetics"]
 # Primary dimensions take precedence in hierarchical aggregation
 PRIMARY_DIMENSIONS = ["faithfulness", "readability"]
 SECONDARY_DIMENSIONS = ["conciseness", "aesthetics"]
+_EVAL_TASK_TO_PROMPT_SUBDIR = {
+    DiagramType.METHODOLOGY: "diagram",
+    DiagramType.STATISTICAL_PLOT: "plot",
+}
+_EVAL_TASK_ALIASES = {
+    "diagram": "diagram",
+    "methodology": "diagram",
+    "methodology_diagram": "diagram",
+    "plot": "plot",
+    "statistical_plot": "plot",
+}
 
 
 class VLMJudge:
@@ -45,6 +57,7 @@ class VLMJudge:
         source_context: str,
         caption: str,
         reference_path: str,
+        task: DiagramType | str = DiagramType.METHODOLOGY,
     ) -> EvaluationScore:
         """Evaluate a generated image by comparing against a human reference.
 
@@ -59,6 +72,7 @@ class VLMJudge:
         """
         model_image = load_image(image_path)
         reference_image = load_image(reference_path)
+        prompt_subdir = self._resolve_prompt_subdir(task)
 
         # Both images: [Human reference, Model generated]
         images = [reference_image, model_image]
@@ -68,7 +82,12 @@ class VLMJudge:
         json_ok = getattr(self.vlm, "supports_json_mode", True)
         for dim in DIMENSIONS:
             logger.info("Evaluating dimension", dimension=dim, json_mode=json_ok)
-            prompt = self._load_eval_prompt(dim, source_context, caption)
+            prompt = self._load_eval_prompt(
+                dim,
+                source_context,
+                caption,
+                prompt_subdir=prompt_subdir,
+            )
             response = await self.vlm.generate(
                 prompt=prompt,
                 images=images,
@@ -88,13 +107,43 @@ class VLMJudge:
             overall_score=overall_score,
         )
 
-    def _load_eval_prompt(self, dimension: str, source_context: str, caption: str) -> str:
+    def _load_eval_prompt(
+        self,
+        dimension: str,
+        source_context: str,
+        caption: str,
+        *,
+        prompt_subdir: str = "diagram",
+    ) -> str:
         """Load evaluation prompt for a specific dimension."""
-        prompt_path = self.prompt_dir / "evaluation" / f"{dimension}.txt"
-        if not prompt_path.exists():
-            raise FileNotFoundError(f"Evaluation prompt not found: {prompt_path}")
+        candidates: list[Path]
+        if prompt_subdir == "diagram":
+            # Backward compatibility: support both new nested location and legacy paths.
+            candidates = [
+                self.prompt_dir / "evaluation" / "diagram" / f"{dimension}.txt",
+                self.prompt_dir / "evaluation" / f"{dimension}.txt",
+            ]
+        else:
+            candidates = [self.prompt_dir / "evaluation" / prompt_subdir / f"{dimension}.txt"]
+
+        prompt_path = next((p for p in candidates if p.exists()), None)
+        if prompt_path is None:
+            searched = ", ".join(str(p) for p in candidates)
+            raise FileNotFoundError(f"Evaluation prompt not found. Searched: {searched}")
         template = prompt_path.read_text(encoding="utf-8")
         return template.format(source_context=source_context, caption=caption)
+
+    def _resolve_prompt_subdir(self, task: DiagramType | str) -> str:
+        """Normalize evaluation task into prompt subdirectory name."""
+        if isinstance(task, DiagramType):
+            return _EVAL_TASK_TO_PROMPT_SUBDIR[task]
+
+        normalized = str(task).strip().lower()
+        if normalized in _EVAL_TASK_ALIASES:
+            return _EVAL_TASK_ALIASES[normalized]
+
+        allowed = ", ".join(sorted(_EVAL_TASK_ALIASES))
+        raise ValueError(f"Unsupported evaluation task '{task}'. Supported values: {allowed}")
 
     def _parse_result(self, response: str, dimension: str) -> DimensionResult:
         """Parse a comparative result from VLM response."""

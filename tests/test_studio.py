@@ -233,3 +233,27 @@ def test_run_composite_dotdot_filename_falls_back(tmp_path):
     )
     assert output_path is not None
     assert Path(output_path).name == "composite.png"
+
+
+def test_run_evaluate_plot_requires_data_file(tmp_path):
+    """Plot evaluation mode validates data path before provider setup."""
+    from paperbanana.core.config import Settings
+    from paperbanana.core.types import DiagramType
+    from paperbanana.studio.runner import run_evaluate
+
+    generated = tmp_path / "g.png"
+    reference = tmp_path / "r.png"
+    generated.write_bytes(b"x")
+    reference.write_bytes(b"y")
+
+    log, result = run_evaluate(
+        Settings(),
+        generated_path=str(generated),
+        reference_path=str(reference),
+        source_context="",
+        caption="Plot intent",
+        evaluation_task=DiagramType.STATISTICAL_PLOT,
+        plot_data_path=str(tmp_path / "missing.csv"),
+    )
+    assert "Plot data file not found" in log
+    assert "Plot data file not found" in result

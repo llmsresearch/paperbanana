@@ -38,7 +38,7 @@ Key architectural layers:
 - **`paperbanana/providers/`** — Abstract `VLMProvider` and `ImageGenProvider` base classes in `base.py`. Concrete implementations in `vlm/` (OpenAI, Gemini, OpenRouter) and `image_gen/` (OpenAI, Google Imagen, OpenRouter). `ProviderRegistry` is the factory that creates providers from `Settings`.
 - **`prompts/`** — Text prompt templates organized by type (`diagram/`, `plot/`, `evaluation/`). Templates use `{placeholder}` formatting, loaded by `BaseAgent.load_prompt()`.
 - **`paperbanana/evaluation/`** — VLM-as-Judge system. Scores on 4 dimensions (Faithfulness, Readability, Conciseness, Aesthetics) with hierarchical aggregation.
-- **`mcp_server/`** — FastMCP server exposing three tools: `generate_diagram`, `generate_plot`, `evaluate_diagram`.
+- **`mcp_server/`** — FastMCP server exposing four tools: `generate_diagram`, `generate_plot`, `evaluate_diagram`, `evaluate_plot`.
 - **`data/reference_sets/`** — 13 curated methodology diagram examples used for in-context learning by the Retriever agent.
 
 ## Conventions
