@@ -3087,7 +3087,15 @@ def runs_list(
             for batch_id in batches:
                 row = _summarize_batch_row(out, batch_id)
                 console.print(
-                    "\t".join([row["id"], row["modified"], row["kind"], row["items"], row["status"]])
+                    "\t".join(
+                        [
+                            row["id"],
+                            row["modified"],
+                            row["kind"],
+                            row["items"],
+                            row["status"],
+                        ]
+                    )
                 )
         else:
             table = Table(title="Batches", show_lines=False)
@@ -3166,7 +3174,13 @@ def runs_show(
         raise typer.Exit(1)
 
     status_counts = summary.get("status_counts") or {}
-    status_line = ", ".join([f"{k}:{v}" for k, v in sorted(status_counts.items())]) if status_counts else "?"
+    status_line = (
+        ", ".join(
+            [f"{k}:{v}" for k, v in sorted(status_counts.items())]
+        )
+        if status_counts
+        else "?"
+    )
     lines = [
         f"[bold]Batch[/bold] {summary.get('batch_id')}",
         f"Directory: {summary.get('batch_dir')}",
