@@ -105,6 +105,31 @@ def _compress_for_api(image_path: str) -> tuple[str, str]:
     )
 
 
+def _embed_caption(image_path: str, caption: str) -> None:
+    """Embed a caption into a PNG image's tEXt metadata chunk.
+
+    This preserves the MCP return type (always ``Image``) while making
+    the caption accessible to any client that reads PNG metadata.
+    Non-PNG files or write errors are silently ignored.
+    """
+    try:
+        from PIL.PngImagePlugin import PngInfo
+
+        img = PILImage.open(image_path)
+        if img.format != "PNG":
+            return
+        meta = PngInfo()
+        # Carry over existing text chunks
+        existing = img.info or {}
+        for k, v in existing.items():
+            if isinstance(v, str):
+                meta.add_text(k, v)
+        meta.add_text("Caption", caption)
+        img.save(image_path, pnginfo=meta)
+    except Exception:
+        logger.debug("Failed to embed caption in image metadata")
+
+
 mcp = FastMCP("PaperBanana")
 
 
@@ -116,6 +141,7 @@ async def generate_diagram(
     aspect_ratio: str | None = None,
     optimize: bool = False,
     auto_refine: bool = False,
+    generate_caption: bool = False,
 ) -> Image:
     """Generate a publication-quality methodology diagram from text.
 
@@ -129,6 +155,9 @@ async def generate_diagram(
             Set False to skip preprocessing for faster results.
         auto_refine: Let critic loop until satisfied (default True, max 30 iterations).
             Set False to use fixed iteration count for faster results.
+        generate_caption: Auto-generate a publication-ready figure caption
+            after generation. When True, the caption is embedded in the
+            image metadata (PNG tEXt chunk, key "Caption") and logged.
 
     Returns:
         The generated diagram as a PNG image.
@@ -137,11 +166,16 @@ async def generate_diagram(
         refinement_iterations=iterations,
         optimize_inputs=optimize,
         auto_refine=auto_refine,
+        generate_caption=generate_caption,
     )
 
     def _on_progress(event: str, payload: dict) -> None:
-        # Surface coarse progress to MCP logs; IDEs can display this in tool output.
-        logger.info("mcp_progress", tool="generate_diagram", progress_event=event, **payload)
+        logger.info(
+            "mcp_progress",
+            tool="generate_diagram",
+            progress_event=event,
+            **payload,
+        )
 
     pipeline = PaperBananaPipeline(settings=settings, progress_callback=_on_progress)
 
@@ -154,6 +188,15 @@ async def generate_diagram(
 
     result = await pipeline.generate(gen_input)
     effective_path, fmt = _compress_for_api(result.image_path)
+
+    if result.generated_caption:
+        _embed_caption(effective_path, result.generated_caption)
+        logger.info(
+            "generated_caption",
+            tool="generate_diagram",
+            caption=result.generated_caption,
+        )
+
     return Image(path=effective_path, format=fmt)
 
 
@@ -165,6 +208,7 @@ async def generate_plot(
     aspect_ratio: str | None = None,
     optimize: bool = False,
     auto_refine: bool = False,
+    generate_caption: bool = False,
 ) -> Image:
     """Generate a publication-quality statistical plot from JSON data.
 
@@ -179,6 +223,9 @@ async def generate_plot(
             Set False to skip preprocessing for faster results.
         auto_refine: Let critic loop until satisfied (default True, max 30 iterations).
             Set False to use fixed iteration count for faster results.
+        generate_caption: Auto-generate a publication-ready figure caption
+            after generation. When True, the caption is embedded in the
+            image metadata (PNG tEXt chunk, key "Caption") and logged.
 
     Returns:
         The generated plot as a PNG image.
@@ -189,10 +236,16 @@ async def generate_plot(
         refinement_iterations=iterations,
         optimize_inputs=optimize,
         auto_refine=auto_refine,
+        generate_caption=generate_caption,
     )
 
     def _on_progress(event: str, payload: dict) -> None:
-        logger.info("mcp_progress", tool="generate_plot", progress_event=event, **payload)
+        logger.info(
+            "mcp_progress",
+            tool="generate_plot",
+            progress_event=event,
+            **payload,
+        )
 
     pipeline = PaperBananaPipeline(settings=settings, progress_callback=_on_progress)
 
@@ -206,6 +259,15 @@ async def generate_plot(
 
     result = await pipeline.generate(gen_input)
     effective_path, fmt = _compress_for_api(result.image_path)
+
+    if result.generated_caption:
+        _embed_caption(effective_path, result.generated_caption)
+        logger.info(
+            "generated_caption",
+            tool="generate_plot",
+            caption=result.generated_caption,
+        )
+
     return Image(path=effective_path, format=fmt)
 
 

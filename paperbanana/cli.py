@@ -233,6 +233,11 @@ def generate(
         "--pdf-pages",
         help=("PDF input only: 1-based pages (e.g. '1-5', '3', '1-3,7,10-12'); default: all pages"),
     ),
+    generate_caption: bool = typer.Option(
+        False,
+        "--generate-caption",
+        help="Auto-generate a publication-ready figure caption (one extra VLM call)",
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
     ),
@@ -308,6 +313,8 @@ def generate(
         overrides["venue"] = venue
     if prompt_dir:
         overrides["prompt_dir"] = prompt_dir
+    if generate_caption:
+        overrides["generate_caption"] = True
 
     if config:
         settings = Settings.from_yaml(config, **overrides)
@@ -620,6 +627,15 @@ def generate(
                         console.print(f"    [yellow]↻[/yellow] [dim]{s}[/dim]")
                 else:
                     console.print("    [green]✓[/green] [bold green]Critic satisfied[/bold green]")
+            elif event.stage == PipelineProgressStage.CAPTION_START:
+                console.print("[bold]Phase 3[/bold] — Caption Generation")
+                console.print("  [dim]●[/dim] Generating figure caption...", end="")
+            elif event.stage == PipelineProgressStage.CAPTION_END:
+                console.print(
+                    f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                    if event.seconds is not None
+                    else " [green]✓[/green]"
+                )
 
         return await pipeline.generate(
             gen_input,
@@ -635,6 +651,9 @@ def generate(
     )
     console.print(f"  Output: [bold]{result.image_path}[/bold]")
     console.print(f"  Run ID: [dim]{result.metadata.get('run_id', 'unknown')}[/dim]")
+    if result.generated_caption:
+        console.print("\n  [bold]Generated Caption:[/bold]")
+        console.print(f"  {result.generated_caption}")
 
     cost_data = result.metadata.get("cost")
     if cost_data:
@@ -1715,6 +1734,11 @@ def plot(
         "--budget",
         help="Budget cap in USD; pipeline aborts gracefully when exceeded",
     ),
+    generate_caption: bool = typer.Option(
+        False,
+        "--generate-caption",
+        help="Auto-generate a publication-ready figure caption (one extra VLM call)",
+    ),
     vector: bool = typer.Option(
         False,
         "--vector/--no-vector",
@@ -1758,6 +1782,7 @@ def plot(
         save_prompts=True if save_prompts is None else save_prompts,
         venue=venue,
         budget_usd=budget,
+        generate_caption=generate_caption,
         vector_export=vector,
     )
 
@@ -1811,6 +1836,9 @@ def plot(
     vector_paths = result.metadata.get("vector_output_paths", {})
     for fmt, path in vector_paths.items():
         console.print(f"[green]Vector ({fmt.upper()}):[/green] [bold]{path}[/bold]")
+    if result.generated_caption:
+        console.print("\n  [bold]Generated Caption:[/bold]")
+        console.print(f"  {result.generated_caption}")
 
     cost_data = result.metadata.get("cost")
     if cost_data:
