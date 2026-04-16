@@ -10,6 +10,11 @@ import structlog
 
 logger = structlog.get_logger()
 
+# Providers that run locally and carry no API cost. We short-circuit the
+# table lookup for these to avoid misleading "unknown pricing" warnings —
+# the model name is irrelevant because the bill is always $0.
+LOCAL_PROVIDERS: frozenset[str] = frozenset({"ollama", "openai_local"})
+
 # (provider, model_prefix) -> {"input_per_1k": USD, "output_per_1k": USD}
 VLM_PRICING: dict[tuple[str, str], dict[str, float]] = {
     # Google Gemini — free tier
@@ -58,6 +63,10 @@ def lookup_vlm_price(provider: str, model: str) -> dict[str, float] | None:
 
     Returns {"input_per_1k": float, "output_per_1k": float} or None if unknown.
     """
+    # Local providers are always free regardless of which model is loaded.
+    if provider in LOCAL_PROVIDERS:
+        return {"input_per_1k": 0.0, "output_per_1k": 0.0}
+
     # Exact match first
     key = (provider, model)
     if key in VLM_PRICING:

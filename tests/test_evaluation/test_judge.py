@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from paperbanana.core.types import DimensionResult
+import pytest
+
+from paperbanana.core.types import DiagramType, DimensionResult
 from paperbanana.evaluation.judge import VLMJudge
 
 
@@ -210,3 +213,31 @@ def test_aggregate_complete_split():
         "aesthetics": _dim("Model"),
     }
     assert judge._hierarchical_aggregate(results) == "Both are good"
+
+
+def test_resolve_prompt_subdir_plot_task():
+    """Statistical plot task maps to plot-specific prompt directory."""
+    judge = _make_judge()
+    assert judge._resolve_prompt_subdir(DiagramType.STATISTICAL_PLOT) == "plot"
+    assert judge._resolve_prompt_subdir("plot") == "plot"
+    assert judge._resolve_prompt_subdir("statistical_plot") == "plot"
+
+
+def test_resolve_prompt_subdir_invalid_task():
+    """Unknown task names should fail fast with a clear error."""
+    judge = _make_judge()
+    with pytest.raises(ValueError):
+        judge._resolve_prompt_subdir("unknown-task")
+
+
+def test_load_eval_prompt_plot_uses_nested_prompt():
+    """Plot evaluation prompt is loaded from prompts/evaluation/plot/."""
+    judge = _make_judge()
+    rendered = judge._load_eval_prompt(
+        "faithfulness",
+        "ctx",
+        "caption",
+        prompt_subdir="plot",
+    )
+    expected = Path("prompts/evaluation/plot/faithfulness.txt").read_text(encoding="utf-8")
+    assert rendered == expected.format(source_context="ctx", caption="caption")

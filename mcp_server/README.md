@@ -9,6 +9,7 @@ MCP server that exposes PaperBanana's diagram and plot generation as tools for C
 | `generate_diagram` | Generate a methodology diagram from text context + caption |
 | `generate_plot` | Generate a statistical plot from JSON data + intent description |
 | `evaluate_diagram` | Compare a generated diagram against a human reference (4 dimensions) |
+| `evaluate_plot` | Compare a generated statistical plot against a human reference (4 dimensions) |
 
 ## Installation
 

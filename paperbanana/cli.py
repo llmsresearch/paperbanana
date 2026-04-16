@@ -238,6 +238,11 @@ def generate(
         "--pdf-pages",
         help=("PDF input only: 1-based pages (e.g. '1-5', '3', '1-3,7,10-12'); default: all pages"),
     ),
+    generate_caption: bool = typer.Option(
+        False,
+        "--generate-caption",
+        help="Auto-generate a publication-ready figure caption (one extra VLM call)",
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
     ),
@@ -313,6 +318,8 @@ def generate(
         overrides["venue"] = venue
     if prompt_dir:
         overrides["prompt_dir"] = prompt_dir
+    if generate_caption:
+        overrides["generate_caption"] = True
     if export_tikz:
         overrides["export_tikz"] = True
 
@@ -627,6 +634,15 @@ def generate(
                         console.print(f"    [yellow]↻[/yellow] [dim]{s}[/dim]")
                 else:
                     console.print("    [green]✓[/green] [bold green]Critic satisfied[/bold green]")
+            elif event.stage == PipelineProgressStage.CAPTION_START:
+                console.print("[bold]Phase 3[/bold] — Caption Generation")
+                console.print("  [dim]●[/dim] Generating figure caption...", end="")
+            elif event.stage == PipelineProgressStage.CAPTION_END:
+                console.print(
+                    f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                    if event.seconds is not None
+                    else " [green]✓[/green]"
+                )
 
         return await pipeline.generate(
             gen_input,
@@ -644,6 +660,9 @@ def generate(
     if result.tikz_path:
         console.print(f"  TikZ:   [bold]{result.tikz_path}[/bold]")
     console.print(f"  Run ID: [dim]{result.metadata.get('run_id', 'unknown')}[/dim]")
+    if result.generated_caption:
+        console.print("\n  [bold]Generated Caption:[/bold]")
+        console.print(f"  {result.generated_caption}")
 
     cost_data = result.metadata.get("cost")
     if cost_data:
@@ -1724,10 +1743,16 @@ def plot(
         "--budget",
         help="Budget cap in USD; pipeline aborts gracefully when exceeded",
     ),
+    generate_caption: bool = typer.Option(
+        False,
+        "--generate-caption",
+        help="Auto-generate a publication-ready figure caption (one extra VLM call)",
+    ),
     export_pgfplots: bool = typer.Option(
         False,
         "--export-pgfplots",
         help="Export a compilable PGFPlots/LaTeX source file alongside the generated plot",
+    ),
     vector: bool = typer.Option(
         False,
         "--vector/--no-vector",
@@ -1771,6 +1796,7 @@ def plot(
         save_prompts=True if save_prompts is None else save_prompts,
         venue=venue,
         budget_usd=budget,
+        generate_caption=generate_caption,
         export_pgfplots=export_pgfplots,
         vector_export=vector,
     )
@@ -1827,6 +1853,9 @@ def plot(
     vector_paths = result.metadata.get("vector_output_paths", {})
     for fmt, path in vector_paths.items():
         console.print(f"[green]Vector ({fmt.upper()}):[/green] [bold]{path}[/bold]")
+    if result.generated_caption:
+        console.print("\n  [bold]Generated Caption:[/bold]")
+        console.print(f"  {result.generated_caption}")
 
     cost_data = result.metadata.get("cost")
     if cost_data:
@@ -1879,9 +1908,7 @@ def tikz(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
 ):
     """Convert an existing generated image to a compilable LaTeX/TikZ source file."""
-    from pathlib import Path as _Path
-
-    input_path = _Path(input)
+    input_path = Path(input)
     if not input_path.exists():
         console.print(f"[red]Error: Input file not found: {input}[/red]")
         raise typer.Exit(1)
@@ -1899,12 +1926,12 @@ def tikz(
     configure_logging(verbose=verbose)
 
     # Resolve output path
-    tex_path = _Path(output) if output else input_path.with_suffix(".tex")
+    tex_path = Path(output) if output else input_path.with_suffix(".tex")
 
     # Load optional source context
     context_text = ""
     if source_context:
-        sc_path = _Path(source_context)
+        sc_path = Path(source_context)
         if not sc_path.exists():
             console.print(f"[red]Error: Source context file not found: {source_context}[/red]")
             raise typer.Exit(1)
@@ -2113,6 +2140,98 @@ def evaluate(
     console.print(
         Panel.fit(
             "[bold]Evaluation Results (Comparative)[/bold]\n\n"
+            + "\n".join(dim_lines)
+            + f"\n[bold]{'Overall':14s} {scores.overall_winner}[/bold]",
+            border_style="cyan",
+        )
+    )
+
+    for dim in dims:
+        result = getattr(scores, dim)
+        if result.reasoning:
+            console.print(f"\n[bold]{dim}[/bold]: {result.reasoning}")
+
+
+@app.command("evaluate-plot")
+def evaluate_plot(
+    generated: str = typer.Option(..., "--generated", "-g", help="Path to generated plot image"),
+    data: str = typer.Option(
+        ...,
+        "--data",
+        "-d",
+        help="Path to source data file used for plotting (CSV or JSON)",
+    ),
+    intent: str = typer.Option(..., "--intent", help="Communicative intent used for the plot"),
+    reference: str = typer.Option(
+        ...,
+        "--reference",
+        "-r",
+        help="Path to human reference plot image",
+    ),
+    vlm_provider: str = typer.Option(
+        "gemini", "--vlm-provider", help="VLM provider for evaluation"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed agent progress and timing"
+    ),
+):
+    """Evaluate a generated statistical plot vs human reference (comparative)."""
+    configure_logging(verbose=verbose)
+    from paperbanana.core.plot_data import load_statistical_plot_payload
+    from paperbanana.core.utils import find_prompt_dir
+    from paperbanana.evaluation.judge import VLMJudge
+
+    generated_path = Path(generated)
+    if not generated_path.exists():
+        console.print(f"[red]Error: Generated image not found: {generated}[/red]")
+        raise typer.Exit(1)
+
+    reference_path = Path(reference)
+    if not reference_path.exists():
+        console.print(f"[red]Error: Reference image not found: {reference}[/red]")
+        raise typer.Exit(1)
+
+    data_path = Path(data)
+    if not data_path.exists():
+        console.print(f"[red]Error: Data file not found: {data}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        source_context, _ = load_statistical_plot_payload(data_path)
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    settings = Settings(vlm_provider=vlm_provider)
+    from paperbanana.providers.registry import ProviderRegistry
+
+    vlm = ProviderRegistry.create_vlm(settings)
+    judge = VLMJudge(vlm, prompt_dir=find_prompt_dir())
+
+    async def _run():
+        return await judge.evaluate(
+            image_path=str(generated_path),
+            source_context=source_context,
+            caption=intent,
+            reference_path=str(reference_path),
+            task=DiagramType.STATISTICAL_PLOT,
+        )
+
+    scores = asyncio.run(_run())
+
+    dims = ["faithfulness", "conciseness", "readability", "aesthetics"]
+    dim_lines = []
+    for dim in dims:
+        result = getattr(scores, dim)
+        dim_lines.append(f"{dim.capitalize():14s} {result.winner}")
+
+    console.print(
+        Panel.fit(
+            "[bold]Evaluation Results (Plot Comparative)[/bold]\n\n"
             + "\n".join(dim_lines)
             + f"\n[bold]{'Overall':14s} {scores.overall_winner}[/bold]",
             border_style="cyan",

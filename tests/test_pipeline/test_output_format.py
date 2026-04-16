@@ -9,7 +9,14 @@ from PIL import Image
 
 from paperbanana.core.config import Settings
 from paperbanana.core.pipeline import PaperBananaPipeline
-from paperbanana.core.types import DiagramType, GenerationInput
+from paperbanana.core.resume import load_resume_state
+from paperbanana.core.types import (
+    DiagramIR,
+    DiagramIREdge,
+    DiagramIRNode,
+    DiagramType,
+    GenerationInput,
+)
 
 
 class FakeVLM:
@@ -279,3 +286,112 @@ def test_cli_invalid_format_rejected():
     # Format check runs before file load, so we should get format error
     assert result.exit_code != 0
     assert "png, jpeg, or webp" in result.output
+
+
+@pytest.mark.asyncio
+async def test_pipeline_svg_generate_writes_ir_and_svg(empty_reference_dir, monkeypatch):
+    """output_format=svg writes both diagram_ir.json and final_output.svg."""
+    settings = Settings(
+        reference_set_path=str(empty_reference_dir),
+        output_dir=str(empty_reference_dir / "out"),
+        refinement_iterations=1,
+        save_iterations=True,
+    )
+    settings.output_format = "svg"  # exercise explicit SVG pipeline branch
+    pipeline = PaperBananaPipeline(
+        settings=settings,
+        vlm_client=FakeVLM(),
+        image_gen_fn=FakeImageGen(),
+    )
+
+    async def _ok_ir_planner_run(**kwargs):
+        return DiagramIR(
+            title="Test caption",
+            nodes=[
+                DiagramIRNode(id="n1", label="Input"),
+                DiagramIRNode(id="n2", label="Model"),
+            ],
+            edges=[DiagramIREdge(source="n1", target="n2")],
+        )
+
+    monkeypatch.setattr(pipeline.ir_planner, "run", _ok_ir_planner_run)
+
+    result = await pipeline.generate(
+        GenerationInput(
+            source_context="Test methodology for svg branch.",
+            communicative_intent="Test caption",
+            diagram_type=DiagramType.METHODOLOGY,
+        )
+    )
+
+    run_dir = Path(settings.output_dir) / result.metadata["run_id"]
+    assert result.image_path.endswith(".svg")
+    assert Path(result.image_path).exists()
+    assert (run_dir / "diagram_ir.json").exists()
+    assert result.metadata.get("ir_planner", {}).get("status") == "success"
+    assert result.metadata.get("ir_planner", {}).get("fallback_used") is False
+
+
+@pytest.mark.asyncio
+async def test_pipeline_svg_continue_ir_planner_failure_fallback_recorded(
+    empty_reference_dir, monkeypatch
+):
+    """continue_run svg fallback is explicit in metadata when planner fails."""
+    base_out = empty_reference_dir / "out"
+
+    # Create a prior run to continue from.
+    setup_settings = Settings(
+        reference_set_path=str(empty_reference_dir),
+        output_dir=str(base_out),
+        output_format="png",
+        refinement_iterations=1,
+        save_iterations=True,
+    )
+    setup_pipeline = PaperBananaPipeline(
+        settings=setup_settings,
+        vlm_client=FakeVLM(),
+        image_gen_fn=FakeImageGen(),
+    )
+    setup_result = await setup_pipeline.generate(
+        GenerationInput(
+            source_context="Initial methodology.",
+            communicative_intent="Initial caption",
+            diagram_type=DiagramType.METHODOLOGY,
+        )
+    )
+
+    resume_state = load_resume_state(str(base_out), setup_result.metadata["run_id"])
+
+    # Continue with SVG output and force IR planner failure.
+    continue_settings = Settings(
+        reference_set_path=str(empty_reference_dir),
+        output_dir=str(base_out),
+        refinement_iterations=1,
+        save_iterations=True,
+    )
+    continue_settings.output_format = "svg"  # exercise explicit SVG continue branch
+    continue_pipeline = PaperBananaPipeline(
+        settings=continue_settings,
+        vlm_client=FakeVLM(),
+        image_gen_fn=FakeImageGen(),
+    )
+
+    async def _fail_ir_planner(**kwargs):
+        raise RuntimeError("forced ir planner failure")
+
+    monkeypatch.setattr(continue_pipeline.ir_planner, "run", _fail_ir_planner)
+
+    continued = await continue_pipeline.continue_run(
+        resume_state=resume_state,
+        additional_iterations=1,
+    )
+
+    run_dir = Path(resume_state.run_dir)
+    assert continued.image_path.endswith(".svg")
+    assert Path(continued.image_path).exists()
+    assert (run_dir / "diagram_ir.json").exists()
+    assert continued.metadata.get("ir_planner", {}).get("status") == "fallback"
+    assert continued.metadata.get("ir_planner", {}).get("fallback_used") is True
+    assert "forced ir planner failure" in (
+        continued.metadata.get("ir_planner", {}).get("error") or ""
+    )

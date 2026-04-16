@@ -10,7 +10,9 @@ from typing import Any, Callable, Dict, Optional
 import structlog
 from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
 
+from paperbanana.agents.caption import CaptionAgent
 from paperbanana.agents.critic import CriticAgent
+from paperbanana.agents.ir_planner import IRPlannerAgent
 from paperbanana.agents.optimizer import InputOptimizerAgent
 from paperbanana.agents.planner import PlannerAgent
 from paperbanana.agents.retriever import RetrieverAgent
@@ -19,6 +21,11 @@ from paperbanana.agents.tikz_exporter import TikZExporterAgent
 from paperbanana.agents.visualizer import VisualizerAgent
 from paperbanana.core.config import Settings
 from paperbanana.core.cost_tracker import CostTracker
+from paperbanana.core.diagram_ir import (
+    extract_diagram_ir,
+    save_raster_wrapped_svg,
+    save_svg_from_ir,
+)
 from paperbanana.core.prompt_recorder import PromptRecorder
 from paperbanana.core.types import (
     CritiqueResult,
@@ -224,6 +231,9 @@ class PaperBananaPipeline:
         self.planner = PlannerAgent(
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
+        self.ir_planner = IRPlannerAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
         self.stylist = StylistAgent(
             self._vlm,
             guidelines=self._methodology_guidelines,
@@ -238,6 +248,9 @@ class PaperBananaPipeline:
             prompt_recorder=self._prompt_recorder,
         )
         self.critic = CriticAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
+        self.caption_agent = CaptionAgent(
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
         self.tikz_exporter = TikZExporterAgent(
@@ -266,6 +279,19 @@ class PaperBananaPipeline:
             except Exception:
                 logger.warning("Progress callback raised", progress_event=event)
 
+    def _check_budget(self, context: str, iteration: int | None = None) -> bool:
+        """Return True if the cost tracker is over budget, logging a warning."""
+        if not (self._cost_tracker and self._cost_tracker.is_over_budget):
+            return False
+        if iteration is not None:
+            logger.warning(
+                f"Budget exceeded {context}, stopping early",
+                iteration=iteration,
+            )
+        else:
+            logger.warning(f"Budget exceeded {context}, skipping iterations")
+        return True
+
     @property
     def _run_dir(self) -> Path:
         """Directory for this run's outputs."""
@@ -276,6 +302,62 @@ class PaperBananaPipeline:
         if self.settings.prompt_dir:
             return self.settings.prompt_dir
         return find_prompt_dir()
+
+    async def _generate_caption(
+        self,
+        *,
+        image_path: str,
+        source_context: str,
+        intent: str,
+        description: str,
+        diagram_type: DiagramType,
+        progress_callback: Optional[Callable[[PipelineProgressEvent], None]],
+    ) -> tuple[Optional[str], float]:
+        """Run the CaptionAgent if ``generate_caption`` is enabled.
+
+        Returns:
+            (generated_caption, caption_seconds).  Both default to
+            ``(None, 0.0)`` when the setting is off or the agent fails.
+        """
+        if not self.settings.generate_caption:
+            return None, 0.0
+
+        _emit_progress(
+            progress_callback,
+            PipelineProgressEvent(
+                stage=PipelineProgressStage.CAPTION_START,
+                message="Generating figure caption",
+            ),
+        )
+        self._emit_progress("caption_started")
+        generated_caption: Optional[str] = None
+        caption_start = time.perf_counter()
+        try:
+            generated_caption = await self.caption_agent.run(
+                image_path=image_path,
+                source_context=source_context,
+                intent=intent,
+                description=description,
+                diagram_type=diagram_type,
+            )
+        except Exception as e:
+            logger.warning("Caption generation failed", error=str(e))
+        caption_seconds = time.perf_counter() - caption_start
+        _emit_progress(
+            progress_callback,
+            PipelineProgressEvent(
+                stage=PipelineProgressStage.CAPTION_END,
+                message="Caption generated",
+                seconds=caption_seconds,
+                extra={"caption": generated_caption},
+            ),
+        )
+        self._emit_progress(
+            "caption_completed",
+            seconds=round(caption_seconds, 1),
+            caption=generated_caption,
+        )
+        return generated_caption, caption_seconds
 
     async def _resolve_retrieval_candidates(
         self, input: GenerationInput, candidates: list[ReferenceExample]
@@ -614,12 +696,8 @@ class PaperBananaPipeline:
         else:
             total_iters = self.settings.refinement_iterations
 
-        budget_exceeded = False
-
         # Check budget after pre-iteration phases (retriever, planner, stylist)
-        if self._cost_tracker and self._cost_tracker.is_over_budget:
-            logger.warning("Budget exceeded after planning phases, skipping iterations")
-            budget_exceeded = True
+        budget_exceeded = self._check_budget("after planning phases")
 
         for i in range(total_iters):
             if budget_exceeded:
@@ -788,11 +866,7 @@ class PaperBananaPipeline:
             )
 
             # Check budget between iterations
-            if self._cost_tracker and self._cost_tracker.is_over_budget:
-                logger.warning(
-                    "Budget exceeded between iterations, stopping early",
-                    iteration=iter_index,
-                )
+            if self._check_budget("between iterations", iteration=iter_index):
                 budget_exceeded = True
                 break
 
@@ -800,12 +874,40 @@ class PaperBananaPipeline:
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(self._run_dir / f"final_output.{ext}")
+        ir_planner_status: str | None = None
+        ir_planner_error: str | None = None
 
         if iterations:
             final_image = iterations[-1].image_path
-            # Load and save in desired format (handles PNG→JPEG/WebP conversion)
-            img = load_image(final_image)
-            save_image(img, final_output_path, format=output_format)
+            if output_format == "svg":
+                if input.diagram_type == DiagramType.METHODOLOGY:
+                    try:
+                        diagram_ir = await self.ir_planner.run(
+                            source_context=input.source_context,
+                            caption=input.communicative_intent,
+                            styled_description=current_description,
+                        )
+                        ir_planner_status = "success"
+                        logger.info("IR planner produced structured diagram IR")
+                    except Exception as e:
+                        ir_planner_status = "fallback"
+                        ir_planner_error = str(e)
+                        logger.warning(
+                            "IR planner failed; falling back to heuristic IR",
+                            error=str(e),
+                        )
+                        diagram_ir = extract_diagram_ir(
+                            current_description,
+                            title=input.communicative_intent or "Methodology Diagram",
+                        )
+                    save_json(diagram_ir.model_dump(), self._run_dir / "diagram_ir.json")
+                    save_svg_from_ir(diagram_ir, final_output_path)
+                else:
+                    save_raster_wrapped_svg(final_image, final_output_path)
+            else:
+                # Load and save in desired format (handles PNG→JPEG/WebP conversion)
+                img = load_image(final_image)
+                save_image(img, final_output_path, format=output_format)
         else:
             # Budget exceeded before any iteration could complete
             final_output_path = ""
@@ -813,6 +915,16 @@ class PaperBananaPipeline:
                 "No iterations completed — budget exceeded during planning phases",
                 run_id=self.run_id,
             )
+
+        # ── Caption Generation (optional) ─────────────────────────────
+        generated_caption, caption_seconds = await self._generate_caption(
+            image_path=final_output_path,
+            source_context=input.source_context,
+            intent=input.communicative_intent,
+            description=current_description,
+            diagram_type=input.diagram_type,
+            progress_callback=progress_callback,
+        )
 
         # ── Optional: TikZ / PGFPlots export ─────────────────────────
         tikz_path: str | None = None
@@ -902,6 +1014,7 @@ class PaperBananaPipeline:
             "retrieval_seconds": retrieval_seconds,
             "planning_seconds": planning_seconds,
             "styling_seconds": styling_seconds,
+            "caption_seconds": caption_seconds,
             "iterations": iteration_timings,
         }
         metadata_dict["retrieval"] = {
@@ -909,6 +1022,14 @@ class PaperBananaPipeline:
             "external_enabled": self.settings.exemplar_retrieval_enabled,
             "external_candidate_ids": external_candidate_ids,
         }
+        if generated_caption is not None:
+            metadata_dict["generated_caption"] = generated_caption
+        if ir_planner_status is not None:
+            metadata_dict["ir_planner"] = {
+                "status": ir_planner_status,
+                "fallback_used": ir_planner_status == "fallback",
+                "error": ir_planner_error,
+            }
 
         if self._cost_tracker:
             cost_summary = self._cost_tracker.summary()
@@ -931,6 +1052,7 @@ class PaperBananaPipeline:
             description=current_description,
             iterations=iterations,
             metadata=metadata_dict,
+            generated_caption=generated_caption,
             tikz_path=tikz_path,
         )
 
@@ -1164,11 +1286,7 @@ class PaperBananaPipeline:
             )
 
             # Check budget between iterations
-            if self._cost_tracker and self._cost_tracker.is_over_budget:
-                logger.warning(
-                    "Budget exceeded between iterations, stopping early",
-                    iteration=iter_num,
-                )
+            if self._check_budget("between iterations", iteration=iter_num):
                 budget_exceeded = True
                 break
 
@@ -1176,11 +1294,39 @@ class PaperBananaPipeline:
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(run_dir / f"final_output.{ext}")
+        ir_planner_status: str | None = None
+        ir_planner_error: str | None = None
 
         if iterations:
             final_image = iterations[-1].image_path
-            img = load_image(final_image)
-            save_image(img, final_output_path, format=output_format)
+            if output_format == "svg":
+                if resume_state.diagram_type == DiagramType.METHODOLOGY:
+                    try:
+                        diagram_ir = await self.ir_planner.run(
+                            source_context=resume_state.source_context,
+                            caption=resume_state.communicative_intent,
+                            styled_description=current_description,
+                        )
+                        ir_planner_status = "success"
+                        logger.info("IR planner produced structured diagram IR")
+                    except Exception as e:
+                        ir_planner_status = "fallback"
+                        ir_planner_error = str(e)
+                        logger.warning(
+                            "IR planner failed; falling back to heuristic IR",
+                            error=str(e),
+                        )
+                        diagram_ir = extract_diagram_ir(
+                            current_description,
+                            title=resume_state.communicative_intent or "Methodology Diagram",
+                        )
+                    save_json(diagram_ir.model_dump(), run_dir / "diagram_ir.json")
+                    save_svg_from_ir(diagram_ir, final_output_path)
+                else:
+                    save_raster_wrapped_svg(final_image, final_output_path)
+            else:
+                img = load_image(final_image)
+                save_image(img, final_output_path, format=output_format)
         else:
             # Budget exceeded before any iteration could complete
             final_output_path = ""
@@ -1188,6 +1334,16 @@ class PaperBananaPipeline:
                 "No iterations completed — budget exceeded before first iteration",
                 run_id=self.run_id,
             )
+
+        # ── Caption Generation (optional) ─────────────────────────────
+        generated_caption, caption_seconds = await self._generate_caption(
+            image_path=final_output_path,
+            source_context=resume_state.source_context,
+            intent=resume_state.communicative_intent,
+            description=current_description,
+            diagram_type=resume_state.diagram_type,
+            progress_callback=progress_callback,
+        )
 
         total_seconds = time.perf_counter() - total_start
         logger.info(
@@ -1221,11 +1377,20 @@ class PaperBananaPipeline:
         metadata_dict = metadata.model_dump()
         metadata_dict["timing"] = {
             "continue_total_seconds": total_seconds,
+            "caption_seconds": caption_seconds,
             "iterations": iteration_timings,
         }
         metadata_dict["continued_from_iteration"] = start_iter
+        if ir_planner_status is not None:
+            metadata_dict["ir_planner"] = {
+                "status": ir_planner_status,
+                "fallback_used": ir_planner_status == "fallback",
+                "error": ir_planner_error,
+            }
         if user_feedback:
             metadata_dict["user_feedback"] = user_feedback
+        if generated_caption is not None:
+            metadata_dict["generated_caption"] = generated_caption
 
         if self._cost_tracker:
             cost_summary = self._cost_tracker.summary()
@@ -1245,6 +1410,7 @@ class PaperBananaPipeline:
             description=current_description,
             iterations=iterations,
             metadata=metadata_dict,
+            generated_caption=generated_caption,
         )
 
         return output

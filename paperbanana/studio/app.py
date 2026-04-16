@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 from typing import Any, Optional
 
+from paperbanana.core.types import DiagramType
 from paperbanana.studio import runs as runs_mod
 from paperbanana.studio.runner import (
     ASPECT_RATIO_CHOICES,
@@ -14,6 +15,7 @@ from paperbanana.studio.runner import (
     build_settings,
     merge_context,
     run_batch,
+    run_composite,
     run_continue,
     run_evaluate,
     run_methodology,
@@ -130,7 +132,7 @@ def build_studio_app(
             with gr.Row():
                 fmt = gr.Dropdown(
                     label="Output format",
-                    choices=["png", "jpeg", "webp"],
+                    choices=["png", "jpeg", "webp", "svg"],
                     value="png",
                 )
                 iters = gr.Number(label="Refinement iterations", value=3, precision=0, minimum=1)
@@ -373,12 +375,21 @@ def build_studio_app(
                     "Compare a **generated** image to a **human reference** using the "
                     "paper’s VLM-as-judge protocol (four dimensions + overall)."
                 )
+                ev_target = gr.Radio(
+                    label="Evaluation target",
+                    choices=["Methodology diagram", "Statistical plot"],
+                    value="Methodology diagram",
+                )
                 g_img = gr.Image(label="Generated diagram", type="filepath")
                 r_img = gr.Image(label="Human reference", type="filepath")
                 ev_ctx = gr.Textbox(label="Source context", lines=8)
                 ev_ctx_f = gr.File(
                     label="Context file (optional)",
                     file_types=[".txt", ".md"],
+                )
+                ev_plot_data_f = gr.File(
+                    label="Plot data file (required for statistical plot evaluation)",
+                    file_types=[".csv", ".json"],
                 )
                 ev_cap = gr.Textbox(label="Figure caption", lines=2)
                 ev_log = gr.Textbox(label="Log", lines=6)
@@ -399,10 +410,12 @@ def build_studio_app(
                     op,
                     sp,
                     sd,
+                    target,
                     gen,
                     ref,
                     etext,
                     efile,
+                    plot_data_file,
                     ecap,
                 ):
                     _dotenv()
@@ -411,7 +424,21 @@ def build_studio_app(
                         gp = _upload_path(gen) or ""
                         rp = _upload_path(ref) or ""
                         ctx = merge_context(etext, _upload_path(efile))
-                        log, res = run_evaluate(st, gp, rp, ctx, ecap or "", verbose_logging=False)
+                        task = (
+                            DiagramType.STATISTICAL_PLOT
+                            if target == "Statistical plot"
+                            else DiagramType.METHODOLOGY
+                        )
+                        log, res = run_evaluate(
+                            st,
+                            gp,
+                            rp,
+                            ctx,
+                            ecap or "",
+                            evaluation_task=task,
+                            plot_data_path=_upload_path(plot_data_file) or "",
+                            verbose_logging=False,
+                        )
                         return log, res
                     except Exception as e:
                         return f"{type(e).__name__}: {e}", str(e)
@@ -432,10 +459,12 @@ def build_studio_app(
                         opt_in,
                         save_pr,
                         seed_val,
+                        ev_target,
                         g_img,
                         r_img,
                         ev_ctx,
                         ev_ctx_f,
+                        ev_plot_data_f,
                         ev_cap,
                     ],
                     outputs=[ev_log, ev_out],
@@ -646,6 +675,91 @@ def build_studio_app(
                         b_concurrency,
                     ],
                     outputs=[b_log, b_dir],
+                )
+
+            # ── Composite multi-panel figure ──────────────────────────────
+            with gr.Tab("Composite"):
+                gr.Markdown(
+                    "Compose multiple images into a single labeled multi-panel figure with "
+                    "`(a)`, `(b)`, `(c)` sub-panels. No API calls — pure local image processing."
+                )
+                cmp_files = gr.File(
+                    label="Panel images",
+                    file_count="multiple",
+                    file_types=[".png", ".jpg", ".jpeg", ".webp"],
+                )
+                with gr.Row():
+                    cmp_layout = gr.Dropdown(
+                        label="Layout",
+                        choices=["auto", "1x2", "1x3", "1x4", "2x2", "2x3", "3x3"],
+                        value="auto",
+                        allow_custom_value=True,
+                    )
+                    cmp_label_pos = gr.Radio(
+                        label="Label position",
+                        choices=["bottom", "top"],
+                        value="bottom",
+                    )
+                cmp_labels = gr.Textbox(
+                    label="Labels",
+                    placeholder="Comma-separated (e.g. (a),(b),(c)), empty=auto, 'none'=disable",
+                    value="",
+                )
+                with gr.Row():
+                    cmp_spacing = gr.Number(label="Spacing (px)", value=20, precision=0)
+                    cmp_font = gr.Number(label="Label font size", value=32, precision=0)
+                cmp_filename = gr.Textbox(label="Output filename", value="composite.png")
+                cmp_go = gr.Button("Compose figure", variant="primary")
+                cmp_log = gr.Textbox(label="Log", lines=8)
+                cmp_out = gr.Image(label="Composite output", type="filepath")
+
+                def _do_composite(
+                    od,
+                    files,
+                    layout,
+                    labels,
+                    spacing,
+                    label_pos,
+                    font_size,
+                    filename,
+                ):
+                    _dotenv()
+                    paths = []
+                    if files:
+                        for f in files:
+                            p = _upload_path(f)
+                            if p:
+                                paths.append(p)
+                    spacing_int = int(spacing) if spacing is not None else 20
+                    font_int = int(font_size) if font_size is not None else 32
+                    try:
+                        log, out_path = run_composite(
+                            paths,
+                            output_dir=od or default_output_dir,
+                            layout=str(layout) if layout else "auto",
+                            labels=labels or "",
+                            spacing=spacing_int,
+                            label_position=str(label_pos or "bottom"),
+                            label_font_size=font_int,
+                            output_filename=filename or "composite.png",
+                        )
+                        return log, out_path
+                    except Exception as e:
+                        return f"{type(e).__name__}: {e}", None
+
+                cmp_go.click(
+                    _do_composite,
+                    inputs=[
+                        out_dir,
+                        cmp_files,
+                        cmp_layout,
+                        cmp_labels,
+                        cmp_spacing,
+                        cmp_label_pos,
+                        cmp_font,
+                        cmp_filename,
+                    ],
+                    outputs=[cmp_log, cmp_out],
                 )
 
             # ── Runs browser ──────────────────────────────────────────────

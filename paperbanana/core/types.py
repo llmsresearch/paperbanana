@@ -35,6 +35,8 @@ class PipelineProgressStage(str, Enum):
     VISUALIZER_END = "visualizer_end"
     CRITIC_START = "critic_start"
     CRITIC_END = "critic_end"
+    CAPTION_START = "caption_start"
+    CAPTION_END = "caption_end"
     TIKZ_EXPORTER_START = "tikz_exporter_start"
     TIKZ_EXPORTER_END = "tikz_exporter_end"
 
@@ -135,9 +137,49 @@ class GenerationOutput(BaseModel):
         default_factory=list, description="History of refinement iterations"
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
+    generated_caption: Optional[str] = Field(
+        default=None,
+        description=(
+            "Auto-generated publication-ready figure caption. "
+            "Only present when generate_caption=True was passed to the pipeline."
+        ),
+    )
     tikz_path: Optional[str] = Field(
         default=None, description="Path to the exported LaTeX/TikZ source file, if generated"
     )
+
+
+class DiagramIRNode(BaseModel):
+    """A node in an editable diagram intermediate representation."""
+
+    id: str
+    label: str
+    lane: Optional[str] = None
+
+
+class DiagramIREdge(BaseModel):
+    """A directed edge in the diagram intermediate representation."""
+
+    source: str
+    target: str
+    label: Optional[str] = None
+
+
+class DiagramIRGroup(BaseModel):
+    """A visual lane/group container in the diagram IR."""
+
+    id: str
+    label: str
+    node_ids: list[str] = Field(default_factory=list)
+
+
+class DiagramIR(BaseModel):
+    """Lightweight intermediate representation for editable exports."""
+
+    title: str
+    nodes: list[DiagramIRNode] = Field(default_factory=list)
+    edges: list[DiagramIREdge] = Field(default_factory=list)
+    groups: list[DiagramIRGroup] = Field(default_factory=list)
 
 
 VALID_WINNERS = {"Model", "Human", "Both are good", "Both are bad"}

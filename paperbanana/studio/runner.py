@@ -285,11 +285,14 @@ def run_evaluate(
     reference_path: str,
     source_context: str,
     caption: str,
+    evaluation_task: DiagramType = DiagramType.METHODOLOGY,
+    plot_data_path: str = "",
     verbose_logging: bool = False,
 ) -> tuple[str, str]:
     """VLM judge comparative evaluation. Returns (log, formatted results)."""
     configure_logging(verbose=verbose_logging)
-    lines: list[str] = ["Starting comparative evaluation (VLM judge)…"]
+    task_label = "plot" if evaluation_task == DiagramType.STATISTICAL_PLOT else "diagram"
+    lines: list[str] = [f"Starting comparative evaluation ({task_label}, VLM judge)…"]
     gp = Path(generated_path)
     rp = Path(reference_path)
     if not gp.is_file():
@@ -300,7 +303,21 @@ def run_evaluate(
         msg = f"Reference image not found: {reference_path}"
         lines.append(msg)
         return "\n".join(lines), msg
-    if not source_context.strip():
+    effective_context = source_context
+    if evaluation_task == DiagramType.STATISTICAL_PLOT:
+        plot_path = Path(plot_data_path)
+        if not plot_path.is_file():
+            msg = f"Plot data file not found: {plot_data_path}"
+            lines.append(msg)
+            return "\n".join(lines), msg
+        try:
+            effective_context, _ = load_statistical_plot_payload(plot_path)
+        except ValueError as e:
+            msg = f"Invalid plot data: {e}"
+            lines.append(msg)
+            return "\n".join(lines), msg
+
+    if not effective_context.strip():
         msg = "Source context is empty."
         lines.append(msg)
         return "\n".join(lines), msg
@@ -312,15 +329,16 @@ def run_evaluate(
         async def _go():
             return await judge.evaluate(
                 image_path=str(gp),
-                source_context=source_context,
+                source_context=effective_context,
                 caption=caption.strip(),
                 reference_path=str(rp),
+                task=evaluation_task,
             )
 
         scores = asyncio.run(_go())
         lines.append("Done.")
         dims = ["faithfulness", "conciseness", "readability", "aesthetics"]
-        out_parts = ["## Results\n"]
+        out_parts = [f"## Results ({task_label})\n"]
         for dim in dims:
             r = getattr(scores, dim)
             out_parts.append(f"**{dim}** — {r.winner} (score {r.score:.0f})\n")
@@ -652,3 +670,98 @@ def run_plot_batch(
     lines.append(f"Succeeded: {ok}/{len(items)}")
     lines.append(f"Total time: {report['total_seconds']}s")
     return "\n".join(lines), str(batch_dir.resolve())
+
+
+def _sanitize_output_filename(name: str) -> str:
+    """Strip directory components and reject traversal attempts."""
+    cleaned = (name or "").strip() or "composite.png"
+    base = Path(cleaned).name
+    if not base or base in (".", ".."):
+        return "composite.png"
+    return base
+
+
+def run_composite(
+    image_paths: list[str],
+    *,
+    output_dir: str,
+    layout: str = "auto",
+    labels: str = "",
+    spacing: int = 20,
+    label_position: str = "bottom",
+    label_font_size: int = 32,
+    output_filename: str = "composite.png",
+) -> tuple[str, Optional[str]]:
+    """Compose multiple uploaded images into a single labeled multi-panel figure.
+
+    Returns (log, output_path). output_path is None on failure.
+    """
+    from typing import Literal, cast
+
+    from paperbanana.core.composite import compose_images
+
+    lines: list[str] = ["Starting composite figure generation…"]
+
+    valid_paths = [p for p in image_paths if p and Path(p).is_file()]
+    if not valid_paths:
+        msg = "No valid image files provided. Upload at least one image."
+        lines.append(msg)
+        return "\n".join(lines), None
+
+    if label_position not in ("top", "bottom"):
+        msg = f"label_position must be 'top' or 'bottom'. Got: {label_position!r}"
+        lines.append(msg)
+        return "\n".join(lines), None
+
+    if spacing < 0:
+        msg = f"spacing must be >= 0. Got: {spacing}"
+        lines.append(msg)
+        return "\n".join(lines), None
+
+    if label_font_size <= 0:
+        msg = f"label_font_size must be > 0. Got: {label_font_size}"
+        lines.append(msg)
+        return "\n".join(lines), None
+
+    label_list: Optional[list[str]] = None
+    auto_label = True
+    stripped_labels = labels.strip()
+    if stripped_labels:
+        if stripped_labels.lower() == "none":
+            auto_label = False
+        else:
+            label_list = [item.strip() for item in labels.split(",") if item.strip()]
+            auto_label = False
+
+    out_dir_str = (output_dir or "").strip() or "outputs"
+    out_dir = Path(out_dir_str).resolve()
+    ensure_dir(out_dir)
+    safe_name = _sanitize_output_filename(output_filename)
+    output_path = out_dir / safe_name
+
+    lines.append(f"Panels: {len(valid_paths)}")
+    lines.append(f"Layout: {layout}")
+    lines.append(f"Output: {output_path}")
+
+    try:
+        compose_images(
+            image_paths=valid_paths,
+            layout=layout,
+            labels=label_list,
+            auto_label=auto_label,
+            spacing=spacing,
+            label_position=cast(Literal["top", "bottom"], label_position),
+            label_font_size=label_font_size,
+            output_path=output_path,
+        )
+    except (ValueError, OSError) as e:
+        lines.append("FAILED")
+        lines.append(f"{type(e).__name__}: {e}")
+        return "\n".join(lines), None
+    except Exception as e:
+        lines.append("FAILED")
+        lines.append(f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}")
+        return "\n".join(lines), None
+
+    lines.append("Done.")
+    return "\n".join(lines), str(output_path)
