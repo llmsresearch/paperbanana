@@ -35,6 +35,8 @@ class PipelineProgressStage(str, Enum):
     VISUALIZER_END = "visualizer_end"
     CRITIC_START = "critic_start"
     CRITIC_END = "critic_end"
+    CAPTION_START = "caption_start"
+    CAPTION_END = "caption_end"
 
 
 class PipelineProgressEvent(BaseModel):
@@ -133,6 +135,13 @@ class GenerationOutput(BaseModel):
         default_factory=list, description="History of refinement iterations"
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
+    generated_caption: Optional[str] = Field(
+        default=None,
+        description=(
+            "Auto-generated publication-ready figure caption. "
+            "Only present when generate_caption=True was passed to the pipeline."
+        ),
+    )
 
 
 class DiagramIRNode(BaseModel):
