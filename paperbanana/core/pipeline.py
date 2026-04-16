@@ -12,6 +12,7 @@ from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
 
 from paperbanana.agents.caption import CaptionAgent
 from paperbanana.agents.critic import CriticAgent
+from paperbanana.agents.ir_planner import IRPlannerAgent
 from paperbanana.agents.optimizer import InputOptimizerAgent
 from paperbanana.agents.planner import PlannerAgent
 from paperbanana.agents.retriever import RetrieverAgent
@@ -19,6 +20,11 @@ from paperbanana.agents.stylist import StylistAgent
 from paperbanana.agents.visualizer import VisualizerAgent
 from paperbanana.core.config import Settings
 from paperbanana.core.cost_tracker import CostTracker
+from paperbanana.core.diagram_ir import (
+    extract_diagram_ir,
+    save_raster_wrapped_svg,
+    save_svg_from_ir,
+)
 from paperbanana.core.prompt_recorder import PromptRecorder
 from paperbanana.core.types import (
     CritiqueResult,
@@ -212,6 +218,9 @@ class PaperBananaPipeline:
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
         self.planner = PlannerAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
+        self.ir_planner = IRPlannerAgent(
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
         self.stylist = StylistAgent(
@@ -846,12 +855,40 @@ class PaperBananaPipeline:
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(self._run_dir / f"final_output.{ext}")
+        ir_planner_status: str | None = None
+        ir_planner_error: str | None = None
 
         if iterations:
             final_image = iterations[-1].image_path
-            # Load and save in desired format (handles PNG→JPEG/WebP conversion)
-            img = load_image(final_image)
-            save_image(img, final_output_path, format=output_format)
+            if output_format == "svg":
+                if input.diagram_type == DiagramType.METHODOLOGY:
+                    try:
+                        diagram_ir = await self.ir_planner.run(
+                            source_context=input.source_context,
+                            caption=input.communicative_intent,
+                            styled_description=current_description,
+                        )
+                        ir_planner_status = "success"
+                        logger.info("IR planner produced structured diagram IR")
+                    except Exception as e:
+                        ir_planner_status = "fallback"
+                        ir_planner_error = str(e)
+                        logger.warning(
+                            "IR planner failed; falling back to heuristic IR",
+                            error=str(e),
+                        )
+                        diagram_ir = extract_diagram_ir(
+                            current_description,
+                            title=input.communicative_intent or "Methodology Diagram",
+                        )
+                    save_json(diagram_ir.model_dump(), self._run_dir / "diagram_ir.json")
+                    save_svg_from_ir(diagram_ir, final_output_path)
+                else:
+                    save_raster_wrapped_svg(final_image, final_output_path)
+            else:
+                # Load and save in desired format (handles PNG→JPEG/WebP conversion)
+                img = load_image(final_image)
+                save_image(img, final_output_path, format=output_format)
         else:
             # Budget exceeded before any iteration could complete
             final_output_path = ""
@@ -916,6 +953,12 @@ class PaperBananaPipeline:
         }
         if generated_caption is not None:
             metadata_dict["generated_caption"] = generated_caption
+        if ir_planner_status is not None:
+            metadata_dict["ir_planner"] = {
+                "status": ir_planner_status,
+                "fallback_used": ir_planner_status == "fallback",
+                "error": ir_planner_error,
+            }
 
         if self._cost_tracker:
             cost_summary = self._cost_tracker.summary()
@@ -1181,11 +1224,39 @@ class PaperBananaPipeline:
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(run_dir / f"final_output.{ext}")
+        ir_planner_status: str | None = None
+        ir_planner_error: str | None = None
 
         if iterations:
             final_image = iterations[-1].image_path
-            img = load_image(final_image)
-            save_image(img, final_output_path, format=output_format)
+            if output_format == "svg":
+                if resume_state.diagram_type == DiagramType.METHODOLOGY:
+                    try:
+                        diagram_ir = await self.ir_planner.run(
+                            source_context=resume_state.source_context,
+                            caption=resume_state.communicative_intent,
+                            styled_description=current_description,
+                        )
+                        ir_planner_status = "success"
+                        logger.info("IR planner produced structured diagram IR")
+                    except Exception as e:
+                        ir_planner_status = "fallback"
+                        ir_planner_error = str(e)
+                        logger.warning(
+                            "IR planner failed; falling back to heuristic IR",
+                            error=str(e),
+                        )
+                        diagram_ir = extract_diagram_ir(
+                            current_description,
+                            title=resume_state.communicative_intent or "Methodology Diagram",
+                        )
+                    save_json(diagram_ir.model_dump(), run_dir / "diagram_ir.json")
+                    save_svg_from_ir(diagram_ir, final_output_path)
+                else:
+                    save_raster_wrapped_svg(final_image, final_output_path)
+            else:
+                img = load_image(final_image)
+                save_image(img, final_output_path, format=output_format)
         else:
             # Budget exceeded before any iteration could complete
             final_output_path = ""
@@ -1240,6 +1311,12 @@ class PaperBananaPipeline:
             "iterations": iteration_timings,
         }
         metadata_dict["continued_from_iteration"] = start_iter
+        if ir_planner_status is not None:
+            metadata_dict["ir_planner"] = {
+                "status": ir_planner_status,
+                "fallback_used": ir_planner_status == "fallback",
+                "error": ir_planner_error,
+            }
         if user_feedback:
             metadata_dict["user_feedback"] = user_feedback
         if generated_caption is not None:

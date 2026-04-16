@@ -1,0 +1,36 @@
+Convert the following method description into a strict JSON diagram intermediate representation (IR) for editable export.
+
+Return ONLY valid JSON. No markdown, no code fences, no extra text.
+
+Schema:
+{
+  "title": "short title",
+  "nodes": [
+    {"id": "n1", "label": "text", "lane": "optional group name"},
+    {"id": "n2", "label": "text"}
+  ],
+  "edges": [
+    {"source": "n1", "target": "n2", "label": "optional edge label"}
+  ],
+  "groups": [
+    {"id": "g1", "label": "Phase 1", "node_ids": ["n1", "n2"]}
+  ]
+}
+
+Rules:
+- Use stable, unique node ids like n1, n2, n3...
+- Keep node labels concise (<= 10 words), preserving technical meaning.
+- Include all core modules and major data/artifact nodes.
+- Add edges for meaningful information flow direction.
+- Add groups for high-level phases when applicable (2-4 groups usually).
+- If uncertain, prefer fewer, cleaner nodes over noisy detail.
+- Ensure all edge source/target ids exist in nodes.
+
+Context:
+{source_context}
+
+Caption:
+{caption}
+
+Styled description:
+{styled_description}

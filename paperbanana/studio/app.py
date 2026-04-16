@@ -130,7 +130,7 @@ def build_studio_app(
             with gr.Row():
                 fmt = gr.Dropdown(
                     label="Output format",
-                    choices=["png", "jpeg", "webp"],
+                    choices=["png", "jpeg", "webp", "svg"],
                     value="png",
                 )
                 iters = gr.Number(label="Refinement iterations", value=3, precision=0, minimum=1)
