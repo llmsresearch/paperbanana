@@ -209,11 +209,46 @@ def validate_manifest(
     errors: list[str] = []
     manifest_path = Path(manifest_path).resolve()
 
-    # --- parse ---
+    # Parse inline (keeps the validator self-contained and lets us collect
+    # multiple violations instead of stopping at the first raise).
+    if not manifest_path.exists():
+        return [f"Manifest not found: {manifest_path}"]
+
+    suffix = manifest_path.suffix.lower()
+    if suffix not in (".yaml", ".yml", ".json"):
+        return [f"Manifest must be .yaml, .yml, or .json. Got: {manifest_path.suffix}"]
+
     try:
-        items_raw, full_data = _parse_manifest_raw(manifest_path)
-    except (FileNotFoundError, ValueError, RuntimeError) as exc:
-        return [str(exc)]
+        raw = manifest_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"Failed to read manifest: {exc}"]
+
+    if suffix in (".yaml", ".yml"):
+        try:
+            import yaml
+        except ImportError:
+            return ["PyYAML is required for YAML manifests. Install with: pip install pyyaml"]
+        try:
+            data = yaml.safe_load(raw)
+        except yaml.YAMLError as exc:
+            return [f"Failed to parse YAML manifest: {exc}"]
+    else:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            return [f"Failed to parse JSON manifest: {exc}"]
+
+    if data is None:
+        return ["Manifest is empty"]
+
+    full_data: dict[str, Any] | None = None
+    if isinstance(data, list):
+        items_raw = data
+    elif isinstance(data, dict) and "items" in data:
+        items_raw = data["items"]
+        full_data = data
+    else:
+        return ["Manifest must be a list of items or an object with an 'items' list"]
 
     if not items_raw:
         return ["Manifest contains no items"]
