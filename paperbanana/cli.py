@@ -3244,6 +3244,54 @@ def studio(
     )
 
 
+@app.command("show-config")
+def show_config(
+    json_output: bool = typer.Option(False, "--json", help="Emit resolved config as JSON"),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+) -> None:
+    """Print the fully resolved settings (env + config file) without running generation."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    if config:
+        settings = Settings.from_yaml(config)
+    else:
+        settings = Settings()
+
+    # Fields containing sensitive secrets that should be masked
+    _secret_fields = {
+        "google_api_key",
+        "openrouter_api_key",
+        "openai_api_key",
+        "anthropic_api_key",
+    }
+
+    data = settings.model_dump()
+    # Mask sensitive values
+    for key in _secret_fields:
+        val = data.get(key)
+        if val:
+            data[key] = val[:4] + "****" + val[-4:] if len(val) > 8 else "****"
+
+    # Add effective (resolved) models for clarity
+    data["_effective_vlm_model"] = settings.effective_vlm_model
+    data["_effective_image_model"] = settings.effective_image_model
+
+    if json_output:
+        console.print_json(json_mod.dumps(data, indent=2, default=str))
+    else:
+        table = Table(title="Resolved PaperBanana Settings", show_lines=True)
+        table.add_column("Setting", style="cyan", no_wrap=True)
+        table.add_column("Value", style="green")
+
+        for key, value in data.items():
+            display = str(value) if value is not None else "[dim]None[/dim]"
+            table.add_row(key, display)
+
+        console.print(table)
+
+
 @app.command()
 def doctor(
     json_output: bool = typer.Option(
