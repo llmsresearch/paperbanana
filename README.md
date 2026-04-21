@@ -290,6 +290,16 @@ paperbanana batch-report --batch-id batch_20250109_123456_abc --format html --ou
 
 Diagram batch reports include `batch_kind: methodology`; plot batches use `batch_kind: statistical_plot`. Human-readable reports (`paperbanana batch-report`) show the batch kind when present.
 
+**Sweep reports** produced by `paperbanana sweep` can be rendered the same way:
+
+```bash
+paperbanana sweep-report --sweep-dir outputs/sweep_20250109_123456_abc --format html
+# or by sweep ID
+paperbanana sweep-report --sweep-id sweep_20250109_123456_abc --format markdown
+```
+
+Rendered sweep reports include a summary, a top-5 ranked table, the full variants table (with per-variant provider/model, iterations, critic-suggestion count, proxy score, and output path), and the `quality_proxy_score` note. Dry-run reports render a simplified "Planned Variants" section.
+
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--manifest` | `-m` | Path to manifest file (required) |
