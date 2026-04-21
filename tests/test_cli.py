@@ -70,6 +70,198 @@ def test_generate_accepts_progress_json_flag():
         Path(input_path).unlink(missing_ok=True)
 
 
+def test_orchestrate_dry_run_writes_plan(tmp_path):
+    """orchestrate --dry-run should emit a package plan on disk."""
+    paper_path = tmp_path / "paper.txt"
+    paper_path.write_text(
+        "\n".join(
+            [
+                "A Very Good Paper Title",
+                "",
+                "1 Introduction",
+                "We introduce a new system.",
+                "",
+                "2 Method",
+                "Our method has encoder, retriever, and critic modules.",
+                "",
+                "3 Experiments",
+                "We compare against strong baselines.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "orchestrate",
+            "--paper",
+            str(paper_path),
+            "--output-dir",
+            str(tmp_path),
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Dry run complete" in result.output
+
+    plans = list(tmp_path.glob("orchestrate_*/orchestration_plan.json"))
+    assert len(plans) == 1
+    payload = json.loads(plans[0].read_text(encoding="utf-8"))
+    assert payload["paper_title"] == "A Very Good Paper Title"
+    assert len(payload["methodology_items"]) >= 1
+
+
+def test_orchestrate_generates_package_with_mocked_pipeline(tmp_path, monkeypatch):
+    """orchestrate writes package manifest + latex artifacts in execution mode."""
+    paper_path = tmp_path / "paper.txt"
+    paper_path.write_text(
+        "\n".join(
+            [
+                "Paper Title",
+                "",
+                "1 Method Overview",
+                "Our framework has three blocks.",
+                "",
+                "2 Training Pipeline",
+                "We optimize with curriculum and regularization.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    call_state = {"n": 0}
+
+    class _FakePipeline:
+        def __init__(self, settings=None, **kwargs):
+            self.settings = settings
+            self.run_id = "run_fake"
+
+        async def generate(self, gen_input):
+            from paperbanana.core.types import GenerationOutput
+
+            call_state["n"] += 1
+            out = tmp_path / f"fake_{call_state['n']}.png"
+            out.write_bytes(b"fake-png")
+            return GenerationOutput(
+                image_path=str(out),
+                description="desc",
+                iterations=[],
+                metadata={"run_id": f"run_{call_state['n']}"},
+            )
+
+    monkeypatch.setattr("paperbanana.core.pipeline.PaperBananaPipeline", _FakePipeline)
+
+    result = runner.invoke(
+        app,
+        [
+            "orchestrate",
+            "--paper",
+            str(paper_path),
+            "--output-dir",
+            str(tmp_path),
+            "--max-method-figures",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Orchestration complete" in result.output
+
+    packages = list(tmp_path.glob("orchestrate_*/figure_package.json"))
+    assert len(packages) == 1
+    package = json.loads(packages[0].read_text(encoding="utf-8"))
+    assert package["planned_methodology_items"] >= 1
+    assert len(package["generated_items"]) >= 1
+
+    package_dir = packages[0].parent
+    assert (package_dir / "figures.tex").exists()
+    assert (package_dir / "captions.md").exists()
+
+
+def test_orchestrate_resume_retry_failed_item(tmp_path, monkeypatch):
+    """resume-orchestrate retries failed tasks and updates package report."""
+    paper_path = tmp_path / "paper.txt"
+    paper_path.write_text(
+        "\n".join(
+            [
+                "Paper Title",
+                "",
+                "1 Method",
+                "A single section for one method figure.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    call_state = {"n": 0}
+
+    class _FlakyPipeline:
+        def __init__(self, settings=None, **kwargs):
+            self.settings = settings
+            self.run_id = "run_flaky"
+
+        async def generate(self, gen_input):
+            from paperbanana.core.types import GenerationOutput
+
+            call_state["n"] += 1
+            if call_state["n"] == 1:
+                raise RuntimeError("simulated generation failure")
+            out = tmp_path / "flaky_success.png"
+            out.write_bytes(b"ok")
+            return GenerationOutput(
+                image_path=str(out),
+                description="desc",
+                iterations=[],
+                metadata={"run_id": "run_success"},
+            )
+
+    monkeypatch.setattr("paperbanana.core.pipeline.PaperBananaPipeline", _FlakyPipeline)
+
+    first = runner.invoke(
+        app,
+        [
+            "orchestrate",
+            "--paper",
+            str(paper_path),
+            "--output-dir",
+            str(tmp_path),
+            "--max-method-figures",
+            "1",
+            "--max-plot-figures",
+            "0",
+        ],
+    )
+    assert first.exit_code == 1
+    assert "failed" in first.output.lower()
+
+    runs = list(tmp_path.glob("orchestrate_*"))
+    assert len(runs) == 1
+    orchestrate_dir = runs[0]
+    checkpoint_path = orchestrate_dir / "orchestration_checkpoint.json"
+    assert checkpoint_path.exists()
+    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    statuses = [x["status"] for x in checkpoint["items"].values()]
+    assert statuses == ["failed"]
+
+    second = runner.invoke(
+        app,
+        [
+            "orchestrate",
+            "--resume-orchestrate",
+            str(orchestrate_dir),
+            "--retry-failed",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+    assert second.exit_code == 0
+    assert "Orchestration complete" in second.output
+
+    package = json.loads((orchestrate_dir / "figure_package.json").read_text(encoding="utf-8"))
+    assert len(package["generated_items"]) == 1
+    assert package["failures"] == []
+
+
 def test_sweep_dry_run_writes_report(tmp_path):
     """sweep --dry-run plans variants and writes sweep_report.json."""
     input_path = tmp_path / "input.txt"

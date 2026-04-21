@@ -1429,6 +1429,251 @@ def sweep_report(
 
 
 @app.command()
+def orchestrate(
+    paper: Optional[str] = typer.Option(
+        None,
+        "--paper",
+        "-p",
+        help="Path to paper source (.txt/.md/.pdf) used to plan and generate a full figure package",
+    ),
+    resume_orchestrate: Optional[str] = typer.Option(
+        None,
+        "--resume-orchestrate",
+        help="Orchestration ID or orchestration directory to resume",
+    ),
+    retry_failed: bool = typer.Option(
+        False,
+        "--retry-failed",
+        help="Retry previously failed items during resume",
+    ),
+    max_retries: int = typer.Option(
+        0,
+        "--max-retries",
+        help="Extra retries per task after first failure",
+    ),
+    data_dir: Optional[str] = typer.Option(
+        None,
+        "--data-dir",
+        help="Optional directory with CSV/JSON files for auto-planned statistical plots",
+    ),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Parent directory for orchestration output package",
+    ),
+    max_method_figures: int = typer.Option(
+        4,
+        "--max-method-figures",
+        help="Maximum methodology figures to plan and generate from paper sections",
+    ),
+    max_plot_figures: int = typer.Option(
+        4,
+        "--max-plot-figures",
+        help="Maximum statistical plots to plan from data files",
+    ),
+    pdf_pages: Optional[str] = typer.Option(
+        None,
+        "--pdf-pages",
+        help="PDF input only: 1-based pages (e.g. '1-5', '2,4,6-8'); default: all pages",
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
+    image_provider: Optional[str] = typer.Option(
+        None, "--image-provider", help="Image generation provider"
+    ),
+    image_model: Optional[str] = typer.Option(None, "--image-model", help="Image model name"),
+    iterations: Optional[int] = typer.Option(
+        None, "--iterations", "-n", help="Refinement iterations per figure"
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Loop until critic is satisfied (with safety cap)"
+    ),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", help="Safety cap for --auto mode"
+    ),
+    optimize: bool = typer.Option(
+        False, "--optimize", help="Enable input optimization before generation"
+    ),
+    format: str = typer.Option(
+        "png", "--format", "-f", help="Output image format (png, jpeg, webp)"
+    ),
+    save_prompts: Optional[bool] = typer.Option(
+        None,
+        "--save-prompts/--no-save-prompts",
+        help="Save prompts for each generated figure run",
+    ),
+    venue: Optional[str] = typer.Option(
+        None,
+        "--venue",
+        help="Target venue style (neurips, icml, acl, ieee, custom)",
+    ),
+    concurrency: int = typer.Option(
+        1, "--concurrency", help="Maximum concurrent figure generations"
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Plan orchestration package without generating figures",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
+):
+    """Generate a publication-ready multi-figure package from a full paper."""
+    is_resume = bool(resume_orchestrate)
+    if format not in ("png", "jpeg", "webp"):
+        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+        raise typer.Exit(1)
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
+        console.print(
+            f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+        )
+        raise typer.Exit(1)
+    if max_method_figures < 1:
+        console.print("[red]Error: --max-method-figures must be >= 1[/red]")
+        raise typer.Exit(1)
+    if max_plot_figures < 0:
+        console.print("[red]Error: --max-plot-figures must be >= 0[/red]")
+        raise typer.Exit(1)
+    if concurrency < 1:
+        console.print("[red]Error: --concurrency must be >= 1[/red]")
+        raise typer.Exit(1)
+    if max_retries < 0:
+        console.print("[red]Error: --max-retries must be >= 0[/red]")
+        raise typer.Exit(1)
+    if is_resume and paper:
+        console.print("[red]Error: provide only one of --paper or --resume-orchestrate[/red]")
+        raise typer.Exit(1)
+    if not is_resume and not paper:
+        console.print("[red]Error: provide --paper for new orchestrations[/red]")
+        raise typer.Exit(1)
+    if is_resume and data_dir:
+        console.print("[red]Error: --data-dir is only valid for new orchestrations[/red]")
+        raise typer.Exit(1)
+    if is_resume and pdf_pages:
+        console.print("[red]Error: --pdf-pages is only valid for new orchestrations[/red]")
+        raise typer.Exit(1)
+
+    configure_logging(verbose=verbose)
+
+    from paperbanana.core.orchestrate import (
+        init_or_load_orchestration_checkpoint,
+        prepare_orchestration_plan,
+        run_orchestration,
+    )
+
+    try:
+        orchestration_id, orchestrate_dir, plan, plan_path, is_resume = prepare_orchestration_plan(
+            paper=paper,
+            resume_orchestrate=resume_orchestrate,
+            output_dir=output_dir,
+            data_dir=data_dir,
+            max_method_figures=max_method_figures,
+            max_plot_figures=max_plot_figures,
+            pdf_pages=pdf_pages,
+        )
+    except (FileNotFoundError, ValueError, ImportError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not is_resume:
+        _check_pdf_dep(Path(str(plan.get("paper_path", ""))))
+
+    ensure_dir(orchestrate_dir)
+    runs_dir = ensure_dir(orchestrate_dir / "runs")
+
+    _orch_header = "Resume " if is_resume else ""
+    console.print(
+        Panel.fit(
+            f"[bold]PaperBanana[/bold] — {_orch_header}Figure Package Orchestration\n\n"
+            f"Paper: {Path(str(plan.get('paper_path', 'paper'))).name}\n"
+            f"Planned methodology figures: {len(plan['methodology_items'])}\n"
+            f"Planned plot figures: {len(plan['plot_items'])}\n"
+            f"Package dir: {orchestrate_dir}",
+            border_style="magenta",
+        )
+    )
+    if dry_run:
+        console.print("[green]Dry run complete.[/green] Orchestration plan:")
+        console.print(f"  [bold]{plan_path}[/bold]")
+        return
+
+    overrides: dict[str, object] = {
+        "output_dir": str(runs_dir),
+        "output_format": format,
+        "optimize_inputs": optimize,
+        "auto_refine": auto,
+    }
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if image_provider:
+        overrides["image_provider"] = image_provider
+    if image_model:
+        overrides["image_model"] = image_model
+    if iterations is not None:
+        overrides["refinement_iterations"] = iterations
+    if max_iterations is not None:
+        overrides["max_iterations"] = max_iterations
+    if save_prompts is not None:
+        overrides["save_prompts"] = save_prompts
+    if venue:
+        overrides["venue"] = venue
+
+    if config:
+        settings = Settings.from_yaml(config, **overrides)
+    else:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+        settings = Settings(**overrides)
+
+    try:
+        state = init_or_load_orchestration_checkpoint(
+            orchestrate_dir=orchestrate_dir,
+            orchestration_id=orchestration_id,
+            plan_path=plan_path,
+            plan=plan,
+            resume=is_resume,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    report, had_work = run_orchestration(
+        state=state,
+        plan=plan,
+        settings=settings,
+        orchestrate_dir=orchestrate_dir,
+        retry_failed=retry_failed,
+        max_retries=max_retries,
+        concurrency=concurrency,
+        progress_callback=console.print,
+    )
+
+    if not had_work:
+        console.print("[yellow]Nothing to run: all tasks already completed.[/yellow]")
+        console.print(f"  Package: [bold]{orchestrate_dir / 'figure_package.json'}[/bold]")
+        return
+
+    total_seconds = float(report.get("total_seconds") or 0.0)
+    success_count = len(report.get("generated_items", []))
+    fail_count = len(report.get("failures", []))
+    package_manifest_path = orchestrate_dir / "figure_package.json"
+    console.print(
+        f"[green]Orchestration complete.[/green] [dim]{success_count} generated · "
+        f"{fail_count} failed · {total_seconds:.1f}s[/dim]"
+    )
+    console.print(f"  Package: [bold]{package_manifest_path}[/bold]")
+    console.print(f"  LaTeX: [bold]{orchestrate_dir / 'figures.tex'}[/bold]")
+    console.print(f"  Captions: [bold]{orchestrate_dir / 'captions.md'}[/bold]")
+
+    if fail_count > 0:
+        raise typer.Exit(1)
+
+
+@app.command()
 def composite(
     images: list[str] = typer.Argument(..., help="Paths to images to compose into a single figure"),
     layout: str = typer.Option(
