@@ -220,6 +220,11 @@ def build_studio_app(
                     choices=ASPECT_RATIO_CHOICES,
                     value="default",
                 )
+                ref_ids = gr.Textbox(
+                    label="Reference IDs (optional)",
+                    placeholder="Comma-separated IDs, e.g. 2404.15806v1,2312.00001v1",
+                    info="Leave empty to use automatic retrieval",
+                )
                 d_log = gr.Textbox(label="Progress log", lines=18)
                 d_img = gr.Image(label="Final diagram", type="filepath")
                 d_gal = gr.Gallery(
@@ -248,6 +253,7 @@ def build_studio_app(
                     file,
                     caption,
                     aspect,
+                    ref_ids_str,
                 ):
                     _dotenv()
                     try:
@@ -258,7 +264,12 @@ def build_studio_app(
                         if not (caption or "").strip():
                             return "Caption is required.", None, []
                         log, img, gal, err = run_methodology(
-                            st, ctx, caption, aspect, verbose_logging=False
+                            st,
+                            ctx,
+                            caption,
+                            aspect,
+                            reference_ids=ref_ids_str or None,
+                            verbose_logging=False,
                         )
                         if err:
                             return log, None, gal
@@ -286,6 +297,7 @@ def build_studio_app(
                         ctx_file,
                         cap,
                         ar,
+                        ref_ids,
                     ],
                     outputs=[d_log, d_img, d_gal],
                 )

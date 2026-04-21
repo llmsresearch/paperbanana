@@ -73,6 +73,14 @@ class GenerationInput(BaseModel):
             "If None, uses provider default."
         ),
     )
+    reference_ids: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Explicit reference example IDs to use, bypassing automatic retrieval. "
+            "When provided, the RetrieverAgent is skipped and these examples are "
+            "looked up directly from the ReferenceStore."
+        ),
+    )
 
     @field_validator("aspect_ratio")
     @classmethod
