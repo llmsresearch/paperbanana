@@ -352,6 +352,45 @@ Paths are resolved relative to the manifest file’s directory.
 | `--aspect-ratio` | `-ar` | Default aspect ratio when not set in the manifest |
 | `--verbose` | `-v` | Verbose logging |
 
+### `paperbanana orchestrate` -- Full-Paper Figure Package
+
+Generate a publication-focused figure bundle from a full paper source, with optional data-driven plots. The command:
+- parses the paper (`.txt`, `.md`, or `.pdf`)
+- plans multiple methodology figures from section structure
+- optionally discovers CSV/JSON files to plan statistical plots
+- runs generation for all planned items
+- writes a package folder containing `figure_package.json`, `figures/`, `figures.tex`, and `captions.md`
+
+```bash
+paperbanana orchestrate \
+  --paper paper.pdf \
+  --data-dir ./results \
+  --max-method-figures 4 \
+  --max-plot-figures 3 \
+  --optimize
+```
+
+Use `--dry-run` to only plan and inspect `orchestration_plan.json` without API calls.
+Use `--resume-orchestrate <id-or-path>` to continue an interrupted orchestration from checkpoint state.
+
+| Flag | Description |
+|------|-------------|
+| `--paper` / `-p` | Paper source path (`.txt`, `.md`, or `.pdf`) |
+| `--resume-orchestrate` | Resume an existing orchestration by ID or directory |
+| `--retry-failed` | When resuming, include previously failed tasks |
+| `--max-retries` | Extra retries per task after first failure |
+| `--data-dir` | Optional directory containing CSV/JSON files for plot planning |
+| `--output-dir` / `-o` | Parent output directory (creates `orchestrate_*`) |
+| `--max-method-figures` | Max methodology figures to plan/generate |
+| `--max-plot-figures` | Max plot figures to plan/generate |
+| `--pdf-pages` | PDF-only page selection (e.g. `1-5`, `2,4,6-8`) |
+| `--optimize` | Enable input optimization for generated items |
+| `--iterations` / `-n` | Refinement iterations per generated item |
+| `--auto` + `--max-iterations` | Critic-driven auto-refine mode with safety cap |
+| `--concurrency` | Parallel figure generation workers |
+| `--format` / `-f` | Output format (`png`, `jpeg`, `webp`) |
+| `--dry-run` | Plan package only; no generation calls |
+
 ### `paperbanana composite` -- Compose Multi-Panel Figures
 
 Stitch multiple images into a single labeled figure with `(a)`, `(b)`, `(c)` sub-panel labels:
