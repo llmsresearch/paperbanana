@@ -1358,6 +1358,68 @@ def batch_report(
         raise typer.Exit(1)
 
 
+@app.command("sweep-report")
+def sweep_report(
+    sweep_dir: Optional[str] = typer.Option(
+        None,
+        "--sweep-dir",
+        "-s",
+        help="Path to sweep run directory (e.g. outputs/sweep_20250109_123456_abc)",
+    ),
+    sweep_id: Optional[str] = typer.Option(
+        None,
+        "--sweep-id",
+        help="Sweep ID (e.g. sweep_20250109_123456_abc); resolved under --output-dir",
+    ),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Parent directory for sweep runs (used with --sweep-id)",
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        help="Output path for the report file (default: <sweep_dir>/sweep_report.<md|html>)",
+    ),
+    format: str = typer.Option(
+        "markdown",
+        "--format",
+        "-f",
+        help="Report format: markdown or html",
+    ),
+):
+    """Generate a human-readable report from an existing sweep run (sweep_report.json)."""
+    if format not in ("markdown", "html", "md"):
+        console.print(f"[red]Error: Format must be markdown or html. Got: {format}[/red]")
+        raise typer.Exit(1)
+    if sweep_dir is None and sweep_id is None:
+        console.print("[red]Error: Provide either --sweep-dir or --sweep-id[/red]")
+        raise typer.Exit(1)
+    if sweep_dir is not None and sweep_id is not None:
+        console.print("[red]Error: Provide only one of --sweep-dir or --sweep-id[/red]")
+        raise typer.Exit(1)
+
+    from paperbanana.core.sweep import write_sweep_report
+
+    if sweep_dir is not None:
+        path = Path(sweep_dir)
+    else:
+        path = Path(output_dir) / sweep_id
+
+    output_path = Path(output) if output else None
+    fmt = "markdown" if format == "md" else format
+    try:
+        written = write_sweep_report(path, output_path=output_path, format=fmt)
+        console.print(f"[green]Report written to:[/green] [bold]{written}[/bold]")
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
 @app.command()
 def composite(
     images: list[str] = typer.Argument(..., help="Paths to images to compose into a single figure"),
