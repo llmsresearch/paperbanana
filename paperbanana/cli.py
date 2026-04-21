@@ -3129,6 +3129,11 @@ def runs_show(
         "--kind",
         help="Optional override: run or batch. If omitted, inferred from the id prefix.",
     ),
+    plain: bool = typer.Option(
+        False,
+        "--plain",
+        help="Plain text output (newline-delimited, easier to parse in scripts/tests).",
+    ),
 ) -> None:
     """Show details for a single run or batch output."""
     from paperbanana.studio.runs import load_batch_summary, load_run_summary
@@ -3159,7 +3164,18 @@ def runs_show(
         if summary.get("iteration_images"):
             lines.append(f"Iterations: {len(summary['iteration_images'])}")
 
-        console.print(Panel.fit("\n".join(lines), border_style="green"))
+        if plain:
+            plain_lines = [
+                f"run_id\t{summary.get('run_id')}",
+                f"run_dir\t{summary.get('run_dir')}",
+                f"final_image\t{summary.get('final_image') or '(none)'}",
+                f"metadata_path\t{summary.get('metadata_path') or '(none)'}",
+            ]
+            if summary.get("iteration_images"):
+                plain_lines.append(f"iterations\t{len(summary['iteration_images'])}")
+            console.print("\n".join(plain_lines))
+        else:
+            console.print(Panel.fit("\n".join(lines), border_style="green"))
         if summary.get("run_input_preview"):
             console.print("\n[bold]run_input.json (preview)[/bold]")
             console.print(summary["run_input_preview"])
@@ -3182,7 +3198,15 @@ def runs_show(
         f"Directory: {summary.get('batch_dir')}",
         f"Status: {status_line}",
     ]
-    console.print(Panel.fit("\n".join(lines), border_style="blue"))
+    if plain:
+        plain_lines = [
+            f"batch_id\t{summary.get('batch_id')}",
+            f"batch_dir\t{summary.get('batch_dir')}",
+            f"status\t{status_line}",
+        ]
+        console.print("\n".join(plain_lines))
+    else:
+        console.print(Panel.fit("\n".join(lines), border_style="blue"))
     if summary.get("report_preview"):
         console.print("\n[bold]batch_report.json (preview)[/bold]")
         console.print(summary["report_preview"])

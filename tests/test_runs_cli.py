@@ -59,11 +59,11 @@ def test_runs_list_show_delete_run(tmp_path: Path):
     assert "run_20260101_000000_abcd01" in listed.output
     assert "My caption" in listed.output
 
-    shown = runner.invoke(app, ["runs", "show", "run_20260101_000000_abcd01", "-o", str(out)])
+    shown = runner.invoke(
+        app, ["runs", "show", "run_20260101_000000_abcd01", "-o", str(out), "--plain"]
+    )
     assert shown.exit_code == 0
-    # Rich may soft-wrap long file paths in CI; normalize whitespace for stable assertions.
-    shown_flat = "".join(shown.output.split())
-    assert "final_output.png" in shown_flat
+    assert "final_output.png" in shown.output
     assert "run_input.json" in shown.output
 
     refused = runner.invoke(app, ["runs", "delete", "run_20260101_000000_abcd01", "-o", str(out)])
@@ -88,7 +88,9 @@ def test_runs_list_show_delete_batch(tmp_path: Path):
     assert listed.exit_code == 0
     assert "batch_20260101_000000_beef00" in listed.output
 
-    shown = runner.invoke(app, ["runs", "show", "batch_20260101_000000_beef00", "-o", str(out)])
+    shown = runner.invoke(
+        app, ["runs", "show", "batch_20260101_000000_beef00", "-o", str(out), "--plain"]
+    )
     assert shown.exit_code == 0
     assert "batch_report.json" in shown.output
     assert "methodology" in shown.output
