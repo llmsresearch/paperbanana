@@ -178,6 +178,11 @@ def generate(
         "--auto-download-data",
         help="Auto-download curated expansion reference set on first run if not cached",
     ),
+    reference_ids: Optional[str] = typer.Option(
+        None,
+        "--reference-ids",
+        help="Comma-separated reference example IDs to use (bypasses automatic retrieval)",
+    ),
     exemplar_retrieval: bool = typer.Option(
         False,
         "--exemplar-retrieval",
@@ -455,11 +460,15 @@ def generate(
         raise typer.Exit(1)
 
     # Build generation input
+    ref_id_list = None
+    if reference_ids:
+        ref_id_list = [rid.strip() for rid in reference_ids.split(",") if rid.strip()]
     gen_input = GenerationInput(
         source_context=source_context,
         communicative_intent=caption,
         diagram_type=DiagramType.METHODOLOGY,
         aspect_ratio=aspect_ratio,
+        reference_ids=ref_id_list,
     )
 
     # Determine expected output file extension based on settings.output_format
