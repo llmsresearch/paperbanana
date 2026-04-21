@@ -401,7 +401,11 @@ class PaperBananaPipeline:
         iteration_timings: list[dict[str, float | int]] = []
         budget_exceeded = self._check_budget("before regenerate-from-ir iterations")
         vector_formats = ["svg", "pdf"] if self.settings.vector_export else None
-        total_iters = self.settings.max_iterations if self.settings.auto_refine else self.settings.refinement_iterations
+        total_iters = (
+            self.settings.max_iterations
+            if self.settings.auto_refine
+            else self.settings.refinement_iterations
+        )
 
         if self.settings.save_iterations:
             save_json(

@@ -16,6 +16,7 @@ from rich.table import Table
 
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
+from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.types import (
     DiagramIR,
     DiagramType,
@@ -685,20 +686,38 @@ def generate(
 
 @app.command("regenerate")
 def regenerate_from_ir(
-    diagram_ir: str = typer.Option(..., "--diagram-ir", help="Path to edited diagram_ir.json"),
+    diagram_ir: str = typer.Option(
+        ...,
+        "--diagram-ir",
+        help="Path to edited diagram_ir.json",
+    ),
     input: str = typer.Option(
         ...,
         "--input",
         "-i",
         help="Path to methodology text file or PDF (.pdf requires: pip install 'paperbanana[pdf]')",
     ),
-    caption: str = typer.Option(..., "--caption", "-c", help="Figure caption / communicative intent"),
+    caption: str = typer.Option(
+        ...,
+        "--caption",
+        "-c",
+        help="Figure caption / communicative intent",
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
     vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="VLM provider"),
     vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
-    image_provider: Optional[str] = typer.Option(None, "--image-provider", help="Image gen provider"),
+    image_provider: Optional[str] = typer.Option(
+        None,
+        "--image-provider",
+        help="Image gen provider",
+    ),
     image_model: Optional[str] = typer.Option(None, "--image-model", help="Image gen model name"),
-    iterations: Optional[int] = typer.Option(None, "--iterations", "-n", help="Refinement iterations"),
+    iterations: Optional[int] = typer.Option(
+        None,
+        "--iterations",
+        "-n",
+        help="Refinement iterations",
+    ),
     auto: bool = typer.Option(
         False, "--auto", help="Loop until critic is satisfied (with safety cap)"
     ),

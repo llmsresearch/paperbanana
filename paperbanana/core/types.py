@@ -243,7 +243,9 @@ class DiagramIR(BaseModel):
                 "DiagramIR locks reference unknown groups: " + ", ".join(missing_locked_groups)
             )
 
-        missing_locked_edges = [eref for eref in self.locks.locked_edge_refs if eref not in edge_refs]
+        missing_locked_edges = [
+            eref for eref in self.locks.locked_edge_refs if eref not in edge_refs
+        ]
         if missing_locked_edges:
             raise ValueError(
                 "DiagramIR locks reference unknown edges: " + ", ".join(missing_locked_edges)
