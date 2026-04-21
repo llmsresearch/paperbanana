@@ -61,7 +61,9 @@ def test_runs_list_show_delete_run(tmp_path: Path):
 
     shown = runner.invoke(app, ["runs", "show", "run_20260101_000000_abcd01", "-o", str(out)])
     assert shown.exit_code == 0
-    assert "final_output.png" in shown.output
+    # Rich may soft-wrap long file paths in CI; normalize whitespace for stable assertions.
+    shown_flat = "".join(shown.output.split())
+    assert "final_output.png" in shown_flat
     assert "run_input.json" in shown.output
 
     refused = runner.invoke(app, ["runs", "delete", "run_20260101_000000_abcd01", "-o", str(out)])
