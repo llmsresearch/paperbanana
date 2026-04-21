@@ -3034,10 +3034,10 @@ def runs_list(
 
         if plain:
             if not runs:
-                console.print("No runs found.")
+                typer.echo("No runs found.")
             for run_id in runs:
                 row = _summarize_run_row(out, run_id)
-                console.print(
+                typer.echo(
                     "\t".join(
                         [
                             row["id"],
@@ -3083,10 +3083,10 @@ def runs_list(
 
         if plain:
             if not batches:
-                console.print("No batches found.")
+                typer.echo("No batches found.")
             for batch_id in batches:
                 row = _summarize_batch_row(out, batch_id)
-                console.print(
+                typer.echo(
                     "\t".join(
                         [
                             row["id"],
@@ -3173,7 +3173,7 @@ def runs_show(
             ]
             if summary.get("iteration_images"):
                 plain_lines.append(f"iterations\t{len(summary['iteration_images'])}")
-            console.print("\n".join(plain_lines))
+            typer.echo("\n".join(plain_lines))
         else:
             console.print(Panel.fit("\n".join(lines), border_style="green"))
         if summary.get("run_input_preview"):
@@ -3204,7 +3204,7 @@ def runs_show(
             f"batch_dir\t{summary.get('batch_dir')}",
             f"status\t{status_line}",
         ]
-        console.print("\n".join(plain_lines))
+        typer.echo("\n".join(plain_lines))
     else:
         console.print(Panel.fit("\n".join(lines), border_style="blue"))
     if summary.get("report_preview"):

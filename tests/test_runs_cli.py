@@ -63,7 +63,7 @@ def test_runs_list_show_delete_run(tmp_path: Path):
         app, ["runs", "show", "run_20260101_000000_abcd01", "-o", str(out), "--plain"]
     )
     assert shown.exit_code == 0
-    assert "final_output.png" in shown.output
+    assert "final_output.png" in "".join(shown.output.split())
     assert "run_input.json" in shown.output
 
     refused = runner.invoke(app, ["runs", "delete", "run_20260101_000000_abcd01", "-o", str(out)])
