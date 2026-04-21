@@ -41,6 +41,14 @@ data_app = typer.Typer(
 )
 app.add_typer(data_app, name="data")
 
+# ── References subcommand group ──────────────────────────────────
+references_app = typer.Typer(
+    name="references",
+    help="Inspect built-in reference examples (list, show, categories).",
+    no_args_is_help=True,
+)
+app.add_typer(references_app, name="references")
+
 
 def _require_pdf_dep() -> None:
     """Raise a clean error if PyMuPDF is not installed."""
@@ -2945,6 +2953,132 @@ def clear():
 
     dm.clear()
     console.print("[green]Cached reference set cleared.[/green]")
+
+
+# ── References subcommands ────────────────────────────────────────
+
+
+@references_app.command(name="list")
+def references_list(
+    category: Optional[str] = typer.Option(
+        None,
+        "--category",
+        "-c",
+        help="Filter by category (e.g. nlp_language, vision_perception).",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """List all available reference examples."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    examples = store.get_by_category(category) if category else store.get_all()
+
+    if not examples:
+        if category:
+            console.print(f"No references found for category [bold]{category}[/bold].")
+        else:
+            console.print("No reference examples found.")
+        raise typer.Exit(0)
+
+    if json_output:
+        rows = [
+            {
+                "id": e.id,
+                "category": e.category or "",
+                "caption": e.caption[:120],
+                "aspect_ratio": e.aspect_ratio,
+            }
+            for e in examples
+        ]
+        console.print_json(json_mod.dumps(rows))
+        return
+
+    table = Table(title=f"Reference Examples ({len(examples)})")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Category", style="green")
+    table.add_column("Caption", max_width=60)
+    table.add_column("AR", justify="right")
+    for e in examples:
+        caption_short = (e.caption[:57] + "...") if len(e.caption) > 60 else e.caption
+        table.add_row(
+            e.id,
+            e.category or "—",
+            caption_short,
+            f"{e.aspect_ratio:.2f}" if e.aspect_ratio else "—",
+        )
+    console.print(table)
+
+
+@references_app.command(name="show")
+def references_show(
+    example_id: str = typer.Argument(help="Reference example ID to display."),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """Show details of a specific reference example."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    example = store.get_by_id(example_id)
+
+    if example is None:
+        console.print(f"[red]Error:[/red] No reference found with ID [bold]{example_id}[/bold].")
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(json_mod.dumps(example.model_dump(), default=str))
+        return
+
+    lines = [
+        f"[bold]ID:[/bold]           {example.id}",
+        f"[bold]Category:[/bold]     {example.category or '—'}",
+        f"[bold]Aspect Ratio:[/bold] {example.aspect_ratio or '—'}",
+        f"[bold]Image Path:[/bold]   {example.image_path}",
+        f"\n[bold]Caption:[/bold]\n{example.caption}",
+    ]
+    if example.source_context:
+        ctx = example.source_context
+        if len(ctx) > 500:
+            ctx = ctx[:500] + "…"
+        lines.append(f"\n[bold]Source Context (excerpt):[/bold]\n[dim]{ctx}[/dim]")
+
+    console.print(Panel("\n".join(lines), title=f"Reference — {example.id}", border_style="blue"))
+
+
+@references_app.command(name="categories")
+def references_categories(
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """List reference categories and example counts."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    examples = store.get_all()
+
+    if not examples:
+        console.print("No reference examples found.")
+        raise typer.Exit(0)
+
+    counts: dict[str, int] = {}
+    for e in examples:
+        cat = e.category or "uncategorized"
+        counts[cat] = counts.get(cat, 0) + 1
+
+    if json_output:
+        console.print_json(json_mod.dumps(counts))
+        return
+
+    table = Table(title="Reference Categories")
+    table.add_column("Category", style="cyan")
+    table.add_column("Count", justify="right", style="green")
+    for cat in sorted(counts):
+        table.add_row(cat, str(counts[cat]))
+    table.add_section()
+    table.add_row("[bold]Total[/bold]", f"[bold]{sum(counts.values())}[/bold]")
+    console.print(table)
 
 
 @app.command()
