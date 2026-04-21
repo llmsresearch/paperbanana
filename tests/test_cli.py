@@ -654,3 +654,147 @@ def test_evaluate_plot_rejects_missing_data_file(tmp_path):
     )
     assert result.exit_code == 1
     assert "Data file not found" in result.output
+
+
+# ── References subcommand tests ──────────────────────────────────
+
+
+def _build_reference_store(tmp_path, examples=None):
+    """Create a minimal reference store for testing."""
+    store_dir = tmp_path / "ref_store"
+    store_dir.mkdir()
+    (store_dir / "images").mkdir()
+
+    if examples is None:
+        examples = [
+            {
+                "id": "2404.00001v1",
+                "source_context": "Methodology section text.",
+                "caption": "Overview of our model architecture.",
+                "image_path": "images/2404.00001v1.jpg",
+                "category": "nlp_language",
+                "aspect_ratio": 1.5,
+            },
+            {
+                "id": "2404.00002v1",
+                "source_context": "Another methodology section.",
+                "caption": "Training pipeline for the vision model.",
+                "image_path": "images/2404.00002v1.jpg",
+                "category": "vision_perception",
+                "aspect_ratio": 2.0,
+            },
+            {
+                "id": "2404.00003v1",
+                "source_context": "Third methodology section.",
+                "caption": "Agent reasoning framework.",
+                "image_path": "images/2404.00003v1.jpg",
+                "category": "nlp_language",
+                "aspect_ratio": 1.0,
+            },
+        ]
+
+    data = {
+        "metadata": {
+            "name": "test",
+            "version": "1.0.0",
+            "categories": list({e["category"] for e in examples}),
+            "total_examples": len(examples),
+        },
+        "examples": examples,
+    }
+    (store_dir / "index.json").write_text(json.dumps(data), encoding="utf-8")
+    return store_dir
+
+
+def test_references_list(tmp_path, monkeypatch):
+    """references list prints a table with all examples."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "list"])
+    assert result.exit_code == 0
+    assert "2404.00001v1" in result.output
+    assert "2404.00002v1" in result.output
+    assert "2404.00003v1" in result.output
+    assert "3" in result.output  # count in title
+
+
+def test_references_list_filter_by_category(tmp_path, monkeypatch):
+    """references list --category filters correctly."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "list", "--category", "vision_perception"])
+    assert result.exit_code == 0
+    assert "2404.00002v1" in result.output
+    assert "2404.00001v1" not in result.output
+
+
+def test_references_list_json(tmp_path, monkeypatch):
+    """references list --json emits valid JSON."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "list", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert len(data) == 3
+    assert all("id" in item for item in data)
+
+
+def test_references_show(tmp_path, monkeypatch):
+    """references show displays details for a specific example."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "show", "2404.00001v1"])
+    assert result.exit_code == 0
+    assert "2404.00001v1" in result.output
+    assert "nlp_language" in result.output
+    assert "Overview of our model architecture" in result.output
+
+
+def test_references_show_not_found(tmp_path, monkeypatch):
+    """references show exits 1 for unknown ID."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "show", "nonexistent"])
+    assert result.exit_code == 1
+    assert "No reference found" in result.output
+
+
+def test_references_show_json(tmp_path, monkeypatch):
+    """references show --json emits valid JSON."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "show", "2404.00001v1", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["id"] == "2404.00001v1"
+    assert data["category"] == "nlp_language"
+
+
+def test_references_categories(tmp_path, monkeypatch):
+    """references categories shows category counts."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "categories"])
+    assert result.exit_code == 0
+    assert "nlp_language" in result.output
+    assert "vision_perception" in result.output
+    assert "3" in result.output  # total
+
+
+def test_references_categories_json(tmp_path, monkeypatch):
+    """references categories --json emits valid JSON with counts."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "categories", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["nlp_language"] == 2
+    assert data["vision_perception"] == 1

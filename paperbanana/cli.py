@@ -39,6 +39,14 @@ data_app = typer.Typer(
 )
 app.add_typer(data_app, name="data")
 
+# ── References subcommand group ──────────────────────────────────
+references_app = typer.Typer(
+    name="references",
+    help="Inspect built-in reference examples (list, show, categories).",
+    no_args_is_help=True,
+)
+app.add_typer(references_app, name="references")
+
 
 def _require_pdf_dep() -> None:
     """Raise a clean error if PyMuPDF is not installed."""
@@ -177,6 +185,11 @@ def generate(
         False,
         "--auto-download-data",
         help="Auto-download curated expansion reference set on first run if not cached",
+    ),
+    reference_ids: Optional[str] = typer.Option(
+        None,
+        "--reference-ids",
+        help="Comma-separated reference example IDs to use (bypasses automatic retrieval)",
     ),
     exemplar_retrieval: bool = typer.Option(
         False,
@@ -455,11 +468,15 @@ def generate(
         raise typer.Exit(1)
 
     # Build generation input
+    ref_id_list = None
+    if reference_ids:
+        ref_id_list = [rid.strip() for rid in reference_ids.split(",") if rid.strip()]
     gen_input = GenerationInput(
         source_context=source_context,
         communicative_intent=caption,
         diagram_type=DiagramType.METHODOLOGY,
         aspect_ratio=aspect_ratio,
+        reference_ids=ref_id_list,
     )
 
     # Determine expected output file extension based on settings.output_format
@@ -1340,6 +1357,68 @@ def batch_report(
     fmt = "markdown" if format == "md" else format
     try:
         written = write_batch_report(path, output_path=output_path, format=fmt)
+        console.print(f"[green]Report written to:[/green] [bold]{written}[/bold]")
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("sweep-report")
+def sweep_report(
+    sweep_dir: Optional[str] = typer.Option(
+        None,
+        "--sweep-dir",
+        "-s",
+        help="Path to sweep run directory (e.g. outputs/sweep_20250109_123456_abc)",
+    ),
+    sweep_id: Optional[str] = typer.Option(
+        None,
+        "--sweep-id",
+        help="Sweep ID (e.g. sweep_20250109_123456_abc); resolved under --output-dir",
+    ),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Parent directory for sweep runs (used with --sweep-id)",
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        help="Output path for the report file (default: <sweep_dir>/sweep_report.<md|html>)",
+    ),
+    format: str = typer.Option(
+        "markdown",
+        "--format",
+        "-f",
+        help="Report format: markdown or html",
+    ),
+):
+    """Generate a human-readable report from an existing sweep run (sweep_report.json)."""
+    if format not in ("markdown", "html", "md"):
+        console.print(f"[red]Error: Format must be markdown or html. Got: {format}[/red]")
+        raise typer.Exit(1)
+    if sweep_dir is None and sweep_id is None:
+        console.print("[red]Error: Provide either --sweep-dir or --sweep-id[/red]")
+        raise typer.Exit(1)
+    if sweep_dir is not None and sweep_id is not None:
+        console.print("[red]Error: Provide only one of --sweep-dir or --sweep-id[/red]")
+        raise typer.Exit(1)
+
+    from paperbanana.core.sweep import write_sweep_report
+
+    if sweep_dir is not None:
+        path = Path(sweep_dir)
+    else:
+        path = Path(output_dir) / sweep_id
+
+    output_path = Path(output) if output else None
+    fmt = "markdown" if format == "md" else format
+    try:
+        written = write_sweep_report(path, output_path=output_path, format=fmt)
         console.print(f"[green]Report written to:[/green] [bold]{written}[/bold]")
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -2676,6 +2755,132 @@ def clear():
 
     dm.clear()
     console.print("[green]Cached reference set cleared.[/green]")
+
+
+# ── References subcommands ────────────────────────────────────────
+
+
+@references_app.command(name="list")
+def references_list(
+    category: Optional[str] = typer.Option(
+        None,
+        "--category",
+        "-c",
+        help="Filter by category (e.g. nlp_language, vision_perception).",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """List all available reference examples."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    examples = store.get_by_category(category) if category else store.get_all()
+
+    if not examples:
+        if category:
+            console.print(f"No references found for category [bold]{category}[/bold].")
+        else:
+            console.print("No reference examples found.")
+        raise typer.Exit(0)
+
+    if json_output:
+        rows = [
+            {
+                "id": e.id,
+                "category": e.category or "",
+                "caption": e.caption[:120],
+                "aspect_ratio": e.aspect_ratio,
+            }
+            for e in examples
+        ]
+        console.print_json(json_mod.dumps(rows))
+        return
+
+    table = Table(title=f"Reference Examples ({len(examples)})")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Category", style="green")
+    table.add_column("Caption", max_width=60)
+    table.add_column("AR", justify="right")
+    for e in examples:
+        caption_short = (e.caption[:57] + "...") if len(e.caption) > 60 else e.caption
+        table.add_row(
+            e.id,
+            e.category or "—",
+            caption_short,
+            f"{e.aspect_ratio:.2f}" if e.aspect_ratio else "—",
+        )
+    console.print(table)
+
+
+@references_app.command(name="show")
+def references_show(
+    example_id: str = typer.Argument(help="Reference example ID to display."),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """Show details of a specific reference example."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    example = store.get_by_id(example_id)
+
+    if example is None:
+        console.print(f"[red]Error:[/red] No reference found with ID [bold]{example_id}[/bold].")
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(json_mod.dumps(example.model_dump(), default=str))
+        return
+
+    lines = [
+        f"[bold]ID:[/bold]           {example.id}",
+        f"[bold]Category:[/bold]     {example.category or '—'}",
+        f"[bold]Aspect Ratio:[/bold] {example.aspect_ratio or '—'}",
+        f"[bold]Image Path:[/bold]   {example.image_path}",
+        f"\n[bold]Caption:[/bold]\n{example.caption}",
+    ]
+    if example.source_context:
+        ctx = example.source_context
+        if len(ctx) > 500:
+            ctx = ctx[:500] + "…"
+        lines.append(f"\n[bold]Source Context (excerpt):[/bold]\n[dim]{ctx}[/dim]")
+
+    console.print(Panel("\n".join(lines), title=f"Reference — {example.id}", border_style="blue"))
+
+
+@references_app.command(name="categories")
+def references_categories(
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """List reference categories and example counts."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    examples = store.get_all()
+
+    if not examples:
+        console.print("No reference examples found.")
+        raise typer.Exit(0)
+
+    counts: dict[str, int] = {}
+    for e in examples:
+        cat = e.category or "uncategorized"
+        counts[cat] = counts.get(cat, 0) + 1
+
+    if json_output:
+        console.print_json(json_mod.dumps(counts))
+        return
+
+    table = Table(title="Reference Categories")
+    table.add_column("Category", style="cyan")
+    table.add_column("Count", justify="right", style="green")
+    for cat in sorted(counts):
+        table.add_row(cat, str(counts[cat]))
+    table.add_section()
+    table.add_row("[bold]Total[/bold]", f"[bold]{sum(counts.values())}[/bold]")
+    console.print(table)
 
 
 @app.command()

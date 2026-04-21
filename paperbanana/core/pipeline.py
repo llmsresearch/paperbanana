@@ -521,24 +521,49 @@ class PaperBananaPipeline:
         )
         self._emit_progress("phase1_retrieval_started")
         retrieval_start = time.perf_counter()
-        candidates = self.reference_store.get_all()
-        (
-            candidates,
-            retrieval_mode,
-            external_candidate_ids,
-        ) = await self._resolve_retrieval_candidates(input, candidates)
-        if retrieval_mode == "external_only":
-            examples = candidates[: self.settings.num_retrieval_examples]
-        else:
-            examples = await _call_with_retry(
-                "retriever",
-                self.retriever.run,
-                source_context=input.source_context,
-                caption=input.communicative_intent,
-                candidates=candidates,
-                num_examples=self.settings.num_retrieval_examples,
-                diagram_type=input.diagram_type,
+
+        if input.reference_ids:
+            # Manual override: look up each ID, skip automatic retrieval
+            examples = []
+            missing_ids = []
+            for ref_id in input.reference_ids:
+                ref = self.reference_store.get_by_id(ref_id)
+                if ref is not None:
+                    examples.append(ref)
+                else:
+                    missing_ids.append(ref_id)
+            if missing_ids:
+                raise ValueError(
+                    f"Unknown reference IDs: {', '.join(missing_ids)}. "
+                    "Use 'paperbanana references list' to see available IDs."
+                )
+            retrieval_mode = "manual_override"
+            external_candidate_ids: list[str] = list(input.reference_ids)
+            logger.info(
+                "Using manual reference ID override",
+                ids=input.reference_ids,
+                resolved=len(examples),
             )
+        else:
+            candidates = self.reference_store.get_all()
+            (
+                candidates,
+                retrieval_mode,
+                external_candidate_ids,
+            ) = await self._resolve_retrieval_candidates(input, candidates)
+            if retrieval_mode == "external_only":
+                examples = candidates[: self.settings.num_retrieval_examples]
+            else:
+                examples = await _call_with_retry(
+                    "retriever",
+                    self.retriever.run,
+                    source_context=input.source_context,
+                    caption=input.communicative_intent,
+                    candidates=candidates,
+                    num_examples=self.settings.num_retrieval_examples,
+                    diagram_type=input.diagram_type,
+                )
+
         retrieval_seconds = time.perf_counter() - retrieval_start
         _emit_progress(
             progress_callback,

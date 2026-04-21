@@ -188,6 +188,7 @@ def run_methodology(
     source_context: str,
     caption: str,
     aspect_ratio_label: str,
+    reference_ids: Optional[str] = None,
     verbose_logging: bool = False,
 ) -> tuple[str, Optional[str], list[tuple[str, str]], str]:
     """Run methodology diagram generation. Returns (log, final_path, gallery, error)."""
@@ -196,11 +197,15 @@ def run_methodology(
     log.append("Starting methodology diagram pipeline…")
     err = ""
     try:
+        ref_id_list = None
+        if reference_ids:
+            ref_id_list = [rid.strip() for rid in reference_ids.split(",") if rid.strip()]
         gen_in = GenerationInput(
             source_context=source_context,
             communicative_intent=caption.strip(),
             diagram_type=DiagramType.METHODOLOGY,
             aspect_ratio=_aspect_ratio_value(aspect_ratio_label),
+            reference_ids=ref_id_list,
         )
 
         async def _go():
