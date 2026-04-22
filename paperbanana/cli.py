@@ -39,6 +39,14 @@ data_app = typer.Typer(
 )
 app.add_typer(data_app, name="data")
 
+# ── References subcommand group ──────────────────────────────────
+references_app = typer.Typer(
+    name="references",
+    help="Inspect built-in reference examples (list, show, categories).",
+    no_args_is_help=True,
+)
+app.add_typer(references_app, name="references")
+
 
 def _require_pdf_dep() -> None:
     """Raise a clean error if PyMuPDF is not installed."""
@@ -178,6 +186,11 @@ def generate(
         "--auto-download-data",
         help="Auto-download curated expansion reference set on first run if not cached",
     ),
+    reference_ids: Optional[str] = typer.Option(
+        None,
+        "--reference-ids",
+        help="Comma-separated reference example IDs to use (bypasses automatic retrieval)",
+    ),
     exemplar_retrieval: bool = typer.Option(
         False,
         "--exemplar-retrieval",
@@ -223,6 +236,11 @@ def generate(
         "--venue",
         help="Target venue style (neurips, icml, acl, ieee, custom)",
     ),
+    vector_export: Optional[str] = typer.Option(
+        None,
+        "--vector-export",
+        help="Export structured vector diagram (Graphviz): none, svg, pdf, both",
+    ),
     progress_json: bool = typer.Option(
         False,
         "--progress-json",
@@ -259,6 +277,9 @@ def generate(
         console.print(
             f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
         )
+        raise typer.Exit(1)
+    if vector_export and vector_export.lower() not in ("none", "svg", "pdf", "both"):
+        console.print("[red]Error: --vector-export must be none, svg, pdf, or both[/red]")
         raise typer.Exit(1)
     if pdf_pages and (continue_last or continue_run):
         console.print(
@@ -311,6 +332,8 @@ def generate(
         overrides["budget_usd"] = budget
     if venue:
         overrides["venue"] = venue
+    if vector_export is not None:
+        overrides["vector_export"] = vector_export.lower()
     if prompt_dir:
         overrides["prompt_dir"] = prompt_dir
     if generate_caption:
@@ -389,6 +412,19 @@ def generate(
                     f"  [dim]●[/dim] Generating image (iter {event.iteration})...",
                     end="",
                 )
+            elif event.stage == PipelineProgressStage.STRUCTURER_START:
+                console.print("  [dim]●[/dim] Vector export (structurer)...", end="")
+            elif event.stage == PipelineProgressStage.STRUCTURER_END:
+                extra = event.extra or {}
+                err = extra.get("error")
+                if err:
+                    console.print(f" [yellow]![/yellow] [dim]{str(err)[:120]}[/dim]")
+                else:
+                    console.print(
+                        f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                        if event.seconds is not None
+                        else " [green]✓[/green]"
+                    )
             elif event.stage == PipelineProgressStage.VISUALIZER_END:
                 console.print(
                     f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
@@ -426,6 +462,10 @@ def generate(
         console.print(f"\n[green]Done![/green] Output saved to: [bold]{result.image_path}[/bold]")
         console.print(f"Run ID: {result.metadata.get('run_id', 'unknown')}")
         console.print(f"New iterations: {len(result.iterations)}")
+        if result.vector_svg_path:
+            console.print(f"SVG: {result.vector_svg_path}")
+        if result.vector_pdf_path:
+            console.print(f"PDF: {result.vector_pdf_path}")
         return
 
     # ── Normal generation mode ────────────────────────────────────
@@ -455,11 +495,15 @@ def generate(
         raise typer.Exit(1)
 
     # Build generation input
+    ref_id_list = None
+    if reference_ids:
+        ref_id_list = [rid.strip() for rid in reference_ids.split(",") if rid.strip()]
     gen_input = GenerationInput(
         source_context=source_context,
         communicative_intent=caption,
         diagram_type=DiagramType.METHODOLOGY,
         aspect_ratio=aspect_ratio,
+        reference_ids=ref_id_list,
     )
 
     # Determine expected output file extension based on settings.output_format
@@ -595,6 +639,20 @@ def generate(
                     if event.seconds is not None
                     else " [green]✓[/green]"
                 )
+            elif event.stage == PipelineProgressStage.STRUCTURER_START:
+                console.print("[bold]Vector[/bold] — Structured export")
+                console.print("  [dim]●[/dim] Building diagram IR (structurer)...", end="")
+            elif event.stage == PipelineProgressStage.STRUCTURER_END:
+                extra = event.extra or {}
+                err = extra.get("error")
+                if err:
+                    console.print(f" [yellow]![/yellow] [dim]{err[:120]}[/dim]")
+                else:
+                    console.print(
+                        f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                        if event.seconds is not None
+                        else " [green]✓[/green]"
+                    )
             elif event.stage == PipelineProgressStage.VISUALIZER_START:
                 if event.iteration == 1:
                     console.print("[bold]Phase 2[/bold] — Iterative Refinement")
@@ -654,6 +712,18 @@ def generate(
     if result.generated_caption:
         console.print("\n  [bold]Generated Caption:[/bold]")
         console.print(f"  {result.generated_caption}")
+    if result.vector_svg_path:
+        console.print(f"  SVG:    [bold]{result.vector_svg_path}[/bold]")
+    if result.vector_pdf_path:
+        console.print(f"  PDF:    [bold]{result.vector_pdf_path}[/bold]")
+    ve = result.metadata.get("vector_export") or {}
+    no_vector_files = not result.vector_svg_path and not result.vector_pdf_path
+    if ve.get("mode") not in (None, "none") and no_vector_files:
+        if not ve.get("graphviz_available"):
+            console.print(
+                "  [yellow]Vector export: install Graphviz and ensure `dot` is on PATH "
+                "to render SVG/PDF (diagram_ir.json was still saved).[/yellow]"
+            )
 
     cost_data = result.metadata.get("cost")
     if cost_data:
@@ -1418,6 +1488,251 @@ def sweep_report(
         raise typer.Exit(1)
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def orchestrate(
+    paper: Optional[str] = typer.Option(
+        None,
+        "--paper",
+        "-p",
+        help="Path to paper source (.txt/.md/.pdf) used to plan and generate a full figure package",
+    ),
+    resume_orchestrate: Optional[str] = typer.Option(
+        None,
+        "--resume-orchestrate",
+        help="Orchestration ID or orchestration directory to resume",
+    ),
+    retry_failed: bool = typer.Option(
+        False,
+        "--retry-failed",
+        help="Retry previously failed items during resume",
+    ),
+    max_retries: int = typer.Option(
+        0,
+        "--max-retries",
+        help="Extra retries per task after first failure",
+    ),
+    data_dir: Optional[str] = typer.Option(
+        None,
+        "--data-dir",
+        help="Optional directory with CSV/JSON files for auto-planned statistical plots",
+    ),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Parent directory for orchestration output package",
+    ),
+    max_method_figures: int = typer.Option(
+        4,
+        "--max-method-figures",
+        help="Maximum methodology figures to plan and generate from paper sections",
+    ),
+    max_plot_figures: int = typer.Option(
+        4,
+        "--max-plot-figures",
+        help="Maximum statistical plots to plan from data files",
+    ),
+    pdf_pages: Optional[str] = typer.Option(
+        None,
+        "--pdf-pages",
+        help="PDF input only: 1-based pages (e.g. '1-5', '2,4,6-8'); default: all pages",
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
+    image_provider: Optional[str] = typer.Option(
+        None, "--image-provider", help="Image generation provider"
+    ),
+    image_model: Optional[str] = typer.Option(None, "--image-model", help="Image model name"),
+    iterations: Optional[int] = typer.Option(
+        None, "--iterations", "-n", help="Refinement iterations per figure"
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Loop until critic is satisfied (with safety cap)"
+    ),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", help="Safety cap for --auto mode"
+    ),
+    optimize: bool = typer.Option(
+        False, "--optimize", help="Enable input optimization before generation"
+    ),
+    format: str = typer.Option(
+        "png", "--format", "-f", help="Output image format (png, jpeg, webp)"
+    ),
+    save_prompts: Optional[bool] = typer.Option(
+        None,
+        "--save-prompts/--no-save-prompts",
+        help="Save prompts for each generated figure run",
+    ),
+    venue: Optional[str] = typer.Option(
+        None,
+        "--venue",
+        help="Target venue style (neurips, icml, acl, ieee, custom)",
+    ),
+    concurrency: int = typer.Option(
+        1, "--concurrency", help="Maximum concurrent figure generations"
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Plan orchestration package without generating figures",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
+):
+    """Generate a publication-ready multi-figure package from a full paper."""
+    is_resume = bool(resume_orchestrate)
+    if format not in ("png", "jpeg", "webp"):
+        console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
+        raise typer.Exit(1)
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
+        console.print(
+            f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+        )
+        raise typer.Exit(1)
+    if max_method_figures < 1:
+        console.print("[red]Error: --max-method-figures must be >= 1[/red]")
+        raise typer.Exit(1)
+    if max_plot_figures < 0:
+        console.print("[red]Error: --max-plot-figures must be >= 0[/red]")
+        raise typer.Exit(1)
+    if concurrency < 1:
+        console.print("[red]Error: --concurrency must be >= 1[/red]")
+        raise typer.Exit(1)
+    if max_retries < 0:
+        console.print("[red]Error: --max-retries must be >= 0[/red]")
+        raise typer.Exit(1)
+    if is_resume and paper:
+        console.print("[red]Error: provide only one of --paper or --resume-orchestrate[/red]")
+        raise typer.Exit(1)
+    if not is_resume and not paper:
+        console.print("[red]Error: provide --paper for new orchestrations[/red]")
+        raise typer.Exit(1)
+    if is_resume and data_dir:
+        console.print("[red]Error: --data-dir is only valid for new orchestrations[/red]")
+        raise typer.Exit(1)
+    if is_resume and pdf_pages:
+        console.print("[red]Error: --pdf-pages is only valid for new orchestrations[/red]")
+        raise typer.Exit(1)
+
+    configure_logging(verbose=verbose)
+
+    from paperbanana.core.orchestrate import (
+        init_or_load_orchestration_checkpoint,
+        prepare_orchestration_plan,
+        run_orchestration,
+    )
+
+    try:
+        orchestration_id, orchestrate_dir, plan, plan_path, is_resume = prepare_orchestration_plan(
+            paper=paper,
+            resume_orchestrate=resume_orchestrate,
+            output_dir=output_dir,
+            data_dir=data_dir,
+            max_method_figures=max_method_figures,
+            max_plot_figures=max_plot_figures,
+            pdf_pages=pdf_pages,
+        )
+    except (FileNotFoundError, ValueError, ImportError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not is_resume:
+        _check_pdf_dep(Path(str(plan.get("paper_path", ""))))
+
+    ensure_dir(orchestrate_dir)
+    runs_dir = ensure_dir(orchestrate_dir / "runs")
+
+    _orch_header = "Resume " if is_resume else ""
+    console.print(
+        Panel.fit(
+            f"[bold]PaperBanana[/bold] — {_orch_header}Figure Package Orchestration\n\n"
+            f"Paper: {Path(str(plan.get('paper_path', 'paper'))).name}\n"
+            f"Planned methodology figures: {len(plan['methodology_items'])}\n"
+            f"Planned plot figures: {len(plan['plot_items'])}\n"
+            f"Package dir: {orchestrate_dir}",
+            border_style="magenta",
+        )
+    )
+    if dry_run:
+        console.print("[green]Dry run complete.[/green] Orchestration plan:")
+        console.print(f"  [bold]{plan_path}[/bold]")
+        return
+
+    overrides: dict[str, object] = {
+        "output_dir": str(runs_dir),
+        "output_format": format,
+        "optimize_inputs": optimize,
+        "auto_refine": auto,
+    }
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if image_provider:
+        overrides["image_provider"] = image_provider
+    if image_model:
+        overrides["image_model"] = image_model
+    if iterations is not None:
+        overrides["refinement_iterations"] = iterations
+    if max_iterations is not None:
+        overrides["max_iterations"] = max_iterations
+    if save_prompts is not None:
+        overrides["save_prompts"] = save_prompts
+    if venue:
+        overrides["venue"] = venue
+
+    if config:
+        settings = Settings.from_yaml(config, **overrides)
+    else:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+        settings = Settings(**overrides)
+
+    try:
+        state = init_or_load_orchestration_checkpoint(
+            orchestrate_dir=orchestrate_dir,
+            orchestration_id=orchestration_id,
+            plan_path=plan_path,
+            plan=plan,
+            resume=is_resume,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    report, had_work = run_orchestration(
+        state=state,
+        plan=plan,
+        settings=settings,
+        orchestrate_dir=orchestrate_dir,
+        retry_failed=retry_failed,
+        max_retries=max_retries,
+        concurrency=concurrency,
+        progress_callback=console.print,
+    )
+
+    if not had_work:
+        console.print("[yellow]Nothing to run: all tasks already completed.[/yellow]")
+        console.print(f"  Package: [bold]{orchestrate_dir / 'figure_package.json'}[/bold]")
+        return
+
+    total_seconds = float(report.get("total_seconds") or 0.0)
+    success_count = len(report.get("generated_items", []))
+    fail_count = len(report.get("failures", []))
+    package_manifest_path = orchestrate_dir / "figure_package.json"
+    console.print(
+        f"[green]Orchestration complete.[/green] [dim]{success_count} generated · "
+        f"{fail_count} failed · {total_seconds:.1f}s[/dim]"
+    )
+    console.print(f"  Package: [bold]{package_manifest_path}[/bold]")
+    console.print(f"  LaTeX: [bold]{orchestrate_dir / 'figures.tex'}[/bold]")
+    console.print(f"  Captions: [bold]{orchestrate_dir / 'captions.md'}[/bold]")
+
+    if fail_count > 0:
         raise typer.Exit(1)
 
 
@@ -2750,6 +3065,132 @@ def clear():
     console.print("[green]Cached reference set cleared.[/green]")
 
 
+# ── References subcommands ────────────────────────────────────────
+
+
+@references_app.command(name="list")
+def references_list(
+    category: Optional[str] = typer.Option(
+        None,
+        "--category",
+        "-c",
+        help="Filter by category (e.g. nlp_language, vision_perception).",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """List all available reference examples."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    examples = store.get_by_category(category) if category else store.get_all()
+
+    if not examples:
+        if category:
+            console.print(f"No references found for category [bold]{category}[/bold].")
+        else:
+            console.print("No reference examples found.")
+        raise typer.Exit(0)
+
+    if json_output:
+        rows = [
+            {
+                "id": e.id,
+                "category": e.category or "",
+                "caption": e.caption[:120],
+                "aspect_ratio": e.aspect_ratio,
+            }
+            for e in examples
+        ]
+        console.print_json(json_mod.dumps(rows))
+        return
+
+    table = Table(title=f"Reference Examples ({len(examples)})")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Category", style="green")
+    table.add_column("Caption", max_width=60)
+    table.add_column("AR", justify="right")
+    for e in examples:
+        caption_short = (e.caption[:57] + "...") if len(e.caption) > 60 else e.caption
+        table.add_row(
+            e.id,
+            e.category or "—",
+            caption_short,
+            f"{e.aspect_ratio:.2f}" if e.aspect_ratio else "—",
+        )
+    console.print(table)
+
+
+@references_app.command(name="show")
+def references_show(
+    example_id: str = typer.Argument(help="Reference example ID to display."),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """Show details of a specific reference example."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    example = store.get_by_id(example_id)
+
+    if example is None:
+        console.print(f"[red]Error:[/red] No reference found with ID [bold]{example_id}[/bold].")
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(json_mod.dumps(example.model_dump(), default=str))
+        return
+
+    lines = [
+        f"[bold]ID:[/bold]           {example.id}",
+        f"[bold]Category:[/bold]     {example.category or '—'}",
+        f"[bold]Aspect Ratio:[/bold] {example.aspect_ratio or '—'}",
+        f"[bold]Image Path:[/bold]   {example.image_path}",
+        f"\n[bold]Caption:[/bold]\n{example.caption}",
+    ]
+    if example.source_context:
+        ctx = example.source_context
+        if len(ctx) > 500:
+            ctx = ctx[:500] + "…"
+        lines.append(f"\n[bold]Source Context (excerpt):[/bold]\n[dim]{ctx}[/dim]")
+
+    console.print(Panel("\n".join(lines), title=f"Reference — {example.id}", border_style="blue"))
+
+
+@references_app.command(name="categories")
+def references_categories(
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+):
+    """List reference categories and example counts."""
+    from paperbanana.reference.store import ReferenceStore
+
+    settings = Settings()
+    store = ReferenceStore.from_settings(settings)
+    examples = store.get_all()
+
+    if not examples:
+        console.print("No reference examples found.")
+        raise typer.Exit(0)
+
+    counts: dict[str, int] = {}
+    for e in examples:
+        cat = e.category or "uncategorized"
+        counts[cat] = counts.get(cat, 0) + 1
+
+    if json_output:
+        console.print_json(json_mod.dumps(counts))
+        return
+
+    table = Table(title="Reference Categories")
+    table.add_column("Category", style="cyan")
+    table.add_column("Count", justify="right", style="green")
+    for cat in sorted(counts):
+        table.add_row(cat, str(counts[cat]))
+    table.add_section()
+    table.add_row("[bold]Total[/bold]", f"[bold]{sum(counts.values())}[/bold]")
+    console.print(table)
+
+
 @app.command()
 def studio(
     host: str = typer.Option(
@@ -2811,6 +3252,54 @@ def studio(
         default_output_dir=output_dir,
         root_path=root_path,
     )
+
+
+@app.command("show-config")
+def show_config(
+    json_output: bool = typer.Option(False, "--json", help="Emit resolved config as JSON"),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+) -> None:
+    """Print the fully resolved settings (env + config file) without running generation."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    if config:
+        settings = Settings.from_yaml(config)
+    else:
+        settings = Settings()
+
+    # Fields containing sensitive secrets that should be masked
+    _secret_fields = {
+        "google_api_key",
+        "openrouter_api_key",
+        "openai_api_key",
+        "anthropic_api_key",
+    }
+
+    data = settings.model_dump()
+    # Mask sensitive values
+    for key in _secret_fields:
+        val = data.get(key)
+        if val:
+            data[key] = val[:4] + "****" + val[-4:] if len(val) > 8 else "****"
+
+    # Add effective (resolved) models for clarity
+    data["_effective_vlm_model"] = settings.effective_vlm_model
+    data["_effective_image_model"] = settings.effective_image_model
+
+    if json_output:
+        console.print_json(json_mod.dumps(data, indent=2, default=str))
+    else:
+        table = Table(title="Resolved PaperBanana Settings", show_lines=True)
+        table.add_column("Setting", style="cyan", no_wrap=True)
+        table.add_column("Value", style="green")
+
+        for key, value in data.items():
+            display = str(value) if value is not None else "[dim]None[/dim]"
+            table.add_row(key, display)
+
+        console.print(table)
 
 
 @app.command()
