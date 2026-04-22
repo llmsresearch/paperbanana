@@ -23,12 +23,14 @@ from paperbanana.core.config import Settings
 from paperbanana.core.cost_tracker import CostTracker
 from paperbanana.core.diagram_ir import (
     extract_diagram_ir,
+    format_diagram_ir_for_regeneration,
     save_raster_wrapped_svg,
     save_svg_from_ir,
 )
 from paperbanana.core.prompt_recorder import PromptRecorder
 from paperbanana.core.types import (
     CritiqueResult,
+    DiagramIR,
     DiagramType,
     GenerationInput,
     GenerationOutput,
@@ -516,6 +518,239 @@ class PaperBananaPipeline:
         if mode == "external_only":
             return mapped, "external_only", [e.id for e in mapped]
         return mapped, "external_then_rerank", [e.id for e in mapped]
+
+    async def regenerate_from_ir(
+        self,
+        *,
+        diagram_ir: DiagramIR,
+        source_context: str,
+        caption: str,
+        aspect_ratio: Optional[str] = None,
+        progress_callback: Optional[Callable[[PipelineProgressEvent], None]] = None,
+    ) -> GenerationOutput:
+        """Regenerate a methodology figure from edited DiagramIR with lock hints."""
+        total_start = time.perf_counter()
+        current_description = format_diagram_ir_for_regeneration(diagram_ir)
+        iterations: list[IterationRecord] = []
+        iteration_timings: list[dict[str, float | int]] = []
+        budget_exceeded = self._check_budget("before regenerate-from-ir iterations")
+        vector_formats = ["svg", "pdf"] if self.settings.vector_export else None
+        total_iters = (
+            self.settings.max_iterations
+            if self.settings.auto_refine
+            else self.settings.refinement_iterations
+        )
+
+        if self.settings.save_iterations:
+            save_json(
+                {
+                    "source_context": source_context,
+                    "communicative_intent": caption,
+                    "diagram_type": DiagramType.METHODOLOGY.value,
+                    "raw_data": None,
+                    "aspect_ratio": aspect_ratio,
+                    "regeneration_mode": "diagram_ir_locked",
+                    "locked_nodes": diagram_ir.locks.locked_node_ids,
+                    "locked_edges": diagram_ir.locks.locked_edge_refs,
+                    "locked_groups": diagram_ir.locks.locked_group_ids,
+                },
+                self._run_dir / "run_input.json",
+            )
+            save_json(diagram_ir.model_dump(), self._run_dir / "diagram_ir_input.json")
+
+        for i in range(total_iters):
+            if budget_exceeded:
+                break
+            iter_index = i + 1
+
+            if self._cost_tracker:
+                self._cost_tracker.set_agent("visualizer")
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.VISUALIZER_START,
+                    message=f"Generating image (iteration {iter_index}/{total_iters})",
+                    iteration=iter_index,
+                    extra={"total_iterations": total_iters, "mode": "regenerate_ir"},
+                ),
+            )
+            visualizer_start = time.perf_counter()
+            image_path = await _call_with_retry(
+                "visualizer",
+                self.visualizer.run,
+                description=current_description,
+                diagram_type=DiagramType.METHODOLOGY,
+                raw_data=None,
+                iteration=iter_index,
+                seed=self.settings.seed,
+                aspect_ratio=aspect_ratio,
+                vector_formats=vector_formats,
+            )
+            visualizer_seconds = time.perf_counter() - visualizer_start
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.VISUALIZER_END,
+                    message=f"Visualizer iteration {iter_index} done",
+                    seconds=visualizer_seconds,
+                    iteration=iter_index,
+                ),
+            )
+
+            if self._cost_tracker:
+                self._cost_tracker.set_agent("critic")
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.CRITIC_START,
+                    message="Critic reviewing",
+                    iteration=iter_index,
+                ),
+            )
+            critic_start = time.perf_counter()
+            try:
+                critique = await _call_with_retry(
+                    "critic",
+                    self.critic.run,
+                    image_path=image_path,
+                    description=current_description,
+                    source_context=source_context,
+                    caption=caption,
+                    diagram_type=DiagramType.METHODOLOGY,
+                )
+            except Exception:
+                logger.warning(
+                    "Critic failed after retries, accepting current image",
+                    iteration=iter_index,
+                    exc_info=True,
+                )
+                critique = CritiqueResult()
+            critic_seconds = time.perf_counter() - critic_start
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.CRITIC_END,
+                    message="Critic done",
+                    seconds=critic_seconds,
+                    iteration=iter_index,
+                    extra={
+                        "needs_revision": critique.needs_revision,
+                        "summary": critique.summary,
+                        "critic_suggestions": critique.critic_suggestions[:3],
+                    },
+                ),
+            )
+
+            iteration_timings.append(
+                {
+                    "iteration": iter_index,
+                    "visualizer_seconds": visualizer_seconds,
+                    "critic_seconds": critic_seconds,
+                }
+            )
+            iterations.append(
+                IterationRecord(
+                    iteration=iter_index,
+                    description=current_description,
+                    image_path=image_path,
+                    critique=critique,
+                )
+            )
+            if self.settings.save_iterations:
+                iter_dir = ensure_dir(self._run_dir / f"iter_{iter_index}")
+                save_json(
+                    {
+                        "description": current_description,
+                        "critique": critique.model_dump(),
+                        "mode": "regenerate_ir",
+                    },
+                    iter_dir / "details.json",
+                )
+
+            if critique.needs_revision and critique.revised_description:
+                # Keep lock constraints attached to every revised prompt.
+                current_description = (
+                    critique.revised_description.strip()
+                    + "\n\n"
+                    + format_diagram_ir_for_regeneration(diagram_ir)
+                )
+            else:
+                break
+
+            if self._check_budget("between regenerate-from-ir iterations", iteration=iter_index):
+                budget_exceeded = True
+                break
+
+        output_format = getattr(self.settings, "output_format", "png").lower()
+        ext = "jpg" if output_format == "jpeg" else output_format
+        final_output_path = str(self._run_dir / f"final_output.{ext}")
+
+        if iterations:
+            final_image = iterations[-1].image_path
+            if output_format == "svg":
+                save_json(diagram_ir.model_dump(), self._run_dir / "diagram_ir.json")
+                save_svg_from_ir(diagram_ir, final_output_path)
+            else:
+                img = load_image(final_image)
+                save_image(img, final_output_path, format=output_format)
+        else:
+            final_output_path = ""
+
+        generated_caption, caption_seconds = await self._generate_caption(
+            image_path=final_output_path,
+            source_context=source_context,
+            intent=caption,
+            description=current_description,
+            diagram_type=DiagramType.METHODOLOGY,
+            progress_callback=progress_callback,
+        )
+
+        total_seconds = time.perf_counter() - total_start
+        metadata = RunMetadata(
+            run_id=self.run_id,
+            timestamp=datetime.datetime.now().isoformat(),
+            vlm_provider=getattr(self._vlm, "name", "custom"),
+            vlm_model=getattr(self._vlm, "model_name", "custom"),
+            image_provider=getattr(self._image_gen, "name", "custom"),
+            image_model=getattr(self._image_gen, "model_name", "custom"),
+            refinement_iterations=len(iterations),
+            seed=self.settings.seed,
+            config_snapshot=self.settings.model_dump(
+                exclude={"google_api_key", "openai_api_key", "openrouter_api_key"}
+            ),
+        )
+        metadata_dict = metadata.model_dump()
+        metadata_dict["timing"] = {
+            "total_seconds": total_seconds,
+            "caption_seconds": caption_seconds,
+            "iterations": iteration_timings,
+        }
+        metadata_dict["regeneration"] = {
+            "mode": "diagram_ir_locked",
+            "locked_nodes": len(diagram_ir.locks.locked_node_ids),
+            "locked_edges": len(diagram_ir.locks.locked_edge_refs),
+            "locked_groups": len(diagram_ir.locks.locked_group_ids),
+        }
+        if generated_caption is not None:
+            metadata_dict["generated_caption"] = generated_caption
+        if self._cost_tracker:
+            cost_summary = self._cost_tracker.summary()
+            cost_summary["budget_exceeded"] = budget_exceeded
+            if self.settings.budget_usd is not None:
+                cost_summary["budget_usd"] = self.settings.budget_usd
+            metadata_dict["cost"] = cost_summary
+
+        if self.settings.vector_export and self.visualizer._last_vector_paths:
+            metadata_dict["vector_output_paths"] = self.visualizer._last_vector_paths
+
+        save_json(metadata_dict, self._run_dir / "metadata.json")
+        return GenerationOutput(
+            image_path=final_output_path,
+            description=current_description,
+            iterations=iterations,
+            metadata=metadata_dict,
+            generated_caption=generated_caption,
+        )
 
     async def generate(
         self,

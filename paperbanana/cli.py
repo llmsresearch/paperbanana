@@ -16,7 +16,9 @@ from rich.table import Table
 
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
+from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.types import (
+    DiagramIR,
     DiagramType,
     GenerationInput,
     PipelineProgressEvent,
@@ -830,6 +832,202 @@ def generate(
             console.print(
                 "  [yellow]Note: Some model prices unknown; actual cost may differ[/yellow]"
             )
+
+
+@app.command("regenerate")
+def regenerate_from_ir(
+    diagram_ir: str = typer.Option(
+        ...,
+        "--diagram-ir",
+        help="Path to edited diagram_ir.json",
+    ),
+    input: str = typer.Option(
+        ...,
+        "--input",
+        "-i",
+        help="Path to methodology text file or PDF (.pdf requires: pip install 'paperbanana[pdf]')",
+    ),
+    caption: str = typer.Option(
+        ...,
+        "--caption",
+        "-c",
+        help="Figure caption / communicative intent",
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
+    image_provider: Optional[str] = typer.Option(
+        None,
+        "--image-provider",
+        help="Image gen provider",
+    ),
+    image_model: Optional[str] = typer.Option(None, "--image-model", help="Image gen model name"),
+    iterations: Optional[int] = typer.Option(
+        None,
+        "--iterations",
+        "-n",
+        help="Refinement iterations",
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Loop until critic is satisfied (with safety cap)"
+    ),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", help="Safety cap for --auto mode (default: 30)"
+    ),
+    aspect_ratio: Optional[str] = typer.Option(
+        None,
+        "--aspect-ratio",
+        "-ar",
+        help="Target aspect ratio: 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9",
+    ),
+    format: str = typer.Option(
+        "png",
+        "--format",
+        "-f",
+        help="Output image format (png, jpeg, or webp)",
+    ),
+    save_prompts: Optional[bool] = typer.Option(
+        None,
+        "--save-prompts/--no-save-prompts",
+        help="Save formatted prompts into the run directory (for debugging)",
+    ),
+    seed: Optional[int] = typer.Option(
+        None,
+        "--seed",
+        help="Random seed for reproducible image generation",
+    ),
+    progress_json: bool = typer.Option(
+        False,
+        "--progress-json",
+        help="Emit machine-readable JSON progress events to stdout during generation",
+    ),
+    pdf_pages: Optional[str] = typer.Option(
+        None,
+        "--pdf-pages",
+        help=("PDF input only: 1-based pages (e.g. '1-5', '3', '1-3,7,10-12'); default: all pages"),
+    ),
+    generate_caption: bool = typer.Option(
+        False,
+        "--generate-caption",
+        help="Auto-generate a publication-ready figure caption (one extra VLM call)",
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed agent progress and timing"
+    ),
+):
+    """Regenerate from an edited DiagramIR, preserving locked elements."""
+    if format not in ("png", "jpeg", "webp", "svg"):
+        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {format}[/red]")
+        raise typer.Exit(1)
+
+    configure_logging(verbose=verbose)
+    overrides = {"output_format": format, "auto_refine": auto, "generate_caption": generate_caption}
+    if iterations is not None:
+        overrides["refinement_iterations"] = iterations
+    if max_iterations is not None:
+        overrides["max_iterations"] = max_iterations
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if image_provider:
+        overrides["image_provider"] = image_provider
+    if image_model:
+        overrides["image_model"] = image_model
+    if seed is not None:
+        overrides["seed"] = seed
+    if save_prompts is not None:
+        overrides["save_prompts"] = save_prompts
+
+    settings = Settings.from_yaml(config, **overrides) if config else Settings(**overrides)
+
+    input_path = Path(input)
+    if not input_path.exists():
+        console.print(f"[red]Error: Input file not found: {input}[/red]")
+        raise typer.Exit(1)
+    _check_pdf_dep(input_path)
+    from paperbanana.core.source_loader import load_methodology_source
+
+    try:
+        source_context = load_methodology_source(input_path, pdf_pages=pdf_pages)
+    except (ImportError, ValueError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    ir_path = Path(diagram_ir)
+    if not ir_path.exists():
+        console.print(f"[red]Error: Diagram IR not found: {diagram_ir}[/red]")
+        raise typer.Exit(1)
+    try:
+        diagram_ir_model = DiagramIR.model_validate_json(ir_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        console.print(f"[red]Error: Invalid diagram IR JSON: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not progress_json:
+        lock_counts = (
+            len(diagram_ir_model.locks.locked_node_ids),
+            len(diagram_ir_model.locks.locked_edge_refs),
+            len(diagram_ir_model.locks.locked_group_ids),
+        )
+        console.print(
+            Panel.fit(
+                f"[bold]PaperBanana[/bold] - Lock-aware IR Regeneration\n\n"
+                f"VLM: {settings.vlm_provider} / {settings.effective_vlm_model}\n"
+                f"Image: {settings.image_provider} / {settings.effective_image_model}\n"
+                f"Locked nodes/edges/groups: {lock_counts[0]}/{lock_counts[1]}/{lock_counts[2]}",
+                border_style="magenta",
+            )
+        )
+
+    total_start = time.perf_counter()
+
+    async def _run_with_progress():
+        def _on_progress(event: str, payload: dict) -> None:
+            if progress_json:
+                console.print(json_mod.dumps({"event": event, **payload}), highlight=False)
+
+        pipeline = PaperBananaPipeline(
+            settings=settings,
+            progress_callback=_on_progress if progress_json else None,
+        )
+
+        def on_progress(event: PipelineProgressEvent) -> None:
+            if event.stage == PipelineProgressStage.VISUALIZER_START:
+                it = event.iteration or "?"
+                total = (event.extra or {}).get("total_iterations", "?")
+                console.print(f"  [dim]●[/dim] Generating image [{it}/{total}]...", end="")
+            elif event.stage == PipelineProgressStage.VISUALIZER_END:
+                console.print(
+                    f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                    if event.seconds is not None
+                    else " [green]✓[/green]"
+                )
+            elif event.stage == PipelineProgressStage.CRITIC_START:
+                console.print("  [dim]●[/dim] Critic reviewing...", end="")
+            elif event.stage == PipelineProgressStage.CRITIC_END:
+                console.print(
+                    f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                    if event.seconds is not None
+                    else " [green]✓[/green]"
+                )
+
+        return await pipeline.regenerate_from_ir(
+            diagram_ir=diagram_ir_model,
+            source_context=source_context,
+            caption=caption,
+            aspect_ratio=aspect_ratio,
+            progress_callback=on_progress if not progress_json else None,
+        )
+
+    result = asyncio.run(_run_with_progress())
+    total_elapsed = time.perf_counter() - total_start
+    console.print(
+        f"\n[green]✓ Done![/green] [dim]{total_elapsed:.1f}s total"
+        f" · {len(result.iterations)} iterations[/dim]\n"
+    )
+    console.print(f"  Output: [bold]{result.image_path}[/bold]")
+    console.print(f"  Run ID: [dim]{result.metadata.get('run_id', 'unknown')}[/dim]")
 
 
 @app.command()

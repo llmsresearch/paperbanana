@@ -132,6 +132,46 @@ def extract_diagram_ir(description: str, title: str = "PaperBanana Diagram") -> 
     return DiagramIR(title=title, nodes=nodes, edges=edges)
 
 
+def format_diagram_ir_for_regeneration(diagram_ir: DiagramIR) -> str:
+    """Create a lock-aware textual description from DiagramIR."""
+    locked_nodes = set(diagram_ir.locks.locked_node_ids)
+    locked_edges = set(diagram_ir.locks.locked_edge_refs)
+    locked_groups = set(diagram_ir.locks.locked_group_ids)
+
+    lines: list[str] = [f"Figure title: {diagram_ir.title}", "", "Nodes:"]
+    for node in diagram_ir.nodes:
+        lane = f" [lane={node.lane}]" if node.lane else ""
+        lock = " [LOCKED]" if node.id in locked_nodes else ""
+        lines.append(f"- {node.id}: {node.label}{lane}{lock}")
+
+    if diagram_ir.groups:
+        lines.extend(["", "Groups:"])
+        for group in diagram_ir.groups:
+            node_ids = ", ".join(group.node_ids)
+            lock = " [LOCKED]" if group.id in locked_groups else ""
+            lines.append(f"- {group.id}: {group.label} -> ({node_ids}){lock}")
+
+    lines.extend(["", "Edges:"])
+    for edge in diagram_ir.edges:
+        edge_ref = edge.id or f"{edge.source}->{edge.target}"
+        lock = " [LOCKED]" if edge_ref in locked_edges else ""
+        label = f" ({edge.label})" if edge.label else ""
+        lines.append(f"- {edge.source} -> {edge.target}{label} [ref={edge_ref}]{lock}")
+
+    if locked_nodes or locked_edges or locked_groups:
+        lines.extend(
+            [
+                "",
+                "Hard constraints:",
+                "- Preserve every element marked [LOCKED] exactly (ID, text, and connections).",
+                "- You may improve only unlocked elements for clarity and aesthetics.",
+                "- Do not remove or rename locked IDs.",
+            ]
+        )
+
+    return "\n".join(lines).strip()
+
+
 def save_svg_from_ir(diagram_ir: DiagramIR, output_path: str | Path) -> Path:
     """Render an editable SVG from DiagramIR."""
     output_path = Path(output_path)
@@ -202,6 +242,7 @@ def save_svg_from_ir(diagram_ir: DiagramIR, output_path: str | Path) -> Path:
 
     # Place nodes in columns within each lane.
     lane_nodes: dict[str, list[DiagramIRNode]] = {k: [] for k in lane_order}
+    locked_nodes = set(diagram_ir.locks.locked_node_ids)
     for node in diagram_ir.nodes:
         lane = (node.lane or "").strip() or lane_order[0]
         if lane not in lane_nodes:
@@ -217,15 +258,23 @@ def save_svg_from_ir(diagram_ir: DiagramIR, output_path: str | Path) -> Path:
         for i, node in enumerate(lane_nodes.get(lane, [])):
             x = margin_x + left_gutter + i * step_x
             node_pos[node.id] = (x, y)
+            is_locked = node.id in locked_nodes
+            stroke_color = "#2563eb" if is_locked else "#94a3b8"
             parts.append(
                 f'<rect x="{x}" y="{y}" width="{node_w}" height="{node_h}" rx="12" '
-                'fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>'
+                f'fill="#f8fafc" stroke="{stroke_color}" stroke-width="2"/>'
             )
             parts.append(
                 f'<text x="{x + 16}" y="{y + 34}" font-family="Arial, sans-serif" font-size="18" '
                 'fill="#111827">'
                 f"{html.escape(node.label)}</text>"
             )
+            if is_locked:
+                parts.append(
+                    f'<text x="{x + node_w - 50}" y="{y + 24}" '
+                    'font-family="Arial, sans-serif" font-size="12" '
+                    'font-weight="700" fill="#1d4ed8">LOCK</text>'
+                )
 
     edge_label_offsets: dict[tuple[int, int], int] = {}
     route_channel_counts: dict[tuple[int, int], int] = {}
