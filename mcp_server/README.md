@@ -10,6 +10,18 @@ MCP server that exposes PaperBanana's diagram and plot generation as tools for C
 | `generate_plot` | Generate a statistical plot from JSON data + intent description |
 | `evaluate_diagram` | Compare a generated diagram against a human reference (4 dimensions) |
 | `evaluate_plot` | Compare a generated statistical plot against a human reference (4 dimensions) |
+| `download_references` | Download the expanded reference set for stronger retrieval |
+| `orchestrate_figures` | Plan / generate a full-paper figure package (same workflow as `paperbanana orchestrate`); returns JSON paths and status |
+| `batch_diagrams` | Run a methodology batch from a manifest path (`paperbanana batch`) |
+| `batch_plots` | Run a statistical plot batch from a manifest path (`paperbanana plot-batch`) |
+
+### Batch and orchestration tools
+
+These tools return **pretty-printed JSON** with absolute paths to `batch_report.json`, `figure_package.json`, `orchestration_plan.json`, `figures.tex`, `captions.md`, and per-item summaries. Use `dry_run=True` on `orchestrate_figures` to plan only (no generation API calls).
+
+Long runs execute in a **worker thread** so they do not block the MCP server event loop; progress lines are logged via structlog (`mcp_orchestrate`, `mcp_batch_diagrams`, `mcp_batch_plots`).
+
+On validation errors (missing manifest, bad flags), the JSON body includes `"error"` and `"strict_success": false`.
 
 ## Installation
 

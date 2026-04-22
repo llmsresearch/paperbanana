@@ -9,6 +9,9 @@ Tools:
     evaluate_diagram    — Evaluate a generated diagram against a reference
     evaluate_plot       — Evaluate a generated plot against a reference
     download_references — Download expanded reference set (~294 examples)
+    orchestrate_figures — Full-paper figure package (plan + optional generation)
+    batch_diagrams      — Batch methodology diagrams from a YAML/JSON manifest
+    batch_plots         — Batch statistical plots from a YAML/JSON manifest
 
 Usage:
     paperbanana-mcp          # stdio transport (default)
@@ -16,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from io import BytesIO
@@ -30,6 +34,11 @@ from paperbanana.core.config import Settings
 from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.types import DiagramType, GenerationInput
 from paperbanana.core.utils import detect_image_mime_type, find_prompt_dir
+from paperbanana.core.workflow_runner import (
+    run_methodology_batch,
+    run_orchestration_package,
+    run_plot_batch,
+)
 from paperbanana.evaluation.judge import VLMJudge
 from paperbanana.providers.registry import ProviderRegistry
 
@@ -402,6 +411,205 @@ async def download_references(
         f"Cached to: {dm.reference_dir}\n"
         f"The Retriever agent will now use these for better diagram generation."
     )
+
+
+def _json_result(payload: dict) -> str:
+    return json.dumps(payload, indent=2)
+
+
+@mcp.tool
+async def orchestrate_figures(
+    paper: str | None = None,
+    resume_orchestrate: str | None = None,
+    output_dir: str = "outputs",
+    data_dir: str | None = None,
+    max_method_figures: int = 4,
+    max_plot_figures: int = 4,
+    pdf_pages: str | None = None,
+    dry_run: bool = False,
+    config: str | None = None,
+    vlm_provider: str | None = None,
+    vlm_model: str | None = None,
+    image_provider: str | None = None,
+    image_model: str | None = None,
+    iterations: int | None = None,
+    auto: bool = False,
+    max_iterations: int | None = None,
+    optimize: bool = False,
+    format: str = "png",
+    save_prompts: bool | None = None,
+    venue: str | None = None,
+    retry_failed: bool = False,
+    max_retries: int = 0,
+    concurrency: int = 1,
+) -> str:
+    """Plan and optionally generate a multi-figure publication package from a paper.
+
+    Mirrors ``paperbanana orchestrate``. Use ``dry_run=True`` to write
+    ``orchestration_plan.json`` only (no API generation). For continuation,
+    pass ``resume_orchestrate`` with an orchestration id or package directory path.
+
+    Returns:
+        JSON string with orchestration_id, paths to ``figure_package.json``,
+        ``figures.tex``, ``captions.md``, ``orchestration_plan.json``, counts,
+        ``strict_success``, and ``failures`` when applicable.
+    """
+
+    def _run() -> dict:
+        return run_orchestration_package(
+            paper=paper,
+            resume_orchestrate=resume_orchestrate,
+            output_dir=Path(output_dir),
+            data_dir=data_dir,
+            max_method_figures=max_method_figures,
+            max_plot_figures=max_plot_figures,
+            pdf_pages=pdf_pages,
+            dry_run=dry_run,
+            config=config,
+            vlm_provider=vlm_provider,
+            vlm_model=vlm_model,
+            image_provider=image_provider,
+            image_model=image_model,
+            iterations=iterations,
+            auto=auto,
+            max_iterations=max_iterations,
+            optimize=optimize,
+            format=format,
+            save_prompts=save_prompts,
+            venue=venue,
+            retry_failed=retry_failed,
+            max_retries=max_retries,
+            concurrency=concurrency,
+            progress_callback=lambda m: logger.info("mcp_orchestrate", message=m),
+        )
+
+    try:
+        result = await asyncio.to_thread(_run)
+    except (FileNotFoundError, ValueError, ImportError, RuntimeError) as e:
+        return _json_result({"error": str(e), "strict_success": False})
+    return _json_result(result)
+
+
+@mcp.tool
+async def batch_diagrams(
+    manifest_path: str,
+    output_dir: str = "outputs",
+    config: str | None = None,
+    vlm_provider: str | None = None,
+    vlm_model: str | None = None,
+    image_provider: str | None = None,
+    image_model: str | None = None,
+    iterations: int | None = None,
+    auto: bool = False,
+    max_iterations: int | None = None,
+    optimize: bool = False,
+    format: str = "png",
+    save_prompts: bool | None = None,
+    venue: str | None = None,
+    auto_download_data: bool = False,
+    resume_batch: str | None = None,
+    retry_failed: bool = False,
+    max_retries: int = 0,
+    concurrency: int = 1,
+) -> str:
+    """Run methodology diagram batch from a manifest (YAML or JSON).
+
+    Each manifest item needs ``input`` (text or PDF path) and ``caption``.
+    Paths are resolved relative to the manifest file directory.
+    Returns JSON with ``batch_dir``, ``batch_report_path``, per-item summary,
+    ``composite_path`` when configured, and ``strict_success`` (false if any item failed).
+    """
+
+    def _run() -> dict:
+        return run_methodology_batch(
+            manifest_path=Path(manifest_path),
+            output_dir=Path(output_dir),
+            config=config,
+            vlm_provider=vlm_provider,
+            vlm_model=vlm_model,
+            image_provider=image_provider,
+            image_model=image_model,
+            iterations=iterations,
+            auto=auto,
+            max_iterations=max_iterations,
+            optimize=optimize,
+            format=format,
+            save_prompts=save_prompts,
+            venue=venue,
+            auto_download_data=auto_download_data,
+            resume_batch=resume_batch,
+            retry_failed=retry_failed,
+            max_retries=max_retries,
+            concurrency=concurrency,
+            progress_callback=lambda m: logger.info("mcp_batch_diagrams", message=m),
+        )
+
+    try:
+        result = await asyncio.to_thread(_run)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        return _json_result({"error": str(e), "strict_success": False})
+    return _json_result(result)
+
+
+@mcp.tool
+async def batch_plots(
+    manifest_path: str,
+    output_dir: str = "outputs",
+    config: str | None = None,
+    vlm_provider: str | None = None,
+    vlm_model: str | None = None,
+    image_provider: str | None = None,
+    image_model: str | None = None,
+    iterations: int | None = None,
+    auto: bool = False,
+    max_iterations: int | None = None,
+    optimize: bool = False,
+    format: str = "png",
+    save_prompts: bool | None = None,
+    venue: str | None = None,
+    aspect_ratio: str | None = None,
+    resume_batch: str | None = None,
+    retry_failed: bool = False,
+    max_retries: int = 0,
+    concurrency: int = 1,
+) -> str:
+    """Run statistical plot batch from a manifest (YAML or JSON).
+
+    Each item needs ``data`` (CSV or JSON path) and ``intent``. When
+    ``vlm_provider`` is omitted, defaults to ``gemini`` (same as CLI plot-batch).
+    Returns JSON with ``batch_dir``, ``batch_report_path``, item summary, and
+    ``strict_success``.
+    """
+
+    def _run() -> dict:
+        return run_plot_batch(
+            manifest_path=Path(manifest_path),
+            output_dir=Path(output_dir),
+            config=config,
+            vlm_provider=vlm_provider,
+            vlm_model=vlm_model,
+            image_provider=image_provider,
+            image_model=image_model,
+            iterations=iterations,
+            auto=auto,
+            max_iterations=max_iterations,
+            optimize=optimize,
+            format=format,
+            save_prompts=save_prompts,
+            venue=venue,
+            aspect_ratio=aspect_ratio,
+            resume_batch=resume_batch,
+            retry_failed=retry_failed,
+            max_retries=max_retries,
+            concurrency=concurrency,
+            progress_callback=lambda m: logger.info("mcp_batch_plots", message=m),
+        )
+
+    try:
+        result = await asyncio.to_thread(_run)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        return _json_result({"error": str(e), "strict_success": False})
+    return _json_result(result)
 
 
 def main():
