@@ -251,6 +251,7 @@ class PaperBananaPipeline:
         self.caption_agent = CaptionAgent(
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
+        self._sync_run_scoped_agents()
 
         logger.info(
             "Pipeline initialized",
@@ -297,6 +298,9 @@ class PaperBananaPipeline:
         if self.settings.prompt_dir:
             return self.settings.prompt_dir
         return find_prompt_dir()
+
+    def _sync_run_scoped_agents(self) -> None:
+        self.visualizer.set_output_dir(self._run_dir)
 
     async def _generate_caption(
         self,
@@ -1192,6 +1196,7 @@ class PaperBananaPipeline:
         # Override run dir to write into the existing run
         run_dir = Path(resume_state.run_dir)
         self.run_id = resume_state.run_id
+        self._sync_run_scoped_agents()
 
         if self.settings.auto_refine:
             total_iters = self.settings.max_iterations
