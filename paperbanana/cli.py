@@ -834,17 +834,23 @@ def generate(
 
 @app.command()
 def sweep(
-    input: str = typer.Option(
-        ...,
+    input: Optional[str] = typer.Option(
+        None,
         "--input",
         "-i",
         help="Path to methodology text file or PDF (.pdf requires: pip install 'paperbanana[pdf]')",
     ),
-    caption: str = typer.Option(
-        ...,
+    caption: Optional[str] = typer.Option(
+        None,
         "--caption",
         "-c",
         help="Figure caption / communicative intent",
+    ),
+    manifest: Optional[str] = typer.Option(
+        None,
+        "--manifest",
+        "-m",
+        help="Path to sweep manifest (YAML or JSON). Mutually exclusive with axis flags.",
     ),
     pdf_pages: Optional[str] = typer.Option(
         None,
@@ -929,7 +935,55 @@ def sweep(
         console.print("[red]Error: --max-variants must be >= 1[/red]")
         raise typer.Exit(1)
 
+    axis_flag_values = (
+        vlm_providers,
+        vlm_models,
+        image_providers,
+        image_models,
+        iterations,
+        optimize_modes,
+        auto_modes,
+    )
+    if manifest is not None and any(v is not None for v in axis_flag_values):
+        console.print(
+            "[red]Error: --manifest is mutually exclusive with axis flags "
+            "(--vlm-providers, --vlm-models, --image-providers, --image-models, "
+            "--iterations, --optimize-modes, --auto-modes)[/red]"
+        )
+        raise typer.Exit(1)
+    if manifest is None and (not input or not caption):
+        console.print(
+            "[red]Error: --input and --caption are required unless --manifest is set[/red]"
+        )
+        raise typer.Exit(1)
+
     configure_logging(verbose=verbose)
+
+    from paperbanana.core.sweep import (
+        build_sweep_variants,
+        load_sweep_manifest,
+        parse_csv_bools,
+        parse_csv_ints,
+        parse_csv_values,
+        quality_proxy_score,
+        rank_sweep_results,
+        summarize_sweep,
+    )
+
+    axes_from_manifest: dict[str, list] | None = None
+    if manifest is not None:
+        try:
+            parsed = load_sweep_manifest(Path(manifest))
+        except (FileNotFoundError, ValueError, RuntimeError) as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
+        input = parsed["input"]
+        caption = parsed["caption"]
+        if parsed["pdf_pages"] is not None:
+            pdf_pages = parsed["pdf_pages"]
+        if parsed["max_variants"] is not None:
+            max_variants = parsed["max_variants"]
+        axes_from_manifest = parsed["axes"]
 
     input_path = Path(input)
     if not input_path.exists():
@@ -942,27 +996,30 @@ def sweep(
     load_dotenv()
 
     from paperbanana.core.source_loader import load_methodology_source
-    from paperbanana.core.sweep import (
-        build_sweep_variants,
-        parse_csv_bools,
-        parse_csv_ints,
-        parse_csv_values,
-        quality_proxy_score,
-        rank_sweep_results,
-        summarize_sweep,
-    )
 
     try:
-        variant_list = build_sweep_variants(
-            vlm_providers=parse_csv_values(vlm_providers),
-            vlm_models=parse_csv_values(vlm_models),
-            image_providers=parse_csv_values(image_providers),
-            image_models=parse_csv_values(image_models),
-            refinement_iterations=parse_csv_ints(iterations, field_name="--iterations"),
-            optimize_inputs=parse_csv_bools(optimize_modes, field_name="--optimize-modes"),
-            auto_refine=parse_csv_bools(auto_modes, field_name="--auto-modes"),
-            max_variants=max_variants,
-        )
+        if axes_from_manifest is not None:
+            variant_list = build_sweep_variants(
+                vlm_providers=[str(x) for x in axes_from_manifest["vlm_providers"]],
+                vlm_models=[str(x) for x in axes_from_manifest["vlm_models"]],
+                image_providers=[str(x) for x in axes_from_manifest["image_providers"]],
+                image_models=[str(x) for x in axes_from_manifest["image_models"]],
+                refinement_iterations=[int(x) for x in axes_from_manifest["refinement_iterations"]],
+                optimize_inputs=[bool(x) for x in axes_from_manifest["optimize_inputs"]],
+                auto_refine=[bool(x) for x in axes_from_manifest["auto_refine"]],
+                max_variants=max_variants,
+            )
+        else:
+            variant_list = build_sweep_variants(
+                vlm_providers=parse_csv_values(vlm_providers),
+                vlm_models=parse_csv_values(vlm_models),
+                image_providers=parse_csv_values(image_providers),
+                image_models=parse_csv_values(image_models),
+                refinement_iterations=parse_csv_ints(iterations, field_name="--iterations"),
+                optimize_inputs=parse_csv_bools(optimize_modes, field_name="--optimize-modes"),
+                auto_refine=parse_csv_bools(auto_modes, field_name="--auto-modes"),
+                max_variants=max_variants,
+            )
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
