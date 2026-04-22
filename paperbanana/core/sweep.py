@@ -379,8 +379,57 @@ def generate_sweep_report_md(report: dict[str, Any], sweep_dir: Path) -> str:
     return "\n".join(lines)
 
 
-def generate_sweep_report_html(report: dict[str, Any], sweep_dir: Path) -> str:
-    """Generate an HTML report from a sweep report dict."""
+def _thumbnail_grid(
+    ranked: list[dict[str, Any]],
+    sweep_dir: Path,
+    escape: Any,
+    top_n: int = 5,
+) -> str:
+    """Build an HTML thumbnail grid for the top-N ranked variants.
+
+    Skips variants whose output_path is missing or doesn't exist on disk.
+    Returns an empty string when no usable thumbnails remain.
+    """
+    figures: list[str] = []
+    for item in ranked[:top_n]:
+        raw = item.get("output_path") or ""
+        if not raw:
+            continue
+        rel = _relative_output(raw, sweep_dir)
+        resolved = (sweep_dir / rel) if not Path(rel).is_absolute() else Path(rel)
+        if not resolved.exists():
+            continue
+        vid = escape(item.get("variant_id", "—"))
+        score = escape(str(item.get("quality_proxy_score", "—")))
+        figures.append(
+            f'<figure><img src="{escape(rel)}" alt="{vid}" loading="lazy">'
+            f"<figcaption>{vid} · {score}</figcaption></figure>"
+        )
+    if not figures:
+        return ""
+    body = "\n".join(figures)
+    return f"""
+  <h2>Top Variants (visual)</h2>
+  <div class="thumb-grid">
+{body}
+  </div>
+"""
+
+
+def generate_sweep_report_html(
+    report: dict[str, Any],
+    sweep_dir: Path,
+    *,
+    include_thumbnails: bool = True,
+) -> str:
+    """Generate an HTML report from a sweep report dict.
+
+    Args:
+        report: Parsed sweep_report.json contents.
+        sweep_dir: Path to the sweep run directory (used for relative img paths).
+        include_thumbnails: If True, insert a thumbnail grid for the top-ranked
+            variants (requires their output images to exist on disk).
+    """
     sweep_dir = Path(sweep_dir).resolve()
     sweep_id = report.get("sweep_id", "sweep")
     status = report.get("status", "completed")
@@ -414,6 +463,18 @@ def generate_sweep_report_html(report: dict[str, Any], sweep_dir: Path) -> str:
       border-left: 3px solid #ccc;
     }
     a { color: #06c; }
+    .thumb-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem; margin-bottom: 1rem;
+    }
+    .thumb-grid figure { margin: 0; text-align: center; }
+    .thumb-grid img {
+      width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;
+    }
+    .thumb-grid figcaption {
+      font-size: 0.8rem; color: #555; margin-top: 0.25rem;
+    }
     """
 
     meta_lines = []
@@ -516,11 +577,13 @@ def generate_sweep_report_html(report: dict[str, Any], sweep_dir: Path) -> str:
   </table>
 """
 
+        thumb_html = _thumbnail_grid(ranked, sweep_dir, escape) if include_thumbnails else ""
+
         note = report.get("quality_proxy_note")
         note_html = f'<p class="note">{escape(note)}</p>' if note else ""
         result_body = "\n".join(result_rows)
 
-        body = f"""{top_html}
+        body = f"""{thumb_html}{top_html}
   <h2>All Variants</h2>
   <table>
     <thead><tr><th>Variant</th><th>VLM</th><th>Image</th><th>Status</th><th>Iters</th>
@@ -552,6 +615,8 @@ def write_sweep_report(
     sweep_dir: Path,
     output_path: Path | None = None,
     format: Literal["markdown", "html", "md"] = "markdown",
+    *,
+    include_thumbnails: bool = True,
 ) -> Path:
     """Load the sweep report from sweep_dir, generate a report, and write it to disk.
 
@@ -559,6 +624,7 @@ def write_sweep_report(
         sweep_dir: Path to the sweep run directory.
         output_path: Where to write the report. If None, writes to sweep_dir/sweep_report.{md|html}.
         format: Report format: markdown, html, or md (alias for markdown).
+        include_thumbnails: HTML only — insert a thumbnail grid of the top-ranked variants.
 
     Returns:
         The path where the report was written.
@@ -571,7 +637,9 @@ def write_sweep_report(
     output_path = Path(output_path).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if format == "html":
-        content = generate_sweep_report_html(report, sweep_dir)
+        content = generate_sweep_report_html(
+            report, sweep_dir, include_thumbnails=include_thumbnails
+        )
     else:
         content = generate_sweep_report_md(report, sweep_dir)
     output_path.write_text(content, encoding="utf-8")

@@ -1,0 +1,31 @@
+You convert a detailed methodology figure description into a **structured graph** for vector export.
+
+## Final figure description (primary source)
+{description}
+
+## Methodology context (for consistency)
+{source_context}
+
+## Figure caption
+{caption}
+{repair_section}
+
+## Task
+Output **only** a single JSON object matching this schema (no markdown, no commentary):
+
+- `schema_version`: string, must be `"1.0"`.
+- `layout_direction`: `"LR"` (left-to-right) or `"TB"` (top-to-bottom) — pick what best matches the description flow.
+- `nodes`: array of objects, each with:
+  - `id`: short English identifier (letters, digits, underscore), unique across nodes.
+  - `label`: short English label as shown in the diagram (must match the description's component names).
+  - `shape`: one of `box`, `rounded`, `ellipse`, `cylinder`, `plain` (default `rounded`).
+- `edges`: array of objects with `source`, `target` (node ids), optional `label` for arrows.
+- `groups`: optional array for logical groupings (subgraphs): each has `id`, optional `label`, and `node_ids` listing which nodes belong inside. Every `node_ids` entry must exist in `nodes`. A node should appear in at most one group.
+
+## Rules
+1. Include the **main components** and **data/control flow** from the description; omit decorative-only details if needed to keep the graph readable (at most ~24 nodes).
+2. Use **clear English** labels; no empty strings.
+3. Edges must only reference `id`s defined in `nodes`.
+4. Prefer a **connected** flow when the description implies a pipeline.
+
+Return valid JSON only.

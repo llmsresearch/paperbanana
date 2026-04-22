@@ -49,6 +49,14 @@ references_app = typer.Typer(
 )
 app.add_typer(references_app, name="references")
 
+# ── Runs subcommand group ─────────────────────────────────────────
+runs_app = typer.Typer(
+    name="runs",
+    help="Inspect and manage prior outputs (runs and batches).",
+    no_args_is_help=True,
+)
+app.add_typer(runs_app, name="runs")
+
 
 def _require_pdf_dep() -> None:
     """Raise a clean error if PyMuPDF is not installed."""
@@ -104,6 +112,87 @@ def _upsert_env_vars(env_path: Path, updates: dict[str, str]) -> None:
             lines.append(new_line)
 
     env_path.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+
+
+def _format_mtime(path: Path) -> str:
+    try:
+        ts = path.stat().st_mtime
+    except OSError:
+        return "?"
+    # Keep it simple: local time, second resolution.
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+
+
+def _safe_read_json(path: Path) -> dict:
+    try:
+        return json_mod.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json_mod.JSONDecodeError):
+        return {}
+
+
+def _summarize_run_row(output_dir: Path, run_id: str) -> dict[str, str]:
+    run_dir = output_dir / run_id
+    info = _safe_read_json(run_dir / "run_input.json")
+    caption = str(info.get("communicative_intent", "")).strip()
+    if len(caption) > 60:
+        caption = caption[:57] + "..."
+    diagram_type = str(info.get("diagram_type", "")).strip()
+
+    final_image = None
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        p = run_dir / f"final_output.{ext}"
+        if p.is_file():
+            final_image = p
+            break
+    status = "ok" if final_image else "no_final"
+
+    # Best-effort: count iter dirs.
+    try:
+        iters = len([d for d in run_dir.iterdir() if d.is_dir() and d.name.startswith("iter_")])
+    except OSError:
+        iters = 0
+
+    return {
+        "id": run_id,
+        "modified": _format_mtime(run_dir),
+        "type": diagram_type or "?",
+        "iters": str(iters),
+        "status": status,
+        "caption": caption or "(no caption found)",
+    }
+
+
+def _summarize_batch_row(output_dir: Path, batch_id: str) -> dict[str, str]:
+    batch_dir = output_dir / batch_id
+    report = _safe_read_json(batch_dir / "batch_report.json")
+    kind = str(report.get("batch_kind") or "").strip() or "?"
+    items = report.get("items") if isinstance(report, dict) else None
+    n_items = len(items) if isinstance(items, list) else 0
+
+    status_counts: dict[str, int] = {}
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            status = item.get("status")
+            if not status:
+                status = "success" if item.get("output_path") else "failed"
+            status_counts[str(status)] = status_counts.get(str(status), 0) + 1
+
+    status = "?"
+    if status_counts:
+        parts = [f"{k}:{v}" for k, v in sorted(status_counts.items())]
+        status = ", ".join(parts)
+        if len(status) > 60:
+            status = status[:57] + "..."
+
+    return {
+        "id": batch_id,
+        "modified": _format_mtime(batch_dir),
+        "kind": kind,
+        "items": str(n_items),
+        "status": status,
+    }
 
 
 @app.command()
@@ -238,6 +327,11 @@ def generate(
         "--venue",
         help="Target venue style (neurips, icml, acl, ieee, custom)",
     ),
+    vector_export: Optional[str] = typer.Option(
+        None,
+        "--vector-export",
+        help="Export structured vector diagram (Graphviz): none, svg, pdf, both",
+    ),
     progress_json: bool = typer.Option(
         False,
         "--progress-json",
@@ -274,6 +368,9 @@ def generate(
         console.print(
             f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
         )
+        raise typer.Exit(1)
+    if vector_export and vector_export.lower() not in ("none", "svg", "pdf", "both"):
+        console.print("[red]Error: --vector-export must be none, svg, pdf, or both[/red]")
         raise typer.Exit(1)
     if pdf_pages and (continue_last or continue_run):
         console.print(
@@ -326,6 +423,8 @@ def generate(
         overrides["budget_usd"] = budget
     if venue:
         overrides["venue"] = venue
+    if vector_export is not None:
+        overrides["vector_export"] = vector_export.lower()
     if prompt_dir:
         overrides["prompt_dir"] = prompt_dir
     if generate_caption:
@@ -404,6 +503,19 @@ def generate(
                     f"  [dim]●[/dim] Generating image (iter {event.iteration})...",
                     end="",
                 )
+            elif event.stage == PipelineProgressStage.STRUCTURER_START:
+                console.print("  [dim]●[/dim] Vector export (structurer)...", end="")
+            elif event.stage == PipelineProgressStage.STRUCTURER_END:
+                extra = event.extra or {}
+                err = extra.get("error")
+                if err:
+                    console.print(f" [yellow]![/yellow] [dim]{str(err)[:120]}[/dim]")
+                else:
+                    console.print(
+                        f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                        if event.seconds is not None
+                        else " [green]✓[/green]"
+                    )
             elif event.stage == PipelineProgressStage.VISUALIZER_END:
                 console.print(
                     f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
@@ -441,6 +553,10 @@ def generate(
         console.print(f"\n[green]Done![/green] Output saved to: [bold]{result.image_path}[/bold]")
         console.print(f"Run ID: {result.metadata.get('run_id', 'unknown')}")
         console.print(f"New iterations: {len(result.iterations)}")
+        if result.vector_svg_path:
+            console.print(f"SVG: {result.vector_svg_path}")
+        if result.vector_pdf_path:
+            console.print(f"PDF: {result.vector_pdf_path}")
         return
 
     # ── Normal generation mode ────────────────────────────────────
@@ -614,6 +730,20 @@ def generate(
                     if event.seconds is not None
                     else " [green]✓[/green]"
                 )
+            elif event.stage == PipelineProgressStage.STRUCTURER_START:
+                console.print("[bold]Vector[/bold] — Structured export")
+                console.print("  [dim]●[/dim] Building diagram IR (structurer)...", end="")
+            elif event.stage == PipelineProgressStage.STRUCTURER_END:
+                extra = event.extra or {}
+                err = extra.get("error")
+                if err:
+                    console.print(f" [yellow]![/yellow] [dim]{err[:120]}[/dim]")
+                else:
+                    console.print(
+                        f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                        if event.seconds is not None
+                        else " [green]✓[/green]"
+                    )
             elif event.stage == PipelineProgressStage.VISUALIZER_START:
                 if event.iteration == 1:
                     console.print("[bold]Phase 2[/bold] — Iterative Refinement")
@@ -673,6 +803,18 @@ def generate(
     if result.generated_caption:
         console.print("\n  [bold]Generated Caption:[/bold]")
         console.print(f"  {result.generated_caption}")
+    if result.vector_svg_path:
+        console.print(f"  SVG:    [bold]{result.vector_svg_path}[/bold]")
+    if result.vector_pdf_path:
+        console.print(f"  PDF:    [bold]{result.vector_pdf_path}[/bold]")
+    ve = result.metadata.get("vector_export") or {}
+    no_vector_files = not result.vector_svg_path and not result.vector_pdf_path
+    if ve.get("mode") not in (None, "none") and no_vector_files:
+        if not ve.get("graphviz_available"):
+            console.print(
+                "  [yellow]Vector export: install Graphviz and ensure `dot` is on PATH "
+                "to render SVG/PDF (diagram_ir.json was still saved).[/yellow]"
+            )
 
     cost_data = result.metadata.get("cost")
     if cost_data:
@@ -1253,205 +1395,79 @@ def batch(
         console.print(f"[red]Error: Manifest not found: {manifest}[/red]")
         raise typer.Exit(1)
 
-    from paperbanana.core.batch import (
-        checkpoint_progress,
-        generate_batch_id,
-        init_or_load_checkpoint,
-        load_batch_manifest_with_composite,
-        mark_item_failure,
-        mark_item_running,
-        mark_item_success,
-        select_items_for_run,
-    )
-    from paperbanana.core.utils import ensure_dir
+    from paperbanana.core.batch import load_batch_manifest_with_composite
+    from paperbanana.core.workflow_runner import run_methodology_batch
 
     try:
-        items, composite_config = load_batch_manifest_with_composite(manifest_path)
+        items, _composite = load_batch_manifest_with_composite(manifest_path)
     except (ValueError, FileNotFoundError, RuntimeError) as e:
         console.print(f"[red]Error loading manifest: {e}[/red]")
         raise typer.Exit(1)
 
     if any(str(item.get("input", "")).lower().endswith(".pdf") for item in items):
-        _require_pdf_dep()
-
-    is_resume = bool(resume_batch)
-    if is_resume:
-        resume_ref = Path(resume_batch)
-        if resume_ref.is_dir():
-            batch_dir = resume_ref.resolve()
-            batch_id = batch_dir.name
-        else:
-            batch_id = resume_batch.strip()
-            batch_dir = (Path(output_dir) / batch_id).resolve()
-    else:
-        batch_id = generate_batch_id()
-        batch_dir = (Path(output_dir) / batch_id).resolve()
-    ensure_dir(batch_dir)
-
-    overrides = {"output_dir": str(batch_dir), "output_format": format}
-    if vlm_provider:
-        overrides["vlm_provider"] = vlm_provider
-    if vlm_model:
-        overrides["vlm_model"] = vlm_model
-    if image_provider:
-        overrides["image_provider"] = image_provider
-    if image_model:
-        overrides["image_model"] = image_model
-    if iterations is not None:
-        overrides["refinement_iterations"] = iterations
-    if auto:
-        overrides["auto_refine"] = True
-    if max_iterations is not None:
-        overrides["max_iterations"] = max_iterations
-    if optimize:
-        overrides["optimize_inputs"] = True
-    if save_prompts is not None:
-        overrides["save_prompts"] = save_prompts
-    if venue:
-        overrides["venue"] = venue
-
-    if config:
-        settings = Settings.from_yaml(config, **overrides)
-    else:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-        settings = Settings(**overrides)
-
-    if auto_download_data:
-        from paperbanana.data.manager import DatasetManager
-
-        dm = DatasetManager(cache_dir=settings.cache_dir)
-        if not dm.is_downloaded():
-            console.print("  [dim]Downloading curated expansion set...[/dim]")
-            try:
-                dm.download(dataset="curated")
-            except Exception as e:
-                console.print(f"  [yellow]Download failed: {e}, using built-in set[/yellow]")
+        try:
+            _require_pdf_dep()
+        except typer.Exit:
+            raise
 
     console.print(
         Panel.fit(
-            f"[bold]PaperBanana[/bold] — {'Resume ' if is_resume else ''}Batch Generation\n\n"
+            f"[bold]PaperBanana[/bold] — {'Resume ' if resume_batch else ''}Batch Generation\n\n"
             f"Manifest: {manifest_path.name}\n"
             f"Items: {len(items)}\n"
-            f"Output: {batch_dir}\n"
+            f"Output parent: {Path(output_dir).resolve()}\n"
             f"Concurrency: {concurrency}",
             border_style="blue",
         )
     )
     console.print()
 
-    from paperbanana.core.pipeline import PaperBananaPipeline
-    from paperbanana.core.source_loader import load_methodology_source
-
     try:
-        state = init_or_load_checkpoint(
-            batch_dir=batch_dir,
-            batch_id=batch_id,
+        result = run_methodology_batch(
             manifest_path=manifest_path,
-            batch_kind="methodology",
-            items=items,
-            resume=is_resume,
+            output_dir=Path(output_dir),
+            config=config,
+            vlm_provider=vlm_provider,
+            vlm_model=vlm_model,
+            image_provider=image_provider,
+            image_model=image_model,
+            iterations=iterations,
+            auto=auto,
+            max_iterations=max_iterations,
+            optimize=optimize,
+            format=format,
+            save_prompts=save_prompts,
+            venue=venue,
+            auto_download_data=auto_download_data,
+            resume_batch=resume_batch,
+            retry_failed=retry_failed,
+            max_retries=max_retries,
+            concurrency=concurrency,
+            progress_callback=console.print,
         )
-    except (FileNotFoundError, ValueError) as e:
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
-    total_start = time.perf_counter()
-    planned = select_items_for_run(state, retry_failed=retry_failed)
-    if not planned:
-        checkpoint_progress(batch_dir=batch_dir, state=state, mark_complete=True)
+    batch_dir = Path(result["batch_dir"])
+    report_path = Path(result["batch_report_path"])
+    if not result.get("had_work", True):
         console.print("[yellow]Nothing to run: all items already completed.[/yellow]")
-        console.print(f"  Report: [bold]{batch_dir / 'batch_report.json'}[/bold]")
+        console.print(f"  Report: [bold]{report_path}[/bold]")
         return
 
-    async def _run_all() -> None:
-        sem = asyncio.Semaphore(concurrency)
-
-        async def _run_one(idx: int, item: dict[str, object]) -> None:
-            item_key = str(item["_item_key"])
-            item_id = str(item["id"])
-            async with sem:
-                for attempt in range(max_retries + 1):
-                    mark_item_running(state, item_key)
-                    checkpoint_progress(
-                        batch_dir=batch_dir,
-                        state=state,
-                        total_seconds=time.perf_counter() - total_start,
-                    )
-                    input_path = Path(str(item["input"]))
-                    if not input_path.exists():
-                        mark_item_failure(state, item_key, "input file not found")
-                        checkpoint_progress(
-                            batch_dir=batch_dir,
-                            state=state,
-                            total_seconds=time.perf_counter() - total_start,
-                        )
-                        console.print(
-                            f"[red]Item {idx + 1}/{len(items)} {item_id}: input missing[/red]"
-                        )
-                        return
-                    try:
-                        source_context = load_methodology_source(
-                            input_path, pdf_pages=item.get("pdf_pages")
-                        )
-                        gen_input = GenerationInput(
-                            source_context=source_context,
-                            communicative_intent=str(item["caption"]),
-                            diagram_type=DiagramType.METHODOLOGY,
-                        )
-                        result = await PaperBananaPipeline(settings=settings).generate(gen_input)
-                        mark_item_success(
-                            state,
-                            item_key,
-                            result.metadata.get("run_id"),
-                            result.image_path,
-                            len(result.iterations),
-                        )
-                        checkpoint_progress(
-                            batch_dir=batch_dir,
-                            state=state,
-                            total_seconds=time.perf_counter() - total_start,
-                        )
-                        console.print(
-                            f"[green]Item {idx + 1}/{len(items)} {item_id}: ok[/green] "
-                            f"[dim]{result.image_path}[/dim]"
-                        )
-                        return
-                    except Exception as e:
-                        mark_item_failure(state, item_key, str(e))
-                        checkpoint_progress(
-                            batch_dir=batch_dir,
-                            state=state,
-                            total_seconds=time.perf_counter() - total_start,
-                        )
-                        if attempt < max_retries:
-                            console.print(
-                                f"[yellow]Item {item_id}: retry {attempt + 1}/{max_retries} "
-                                f"after {e}[/yellow]"
-                            )
-                            continue
-                        console.print(
-                            f"[red]Item {idx + 1}/{len(items)} {item_id}: failed - {e}[/red]"
-                        )
-                        return
-
-        await asyncio.gather(*[_run_one(idx, item) for idx, item, _ in planned])
-
-    asyncio.run(_run_all())
-
-    total_elapsed = time.perf_counter() - total_start
-    report = checkpoint_progress(
-        batch_dir=batch_dir,
-        state=state,
-        total_seconds=total_elapsed,
-        mark_complete=True,
-    )
-    report_path = batch_dir / "batch_report.json"
-    ri = report["items"]
-    succeeded = sum(1 for x in ri if x.get("status") == "success")
-    failed = sum(1 for x in ri if x.get("status") == "failed")
-    skipped = len(ri) - succeeded - failed
+    succeeded = int(result["succeeded"])
+    failed = int(result["failed"])
+    skipped = int(result["skipped"])
+    total_elapsed = 0.0
+    report_file = batch_dir / "batch_report.json"
+    if report_file.exists():
+        try:
+            report = json_mod.loads(report_file.read_text(encoding="utf-8"))
+            total_elapsed = float(report.get("total_seconds") or 0.0)
+        except Exception:
+            pass
+    ri = result.get("items_summary", [])
     console.print(
         f"[green]Batch complete.[/green] [dim]{total_elapsed:.1f}s · "
         f"{succeeded} succeeded · {failed} failed · {skipped} skipped[/dim]"
@@ -1479,27 +1495,9 @@ def batch(
     if failed > 0:
         raise typer.Exit(1)
 
-    # Auto-composite if manifest has a composite section
-    if composite_config is not None:
-        output_paths = [x["output_path"] for x in report["items"] if x.get("output_path")]
-        if output_paths:
-            from paperbanana.core.composite import compose_images
-
-            comp_output = composite_config.get("output") or "composite.png"
-            comp_path = batch_dir / comp_output
-            try:
-                compose_images(
-                    image_paths=output_paths,
-                    layout=composite_config.get("layout", "auto"),
-                    labels=composite_config.get("labels"),
-                    auto_label=composite_config.get("auto_label", True),
-                    spacing=composite_config.get("spacing", 20),
-                    label_position=composite_config.get("label_position", "bottom"),
-                    output_path=comp_path,
-                )
-                console.print(f"  Composite: [bold]{comp_path}[/bold]")
-            except Exception as e:
-                console.print(f"  [yellow]Composite failed: {e}[/yellow]")
+    comp_path = result.get("composite_path")
+    if comp_path:
+        console.print(f"  Composite: [bold]{comp_path}[/bold]")
 
 
 @app.command("batch-report")
@@ -1594,6 +1592,11 @@ def sweep_report(
         "-f",
         help="Report format: markdown or html",
     ),
+    no_thumbnails: bool = typer.Option(
+        False,
+        "--no-thumbnails",
+        help="HTML only: skip the top-ranked thumbnail grid",
+    ),
 ):
     """Generate a human-readable report from an existing sweep run (sweep_report.json)."""
     if format not in ("markdown", "html", "md"):
@@ -1616,7 +1619,12 @@ def sweep_report(
     output_path = Path(output) if output else None
     fmt = "markdown" if format == "md" else format
     try:
-        written = write_sweep_report(path, output_path=output_path, format=fmt)
+        written = write_sweep_report(
+            path,
+            output_path=output_path,
+            format=fmt,
+            include_thumbnails=not no_thumbnails,
+        )
         console.print(f"[green]Report written to:[/green] [bold]{written}[/bold]")
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -1754,111 +1762,71 @@ def orchestrate(
 
     configure_logging(verbose=verbose)
 
-    from paperbanana.core.orchestrate import (
-        init_or_load_orchestration_checkpoint,
-        prepare_orchestration_plan,
-        run_orchestration,
-    )
+    from paperbanana.core.workflow_runner import run_orchestration_package
+
+    def _orchestration_header_panel(summary: dict) -> None:
+        orch_dir = Path(summary["orchestrate_dir"])
+        paper_display = Path(str(summary.get("paper_path") or "paper")).name
+        header = "Resume " if summary.get("resumed") else ""
+        console.print(
+            Panel.fit(
+                f"[bold]PaperBanana[/bold] — {header}Figure Package Orchestration\n\n"
+                f"Paper: {paper_display}\n"
+                f"Planned methodology figures: {summary['methodology_items_planned']}\n"
+                f"Planned plot figures: {summary['plot_items_planned']}\n"
+                f"Package dir: {orch_dir}",
+                border_style="magenta",
+            )
+        )
 
     try:
-        orchestration_id, orchestrate_dir, plan, plan_path, is_resume = prepare_orchestration_plan(
+        result = run_orchestration_package(
             paper=paper,
             resume_orchestrate=resume_orchestrate,
-            output_dir=output_dir,
+            output_dir=Path(output_dir),
             data_dir=data_dir,
             max_method_figures=max_method_figures,
             max_plot_figures=max_plot_figures,
             pdf_pages=pdf_pages,
+            dry_run=dry_run,
+            config=config,
+            vlm_provider=vlm_provider,
+            vlm_model=vlm_model,
+            image_provider=image_provider,
+            image_model=image_model,
+            iterations=iterations,
+            auto=auto,
+            max_iterations=max_iterations,
+            optimize=optimize,
+            format=format,
+            save_prompts=save_prompts,
+            venue=venue,
+            retry_failed=retry_failed,
+            max_retries=max_retries,
+            concurrency=concurrency,
+            progress_callback=console.print,
+            after_plan_callback=_orchestration_header_panel,
         )
-    except (FileNotFoundError, ValueError, ImportError) as e:
+    except (FileNotFoundError, ValueError, ImportError, RuntimeError) as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
-    if not is_resume:
-        _check_pdf_dep(Path(str(plan.get("paper_path", ""))))
-
-    ensure_dir(orchestrate_dir)
-    runs_dir = ensure_dir(orchestrate_dir / "runs")
-
-    _orch_header = "Resume " if is_resume else ""
-    console.print(
-        Panel.fit(
-            f"[bold]PaperBanana[/bold] — {_orch_header}Figure Package Orchestration\n\n"
-            f"Paper: {Path(str(plan.get('paper_path', 'paper'))).name}\n"
-            f"Planned methodology figures: {len(plan['methodology_items'])}\n"
-            f"Planned plot figures: {len(plan['plot_items'])}\n"
-            f"Package dir: {orchestrate_dir}",
-            border_style="magenta",
-        )
-    )
+    orchestrate_dir = Path(result["orchestrate_dir"])
+    plan_path = Path(result["orchestration_plan_path"])
     if dry_run:
         console.print("[green]Dry run complete.[/green] Orchestration plan:")
         console.print(f"  [bold]{plan_path}[/bold]")
         return
 
-    overrides: dict[str, object] = {
-        "output_dir": str(runs_dir),
-        "output_format": format,
-        "optimize_inputs": optimize,
-        "auto_refine": auto,
-    }
-    if vlm_provider:
-        overrides["vlm_provider"] = vlm_provider
-    if vlm_model:
-        overrides["vlm_model"] = vlm_model
-    if image_provider:
-        overrides["image_provider"] = image_provider
-    if image_model:
-        overrides["image_model"] = image_model
-    if iterations is not None:
-        overrides["refinement_iterations"] = iterations
-    if max_iterations is not None:
-        overrides["max_iterations"] = max_iterations
-    if save_prompts is not None:
-        overrides["save_prompts"] = save_prompts
-    if venue:
-        overrides["venue"] = venue
-
-    if config:
-        settings = Settings.from_yaml(config, **overrides)
-    else:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-        settings = Settings(**overrides)
-
-    try:
-        state = init_or_load_orchestration_checkpoint(
-            orchestrate_dir=orchestrate_dir,
-            orchestration_id=orchestration_id,
-            plan_path=plan_path,
-            plan=plan,
-            resume=is_resume,
-        )
-    except (FileNotFoundError, ValueError) as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
-
-    report, had_work = run_orchestration(
-        state=state,
-        plan=plan,
-        settings=settings,
-        orchestrate_dir=orchestrate_dir,
-        retry_failed=retry_failed,
-        max_retries=max_retries,
-        concurrency=concurrency,
-        progress_callback=console.print,
-    )
-
-    if not had_work:
+    if not result.get("had_work", True):
         console.print("[yellow]Nothing to run: all tasks already completed.[/yellow]")
         console.print(f"  Package: [bold]{orchestrate_dir / 'figure_package.json'}[/bold]")
         return
 
-    total_seconds = float(report.get("total_seconds") or 0.0)
-    success_count = len(report.get("generated_items", []))
-    fail_count = len(report.get("failures", []))
-    package_manifest_path = orchestrate_dir / "figure_package.json"
+    total_seconds = float(result.get("total_seconds") or 0.0)
+    success_count = int(result.get("generated_count", 0))
+    fail_count = int(result.get("failed_count", 0))
+    package_manifest_path = Path(result["figure_package_path"])
     console.print(
         f"[green]Orchestration complete.[/green] [dim]{success_count} generated · "
         f"{fail_count} failed · {total_seconds:.1f}s[/dim]"
@@ -2017,18 +1985,8 @@ def plot_batch(
         console.print(f"[red]Error: Manifest not found: {manifest}[/red]")
         raise typer.Exit(1)
 
-    from paperbanana.core.batch import (
-        checkpoint_progress,
-        generate_batch_id,
-        init_or_load_checkpoint,
-        load_plot_batch_manifest,
-        mark_item_failure,
-        mark_item_running,
-        mark_item_success,
-        select_items_for_run,
-    )
-    from paperbanana.core.plot_data import load_statistical_plot_payload
-    from paperbanana.core.utils import ensure_dir
+    from paperbanana.core.batch import load_plot_batch_manifest
+    from paperbanana.core.workflow_runner import run_plot_batch
 
     try:
         items = load_plot_batch_manifest(manifest_path)
@@ -2036,171 +1994,62 @@ def plot_batch(
         console.print(f"[red]Error loading manifest: {e}[/red]")
         raise typer.Exit(1)
 
-    is_resume = bool(resume_batch)
-    if is_resume:
-        resume_ref = Path(resume_batch)
-        if resume_ref.is_dir():
-            batch_dir = resume_ref.resolve()
-            batch_id = batch_dir.name
-        else:
-            batch_id = resume_batch.strip()
-            batch_dir = (Path(output_dir) / batch_id).resolve()
-    else:
-        batch_id = generate_batch_id()
-        batch_dir = (Path(output_dir) / batch_id).resolve()
-    ensure_dir(batch_dir)
-
-    overrides: dict = {
-        "output_dir": str(batch_dir),
-        "output_format": format,
-        "optimize_inputs": optimize,
-        "auto_refine": auto,
-    }
-    if vlm_provider:
-        overrides["vlm_provider"] = vlm_provider
-    if vlm_model:
-        overrides["vlm_model"] = vlm_model
-    if image_provider:
-        overrides["image_provider"] = image_provider
-    if image_model:
-        overrides["image_model"] = image_model
-    if iterations is not None:
-        overrides["refinement_iterations"] = iterations
-    if max_iterations is not None:
-        overrides["max_iterations"] = max_iterations
-    overrides["save_prompts"] = True if save_prompts is None else save_prompts
-    if venue:
-        overrides["venue"] = venue
-    if not vlm_provider:
-        overrides.setdefault("vlm_provider", "gemini")
-
-    if config:
-        settings = Settings.from_yaml(config, **overrides)
-    else:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-        settings = Settings(**overrides)
-
+    _pb = "Resume " if resume_batch else ""
     console.print(
         Panel.fit(
-            f"[bold]PaperBanana[/bold] — {'Resume ' if is_resume else ''}Batch Plot Generation\n\n"
+            f"[bold]PaperBanana[/bold] — {_pb}Batch Plot Generation\n\n"
             f"Manifest: {manifest_path.name}\n"
             f"Items: {len(items)}\n"
-            f"Output: {batch_dir}\n"
+            f"Output parent: {Path(output_dir).resolve()}\n"
             f"Concurrency: {concurrency}",
             border_style="green",
         )
     )
     console.print()
 
-    from paperbanana.core.pipeline import PaperBananaPipeline
-
     try:
-        state = init_or_load_checkpoint(
-            batch_dir=batch_dir,
-            batch_id=batch_id,
+        result = run_plot_batch(
             manifest_path=manifest_path,
-            batch_kind="statistical_plot",
-            items=items,
-            resume=is_resume,
+            output_dir=Path(output_dir),
+            config=config,
+            vlm_provider=vlm_provider,
+            vlm_model=vlm_model,
+            image_provider=image_provider,
+            image_model=image_model,
+            iterations=iterations,
+            auto=auto,
+            max_iterations=max_iterations,
+            optimize=optimize,
+            format=format,
+            save_prompts=save_prompts,
+            venue=venue,
+            aspect_ratio=aspect_ratio,
+            resume_batch=resume_batch,
+            retry_failed=retry_failed,
+            max_retries=max_retries,
+            concurrency=concurrency,
+            progress_callback=console.print,
         )
-    except (FileNotFoundError, ValueError) as e:
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
-    total_start = time.perf_counter()
-    planned = select_items_for_run(state, retry_failed=retry_failed)
-    if not planned:
-        checkpoint_progress(batch_dir=batch_dir, state=state, mark_complete=True)
+
+    batch_dir = Path(result["batch_dir"])
+    report_path = Path(result["batch_report_path"])
+    if not result.get("had_work", True):
         console.print("[yellow]Nothing to run: all items already completed.[/yellow]")
-        console.print(f"  Report: [bold]{batch_dir / 'batch_report.json'}[/bold]")
+        console.print(f"  Report: [bold]{report_path}[/bold]")
         return
 
-    async def _run_all() -> None:
-        sem = asyncio.Semaphore(concurrency)
-
-        async def _run_one(idx: int, item: dict[str, object]) -> None:
-            item_key = str(item["_item_key"])
-            item_id = str(item["id"])
-            async with sem:
-                for attempt in range(max_retries + 1):
-                    mark_item_running(state, item_key)
-                    checkpoint_progress(
-                        batch_dir=batch_dir,
-                        state=state,
-                        total_seconds=time.perf_counter() - total_start,
-                    )
-                    data_path = Path(str(item["data"]))
-                    if not data_path.exists():
-                        mark_item_failure(state, item_key, "data file not found")
-                        checkpoint_progress(
-                            batch_dir=batch_dir,
-                            state=state,
-                            total_seconds=time.perf_counter() - total_start,
-                        )
-                        console.print(
-                            f"[red]Item {idx + 1}/{len(items)} {item_id}: data missing[/red]"
-                        )
-                        return
-                    try:
-                        source_context, raw_data = load_statistical_plot_payload(data_path)
-                        ar = item.get("aspect_ratio") or aspect_ratio
-                        gen_input = GenerationInput(
-                            source_context=source_context,
-                            communicative_intent=str(item["intent"]),
-                            diagram_type=DiagramType.STATISTICAL_PLOT,
-                            raw_data={"data": raw_data},
-                            aspect_ratio=ar,
-                        )
-                        result = await PaperBananaPipeline(settings=settings).generate(gen_input)
-                        mark_item_success(
-                            state,
-                            item_key,
-                            result.metadata.get("run_id"),
-                            result.image_path,
-                            len(result.iterations),
-                        )
-                        checkpoint_progress(
-                            batch_dir=batch_dir,
-                            state=state,
-                            total_seconds=time.perf_counter() - total_start,
-                        )
-                        console.print(
-                            f"[green]Item {idx + 1}/{len(items)} {item_id}: ok[/green] "
-                            f"[dim]{result.image_path}[/dim]"
-                        )
-                        return
-                    except Exception as e:
-                        mark_item_failure(state, item_key, str(e))
-                        checkpoint_progress(
-                            batch_dir=batch_dir,
-                            state=state,
-                            total_seconds=time.perf_counter() - total_start,
-                        )
-                        if attempt < max_retries:
-                            console.print(
-                                f"[yellow]Item {item_id}: retry {attempt + 1}/{max_retries} "
-                                f"after {e}[/yellow]"
-                            )
-                            continue
-                        console.print(
-                            f"[red]Item {idx + 1}/{len(items)} {item_id}: failed - {e}[/red]"
-                        )
-                        return
-
-        await asyncio.gather(*[_run_one(idx, item) for idx, item, _ in planned])
-
-    asyncio.run(_run_all())
-
-    total_elapsed = time.perf_counter() - total_start
-    report = checkpoint_progress(
-        batch_dir=batch_dir,
-        state=state,
-        total_seconds=total_elapsed,
-        mark_complete=True,
-    )
-    report_path = batch_dir / "batch_report.json"
-    succeeded = sum(1 for x in report["items"] if x.get("output_path"))
+    succeeded = int(result["succeeded"])
+    total_elapsed = 0.0
+    report_file = batch_dir / "batch_report.json"
+    if report_file.exists():
+        try:
+            report = json_mod.loads(report_file.read_text(encoding="utf-8"))
+            total_elapsed = float(report.get("total_seconds") or 0.0)
+        except Exception:
+            pass
     console.print(
         f"[green]Plot batch complete.[/green] [dim]{total_elapsed:.1f}s · "
         f"{succeeded}/{len(items)} succeeded[/dim]"
@@ -3097,6 +2946,284 @@ def benchmark(
     console.print(f"\nReport: [bold]{report_path / 'benchmark_report.json'}[/bold]")
 
 
+# ── Runs subcommands ──────────────────────────────────────────────
+
+
+@runs_app.command("list")
+def runs_list(
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Output directory containing run_* / batch_* folders",
+    ),
+    kind: str = typer.Option(
+        "run",
+        "--kind",
+        help="What to list: run, batch, or all",
+    ),
+    limit: int = typer.Option(50, "--limit", help="Max rows to show (per kind)"),
+    oldest_first: bool = typer.Option(False, "--oldest-first", help="Sort oldest→newest"),
+    plain: bool = typer.Option(
+        False,
+        "--plain",
+        help="Plain text output (newline-delimited, easier to parse in scripts/tests).",
+    ),
+) -> None:
+    """List recent runs and/or batch outputs under an output directory."""
+    from paperbanana.studio.runs import list_batch_ids, list_run_ids
+
+    out = Path(output_dir)
+    kind_norm = kind.strip().lower()
+    if kind_norm not in {"run", "batch", "all"}:
+        console.print("[red]Error:[/red] --kind must be one of: run, batch, all")
+        raise typer.Exit(1)
+
+    if not out.exists():
+        console.print(f"[red]Error:[/red] Output directory not found: {output_dir}")
+        raise typer.Exit(1)
+
+    if kind_norm in {"run", "all"}:
+        runs = list_run_ids(str(out))
+        if not oldest_first:
+            runs = list(reversed(runs))
+        if limit > 0:
+            runs = runs[:limit]
+
+        if plain:
+            if not runs:
+                typer.echo("No runs found.")
+            for run_id in runs:
+                row = _summarize_run_row(out, run_id)
+                typer.echo(
+                    "\t".join(
+                        [
+                            row["id"],
+                            row["modified"],
+                            row["type"],
+                            row["iters"],
+                            row["status"],
+                            row["caption"],
+                        ]
+                    )
+                )
+        else:
+            table = Table(title="Runs", show_lines=False)
+            table.add_column("run_id", style="bold")
+            table.add_column("modified", style="dim")
+            table.add_column("type")
+            table.add_column("iters", justify="right")
+            table.add_column("status")
+            table.add_column("caption")
+
+            for run_id in runs:
+                row = _summarize_run_row(out, run_id)
+                table.add_row(
+                    row["id"],
+                    row["modified"],
+                    row["type"],
+                    row["iters"],
+                    row["status"],
+                    row["caption"],
+                )
+
+            if runs:
+                console.print(table)
+            else:
+                console.print("No runs found.")
+
+    if kind_norm in {"batch", "all"}:
+        batches = list_batch_ids(str(out))
+        if not oldest_first:
+            batches = list(reversed(batches))
+        if limit > 0:
+            batches = batches[:limit]
+
+        if plain:
+            if not batches:
+                typer.echo("No batches found.")
+            for batch_id in batches:
+                row = _summarize_batch_row(out, batch_id)
+                typer.echo(
+                    "\t".join(
+                        [
+                            row["id"],
+                            row["modified"],
+                            row["kind"],
+                            row["items"],
+                            row["status"],
+                        ]
+                    )
+                )
+        else:
+            table = Table(title="Batches", show_lines=False)
+            table.add_column("batch_id", style="bold")
+            table.add_column("modified", style="dim")
+            table.add_column("kind")
+            table.add_column("items", justify="right")
+            table.add_column("status")
+
+            for batch_id in batches:
+                row = _summarize_batch_row(out, batch_id)
+                table.add_row(row["id"], row["modified"], row["kind"], row["items"], row["status"])
+
+            if batches:
+                console.print(table)
+            else:
+                console.print("No batches found.")
+
+
+@runs_app.command("show")
+def runs_show(
+    id: str = typer.Argument(..., help="Run or batch id (e.g. run_..., batch_...)"),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Output directory containing run_* / batch_* folders",
+    ),
+    kind: Optional[str] = typer.Option(
+        None,
+        "--kind",
+        help="Optional override: run or batch. If omitted, inferred from the id prefix.",
+    ),
+    plain: bool = typer.Option(
+        False,
+        "--plain",
+        help="Plain text output (newline-delimited, easier to parse in scripts/tests).",
+    ),
+) -> None:
+    """Show details for a single run or batch output."""
+    from paperbanana.studio.runs import load_batch_summary, load_run_summary
+
+    out = Path(output_dir)
+    if not out.exists():
+        console.print(f"[red]Error:[/red] Output directory not found: {output_dir}")
+        raise typer.Exit(1)
+
+    inferred = "batch" if id.startswith("batch_") else "run"
+    kind_norm = kind.strip().lower() if kind else inferred
+    if kind_norm not in {"run", "batch"}:
+        console.print("[red]Error:[/red] --kind must be one of: run, batch")
+        raise typer.Exit(1)
+
+    if kind_norm == "run":
+        summary = load_run_summary(str(out), id)
+        if not summary.get("exists"):
+            console.print(f"[red]Error:[/red] {summary.get('error')}")
+            raise typer.Exit(1)
+
+        lines = [
+            f"[bold]Run[/bold] {summary.get('run_id')}",
+            f"Directory: {summary.get('run_dir')}",
+            f"Final image: {summary.get('final_image') or '(none)'}",
+            f"Metadata: {summary.get('metadata_path') or '(none)'}",
+        ]
+        if summary.get("iteration_images"):
+            lines.append(f"Iterations: {len(summary['iteration_images'])}")
+
+        if plain:
+            plain_lines = [
+                f"run_id\t{summary.get('run_id')}",
+                f"run_dir\t{summary.get('run_dir')}",
+                f"final_image\t{summary.get('final_image') or '(none)'}",
+                f"metadata_path\t{summary.get('metadata_path') or '(none)'}",
+            ]
+            if summary.get("iteration_images"):
+                plain_lines.append(f"iterations\t{len(summary['iteration_images'])}")
+            typer.echo("\n".join(plain_lines))
+        else:
+            console.print(Panel.fit("\n".join(lines), border_style="green"))
+        if summary.get("run_input_preview"):
+            console.print("\n[bold]run_input.json (preview)[/bold]")
+            console.print(summary["run_input_preview"])
+        if summary.get("metadata_preview"):
+            console.print("\n[bold]metadata.json (preview)[/bold]")
+            console.print(summary["metadata_preview"])
+        return
+
+    summary = load_batch_summary(str(out), id)
+    if not summary.get("exists"):
+        console.print(f"[red]Error:[/red] {summary.get('error')}")
+        raise typer.Exit(1)
+
+    status_counts = summary.get("status_counts") or {}
+    status_line = (
+        ", ".join([f"{k}:{v}" for k, v in sorted(status_counts.items())]) if status_counts else "?"
+    )
+    lines = [
+        f"[bold]Batch[/bold] {summary.get('batch_id')}",
+        f"Directory: {summary.get('batch_dir')}",
+        f"Status: {status_line}",
+    ]
+    if plain:
+        plain_lines = [
+            f"batch_id\t{summary.get('batch_id')}",
+            f"batch_dir\t{summary.get('batch_dir')}",
+            f"status\t{status_line}",
+        ]
+        typer.echo("\n".join(plain_lines))
+    else:
+        console.print(Panel.fit("\n".join(lines), border_style="blue"))
+    if summary.get("report_preview"):
+        console.print("\n[bold]batch_report.json (preview)[/bold]")
+        console.print(summary["report_preview"])
+
+
+@runs_app.command("delete")
+def runs_delete(
+    id: str = typer.Argument(..., help="Run or batch id to delete"),
+    output_dir: str = typer.Option(
+        "outputs",
+        "--output-dir",
+        "-o",
+        help="Output directory containing run_* / batch_* folders",
+    ),
+    kind: Optional[str] = typer.Option(
+        None,
+        "--kind",
+        help="Optional override: run or batch. If omitted, inferred from the id prefix.",
+    ),
+    yes: bool = typer.Option(False, "--yes", help="Confirm deletion (required)"),
+) -> None:
+    """Delete a run_* or batch_* folder under the output directory."""
+    import shutil
+
+    if not yes:
+        console.print("[red]Error:[/red] Refusing to delete without --yes")
+        raise typer.Exit(1)
+
+    out = Path(output_dir)
+    if not out.exists():
+        console.print(f"[red]Error:[/red] Output directory not found: {output_dir}")
+        raise typer.Exit(1)
+
+    inferred = "batch" if id.startswith("batch_") else "run"
+    kind_norm = kind.strip().lower() if kind else inferred
+    if kind_norm not in {"run", "batch"}:
+        console.print("[red]Error:[/red] --kind must be one of: run, batch")
+        raise typer.Exit(1)
+
+    if kind_norm == "run" and not id.startswith("run_"):
+        console.print("[red]Error:[/red] Run ids must start with run_ (or pass --kind batch)")
+        raise typer.Exit(1)
+    if kind_norm == "batch" and not id.startswith("batch_"):
+        console.print("[red]Error:[/red] Batch ids must start with batch_ (or pass --kind run)")
+        raise typer.Exit(1)
+
+    target = (out / id).resolve()
+    root = out.resolve()
+    if root not in target.parents:
+        console.print("[red]Error:[/red] Refusing to delete outside output directory")
+        raise typer.Exit(1)
+    if not target.is_dir():
+        console.print("[red]Error:[/red] Target directory not found")
+        raise typer.Exit(1)
+
+    shutil.rmtree(target)
+    console.print(f"[green]Deleted[/green] {target}")
+
+
 # ── Data subcommands ──────────────────────────────────────────────
 
 
@@ -3387,6 +3514,48 @@ def studio(
         default_output_dir=output_dir,
         root_path=root_path,
     )
+
+
+@app.command("validate-manifest")
+def validate_manifest(
+    manifest: str = typer.Option(
+        ...,
+        "--manifest",
+        "-m",
+        help="Path to the YAML or JSON manifest file to validate.",
+    ),
+    manifest_type: str = typer.Option(
+        "auto",
+        "--type",
+        "-t",
+        help="Manifest type: 'batch', 'plot', or 'auto' (detect from content).",
+    ),
+) -> None:
+    """Validate a batch or plot-batch manifest without running any generation."""
+    from paperbanana.core.batch import validate_manifest as _validate
+
+    if manifest_type not in ("batch", "plot", "auto"):
+        console.print(
+            f"[red]Error: --type must be 'batch', 'plot', or 'auto'. Got: {manifest_type}[/red]"
+        )
+        raise typer.Exit(1)
+
+    manifest_path = Path(manifest)
+    if not manifest_path.exists():
+        console.print(f"[red]Error: Manifest not found: {manifest}[/red]")
+        raise typer.Exit(1)
+
+    errors = _validate(manifest_path, manifest_type=manifest_type)  # type: ignore[arg-type]
+
+    if not errors:
+        console.print(f"[green]✓ Manifest is valid: {manifest}[/green]")
+        raise typer.Exit(0)
+
+    console.print(f"[red]✗ Manifest validation failed: {manifest}[/red]")
+    console.print(f"[red]  {len(errors)} violation(s) found:[/red]")
+    for i, err in enumerate(errors, 1):
+        console.print(f"  [red]{i}. {err}[/red]")
+    raise typer.Exit(1)
 
 
 @app.command("show-config")
