@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import traceback
 from pathlib import Path
@@ -683,6 +684,161 @@ def run_plot_batch(
     lines.append(f"Succeeded: {ok}/{len(items)}")
     lines.append(f"Total time: {report['total_seconds']}s")
     return "\n".join(lines), str(batch_dir.resolve())
+
+
+def _preview_json_file(path: Path, *, max_chars: int = 10_000) -> str:
+    """Load JSON (or raw text) from disk for Studio previews."""
+    if not path.is_file():
+        return ""
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        data = json.loads(raw)
+        text = json.dumps(data, indent=2, ensure_ascii=False)
+    except (OSError, json.JSONDecodeError):
+        text = path.read_text(encoding="utf-8", errors="replace")
+    if len(text) > max_chars:
+        return text[:max_chars] + "\n\n… [truncated]"
+    return text
+
+
+def run_orchestration(
+    settings: Settings,
+    paper_file_path: str | None,
+    resume_orchestrate: str | None,
+    data_dir: str | None,
+    max_method_figures: int,
+    max_plot_figures: int,
+    pdf_pages: str | None,
+    dry_run: bool,
+    venue: str,
+    retry_failed: bool,
+    max_retries: int,
+    concurrency: int,
+    config_path: str | None,
+    verbose_logging: bool = False,
+) -> tuple[str, str, str, str]:
+    """Run figure-package orchestration (CLI parity).
+
+    Returns (log, orch_dir, plan_preview, package_preview).
+    """
+    from paperbanana.core.workflow_runner import run_orchestration_package
+
+    configure_logging(verbose=verbose_logging)
+    lines: list[str] = ["Starting figure-package orchestration…", ""]
+
+    def emit(msg: str) -> None:
+        lines.append(msg)
+
+    resume = (resume_orchestrate or "").strip() or None
+    paper_upload = (paper_file_path or "").strip() or None
+    if paper_upload and not Path(paper_upload).is_file():
+        paper_upload = None
+
+    if resume and paper_upload:
+        msg = "Error: clear the paper upload when using resume (provide only resume ID or path)."
+        lines.append(msg)
+        return "\n".join(lines), "", "", ""
+
+    if not resume and (not paper_upload or not Path(paper_upload).is_file()):
+        msg = "Error: upload a paper file (.txt, .md, or .pdf), or enter a resume ID / path."
+        lines.append(msg)
+        return "\n".join(lines), "", "", ""
+
+    if not resume:
+        paper_arg: str | None = paper_upload
+    else:
+        paper_arg = None
+
+    data_arg = (data_dir or "").strip() or None
+    pages_arg = (pdf_pages or "").strip() or None
+    if resume:
+        data_arg = None
+        pages_arg = None
+
+    cfg = (config_path or "").strip() or None
+    venue_s = (venue or "neurips").strip().lower()
+    if venue_s not in ("neurips", "icml", "acl", "ieee", "custom"):
+        venue_s = "neurips"
+
+    max_m = max(1, int(max_method_figures or 1))
+    max_p = max(0, int(max_plot_figures or 0))
+    mret = max(0, int(max_retries or 0))
+    conc = max(1, int(concurrency or 1))
+
+    out_root = Path((settings.output_dir or "outputs").strip() or "outputs")
+
+    out_fmt = str(settings.output_format)
+    if out_fmt not in ("png", "jpeg", "webp"):
+        lines.append(
+            f"Note: orchestration supports png/jpeg/webp only; using png (format was {out_fmt!r})."
+        )
+        lines.append("")
+        out_fmt = "png"
+
+    try:
+        result = run_orchestration_package(
+            paper=paper_arg,
+            resume_orchestrate=resume,
+            output_dir=out_root,
+            data_dir=data_arg,
+            max_method_figures=max_m,
+            max_plot_figures=max_p,
+            pdf_pages=pages_arg,
+            dry_run=bool(dry_run),
+            config=cfg,
+            vlm_provider=settings.vlm_provider,
+            vlm_model=settings.vlm_model,
+            image_provider=settings.image_provider,
+            image_model=settings.image_model,
+            iterations=settings.refinement_iterations,
+            auto=settings.auto_refine,
+            max_iterations=settings.max_iterations,
+            optimize=settings.optimize_inputs,
+            format=out_fmt,
+            save_prompts=settings.save_prompts,
+            venue=venue_s,
+            retry_failed=bool(retry_failed),
+            max_retries=mret,
+            concurrency=conc,
+            progress_callback=emit,
+            after_plan_callback=None,
+        )
+    except (FileNotFoundError, ValueError, ImportError, RuntimeError) as e:
+        lines.append(f"FAILED: {type(e).__name__}: {e}")
+        return "\n".join(lines), "", "", ""
+    except Exception as e:
+        lines.append(f"FAILED: {type(e).__name__}: {e}")
+        lines.append(traceback.format_exc())
+        return "\n".join(lines), "", "", ""
+
+    orch_dir = str(result.get("orchestrate_dir") or "")
+    plan_path = Path(str(result.get("orchestration_plan_path") or ""))
+
+    lines.append("")
+    if result.get("dry_run"):
+        lines.append("Dry run complete (plan only).")
+        plan_preview = _preview_json_file(plan_path)
+        pkg_preview = "(dry run — no figure_package.json; use run without dry run to generate.)"
+        return "\n".join(lines), orch_dir, plan_preview, pkg_preview
+
+    gen_n = result.get("generated_count", 0)
+    fail_n = result.get("failed_count", 0)
+    ok = result.get("strict_success")
+    lines.append(f"Done. generated={gen_n} failed={fail_n} strict_success={ok}")
+    if result.get("figure_package_path"):
+        lines.append(f"Package: {result['figure_package_path']}")
+    if result.get("figures_tex_path"):
+        lines.append(f"LaTeX: {result['figures_tex_path']}")
+    if result.get("captions_md_path"):
+        lines.append(f"Captions: {result['captions_md_path']}")
+
+    plan_preview = _preview_json_file(plan_path)
+    pkg_path = Path(str(result.get("figure_package_path") or ""))
+    pkg_preview = _preview_json_file(pkg_path) if pkg_path.is_file() else ""
+    if not pkg_preview and result.get("figure_package_path"):
+        pkg_preview = f"(not readable yet: {pkg_path})"
+
+    return "\n".join(lines), orch_dir, plan_preview, pkg_preview
 
 
 def _sanitize_output_filename(name: str) -> str:
