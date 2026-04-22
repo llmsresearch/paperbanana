@@ -236,6 +236,11 @@ def generate(
         "--venue",
         help="Target venue style (neurips, icml, acl, ieee, custom)",
     ),
+    vector_export: Optional[str] = typer.Option(
+        None,
+        "--vector-export",
+        help="Export structured vector diagram (Graphviz): none, svg, pdf, both",
+    ),
     progress_json: bool = typer.Option(
         False,
         "--progress-json",
@@ -272,6 +277,9 @@ def generate(
         console.print(
             f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
         )
+        raise typer.Exit(1)
+    if vector_export and vector_export.lower() not in ("none", "svg", "pdf", "both"):
+        console.print("[red]Error: --vector-export must be none, svg, pdf, or both[/red]")
         raise typer.Exit(1)
     if pdf_pages and (continue_last or continue_run):
         console.print(
@@ -324,6 +332,8 @@ def generate(
         overrides["budget_usd"] = budget
     if venue:
         overrides["venue"] = venue
+    if vector_export is not None:
+        overrides["vector_export"] = vector_export.lower()
     if prompt_dir:
         overrides["prompt_dir"] = prompt_dir
     if generate_caption:
@@ -402,6 +412,19 @@ def generate(
                     f"  [dim]●[/dim] Generating image (iter {event.iteration})...",
                     end="",
                 )
+            elif event.stage == PipelineProgressStage.STRUCTURER_START:
+                console.print("  [dim]●[/dim] Vector export (structurer)...", end="")
+            elif event.stage == PipelineProgressStage.STRUCTURER_END:
+                extra = event.extra or {}
+                err = extra.get("error")
+                if err:
+                    console.print(f" [yellow]![/yellow] [dim]{str(err)[:120]}[/dim]")
+                else:
+                    console.print(
+                        f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                        if event.seconds is not None
+                        else " [green]✓[/green]"
+                    )
             elif event.stage == PipelineProgressStage.VISUALIZER_END:
                 console.print(
                     f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
@@ -439,6 +462,10 @@ def generate(
         console.print(f"\n[green]Done![/green] Output saved to: [bold]{result.image_path}[/bold]")
         console.print(f"Run ID: {result.metadata.get('run_id', 'unknown')}")
         console.print(f"New iterations: {len(result.iterations)}")
+        if result.vector_svg_path:
+            console.print(f"SVG: {result.vector_svg_path}")
+        if result.vector_pdf_path:
+            console.print(f"PDF: {result.vector_pdf_path}")
         return
 
     # ── Normal generation mode ────────────────────────────────────
@@ -612,6 +639,20 @@ def generate(
                     if event.seconds is not None
                     else " [green]✓[/green]"
                 )
+            elif event.stage == PipelineProgressStage.STRUCTURER_START:
+                console.print("[bold]Vector[/bold] — Structured export")
+                console.print("  [dim]●[/dim] Building diagram IR (structurer)...", end="")
+            elif event.stage == PipelineProgressStage.STRUCTURER_END:
+                extra = event.extra or {}
+                err = extra.get("error")
+                if err:
+                    console.print(f" [yellow]![/yellow] [dim]{err[:120]}[/dim]")
+                else:
+                    console.print(
+                        f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                        if event.seconds is not None
+                        else " [green]✓[/green]"
+                    )
             elif event.stage == PipelineProgressStage.VISUALIZER_START:
                 if event.iteration == 1:
                     console.print("[bold]Phase 2[/bold] — Iterative Refinement")
@@ -671,6 +712,18 @@ def generate(
     if result.generated_caption:
         console.print("\n  [bold]Generated Caption:[/bold]")
         console.print(f"  {result.generated_caption}")
+    if result.vector_svg_path:
+        console.print(f"  SVG:    [bold]{result.vector_svg_path}[/bold]")
+    if result.vector_pdf_path:
+        console.print(f"  PDF:    [bold]{result.vector_pdf_path}[/bold]")
+    ve = result.metadata.get("vector_export") or {}
+    no_vector_files = not result.vector_svg_path and not result.vector_pdf_path
+    if ve.get("mode") not in (None, "none") and no_vector_files:
+        if not ve.get("graphviz_available"):
+            console.print(
+                "  [yellow]Vector export: install Graphviz and ensure `dot` is on PATH "
+                "to render SVG/PDF (diagram_ir.json was still saved).[/yellow]"
+            )
 
     cost_data = result.metadata.get("cost")
     if cost_data:

@@ -158,6 +158,14 @@ class ProgressLog:
             self.append("Phase 1 — Stylist: refining aesthetics…")
         elif st == PipelineProgressStage.STYLIST_END:
             self.append(f"Phase 1 — Stylist: done{sec}")
+        elif st == PipelineProgressStage.STRUCTURER_START:
+            self.append("Vector — Structurer: building diagram IR…")
+        elif st == PipelineProgressStage.STRUCTURER_END:
+            ex = event.extra or {}
+            if ex.get("error"):
+                self.append(f"Vector — Structurer: failed{sec}")
+            else:
+                self.append(f"Vector — export done{sec}")
         elif st == PipelineProgressStage.VISUALIZER_START:
             it = event.iteration or "?"
             tot = (event.extra or {}).get("total_iterations")

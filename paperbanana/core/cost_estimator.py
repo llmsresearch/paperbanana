@@ -13,6 +13,7 @@ _AVG_TOKENS: dict[str, tuple[int, int]] = {
     "retriever": (3000, 500),
     "planner": (6000, 2000),
     "stylist": (3000, 2000),
+    "structurer": (4000, 2000),
     "visualizer_vlm": (2000, 2000),  # for statistical plots (matplotlib code gen)
     "critic": (4000, 1500),
 }
@@ -69,6 +70,10 @@ def estimate_cost(
     breakdown["retriever"] = _vlm_cost("retriever")
     breakdown["planner"] = _vlm_cost("planner")
     breakdown["stylist"] = _vlm_cost("stylist")
+
+    ve = getattr(settings, "vector_export", "none")
+    if diagram_type == DiagramType.METHODOLOGY and ve != "none":
+        breakdown["structurer"] = _vlm_cost("structurer")
 
     # Phase 2: Iterative refinement
     vis_total = 0.0
