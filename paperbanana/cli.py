@@ -1340,6 +1340,11 @@ def sweep_report(
         "-f",
         help="Report format: markdown or html",
     ),
+    no_thumbnails: bool = typer.Option(
+        False,
+        "--no-thumbnails",
+        help="HTML only: skip the top-ranked thumbnail grid",
+    ),
 ):
     """Generate a human-readable report from an existing sweep run (sweep_report.json)."""
     if format not in ("markdown", "html", "md"):
@@ -1362,7 +1367,12 @@ def sweep_report(
     output_path = Path(output) if output else None
     fmt = "markdown" if format == "md" else format
     try:
-        written = write_sweep_report(path, output_path=output_path, format=fmt)
+        written = write_sweep_report(
+            path,
+            output_path=output_path,
+            format=fmt,
+            include_thumbnails=not no_thumbnails,
+        )
         console.print(f"[green]Report written to:[/green] [bold]{written}[/bold]")
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")

@@ -157,6 +157,7 @@ def _completed_report_payload(sweep_dir: Path) -> dict:
                 "critic_suggestions": 1,
                 "quality_proxy_score": 87.5,
                 "total_seconds": 6.5,
+                "output_path": str(sweep_dir / "variant_002" / "out.png"),
             },
             {
                 "variant_id": "variant_001",
@@ -168,6 +169,7 @@ def _completed_report_payload(sweep_dir: Path) -> dict:
                 "critic_suggestions": 2,
                 "quality_proxy_score": 75.0,
                 "total_seconds": 5.5,
+                "output_path": str(sweep_dir / "variant_001" / "out.png"),
             },
         ],
         "quality_proxy_note": (
@@ -406,3 +408,72 @@ def test_generate_sweep_report_html_without_quality_note(tmp_path: Path) -> None
     report.pop("quality_proxy_note")
     html = generate_sweep_report_html(report, tmp_path)
     assert 'class="note"' not in html
+
+
+# ---------------------------------------------------------------------------
+# thumbnail grid
+# ---------------------------------------------------------------------------
+
+
+def _make_image(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Minimal 1x1 PNG — we only care that the file exists at the given path.
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xff"
+        b"\xff?\x00\x05\xfe\x02\xfe\xdc\xccY\xe7\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+
+def test_generate_sweep_report_html_renders_thumbnail_grid(tmp_path: Path) -> None:
+    report = _completed_report_payload(tmp_path)
+    for item in report["results"]:
+        if item.get("output_path"):
+            _make_image(Path(item["output_path"]))
+    html = generate_sweep_report_html(report, tmp_path)
+    assert 'class="thumb-grid"' in html
+    assert 'src="variant_001/out.png"' in html
+    assert 'src="variant_002/out.png"' in html
+    assert "Top Variants (visual)" in html
+
+
+def test_generate_sweep_report_html_thumbnails_disabled(tmp_path: Path) -> None:
+    report = _completed_report_payload(tmp_path)
+    for item in report["results"]:
+        if item.get("output_path"):
+            _make_image(Path(item["output_path"]))
+    html = generate_sweep_report_html(report, tmp_path, include_thumbnails=False)
+    assert 'class="thumb-grid"' not in html
+    assert "Top Variants (visual)" not in html
+
+
+def test_generate_sweep_report_html_thumbnails_skip_missing_files(tmp_path: Path) -> None:
+    report = _completed_report_payload(tmp_path)
+    # Only create the image for variant_002; variant_001 should be silently skipped.
+    _make_image(tmp_path / "variant_002" / "out.png")
+    html = generate_sweep_report_html(report, tmp_path)
+    assert 'src="variant_002/out.png"' in html
+    assert 'src="variant_001/out.png"' not in html
+
+
+def test_generate_sweep_report_html_thumbnails_skip_when_no_images(tmp_path: Path) -> None:
+    report = _completed_report_payload(tmp_path)
+    html = generate_sweep_report_html(report, tmp_path)
+    # No files on disk → grid section omitted entirely.
+    assert 'class="thumb-grid"' not in html
+    assert "Top Variants (visual)" not in html
+
+
+def test_generate_sweep_report_html_thumbnails_dry_run_skipped(tmp_path: Path) -> None:
+    html = generate_sweep_report_html(_dry_run_payload(), tmp_path)
+    assert 'class="thumb-grid"' not in html
+
+
+def test_write_sweep_report_html_passes_through_thumbnails_flag(tmp_path: Path) -> None:
+    payload = _completed_report_payload(tmp_path)
+    for item in payload["results"]:
+        if item.get("output_path"):
+            _make_image(Path(item["output_path"]))
+    (tmp_path / SWEEP_REPORT_FILENAME).write_text(json.dumps(payload), encoding="utf-8")
+    written = write_sweep_report(tmp_path, format="html", include_thumbnails=False)
+    assert 'class="thumb-grid"' not in written.read_text(encoding="utf-8")
