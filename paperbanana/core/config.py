@@ -83,6 +83,7 @@ class Settings(BaseSettings):
 
     # Reference settings
     reference_set_path: str = "data/reference_sets"
+    reference_category: Optional[list[str]] = None
     guidelines_path: str = "data/guidelines"
 
     # Cache settings
@@ -268,6 +269,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "pipeline.exemplar_retrieval_timeout_seconds": "exemplar_retrieval_timeout_seconds",
         "pipeline.exemplar_retrieval_max_retries": "exemplar_retrieval_max_retries",
         "reference.path": "reference_set_path",
+        "reference.category": "reference_category",
         "reference.guidelines_path": "guidelines_path",
         "pipeline.venue": "venue",
         "pipeline.vector_export": "vector_export",
