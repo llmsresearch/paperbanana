@@ -413,6 +413,126 @@ def test_sweep_writes_report_with_mocked_pipeline(tmp_path, monkeypatch):
     assert ranked[0]["quality_proxy_score"] > ranked[1]["quality_proxy_score"]
 
 
+def test_generate_rejects_unknown_reference_category():
+    """--reference-category exits 1 with a helpful error for unknown values."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Sample methodology text for testing.")
+        input_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--input",
+                input_path,
+                "--caption",
+                "test",
+                "--dry-run",
+                "--reference-category",
+                "bogus_category",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "Unknown reference category" in result.output
+        assert "bogus_category" in result.output
+        # Error should list valid categories to help the user recover.
+        assert "vision_perception" in result.output
+        assert "nlp_language" in result.output
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
+def test_generate_rejects_mixed_valid_and_invalid_reference_categories():
+    """One invalid token in a comma-separated list fails validation."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Sample methodology text for testing.")
+        input_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--input",
+                input_path,
+                "--caption",
+                "test",
+                "--dry-run",
+                "--reference-category",
+                "vision_perception,not_a_category",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "not_a_category" in result.output
+        assert "Unknown reference category" in result.output
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
+def test_generate_accepts_valid_reference_category():
+    """Single valid category passes validation and reaches dry-run output."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Sample methodology text for testing.")
+        input_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--input",
+                input_path,
+                "--caption",
+                "test",
+                "--dry-run",
+                "--reference-category",
+                "vision_perception",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Dry Run" in result.output
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
+def test_generate_accepts_multiple_valid_reference_categories(monkeypatch):
+    """Comma-separated categories parse into a list and propagate to Settings."""
+    import paperbanana.core.config as config_mod
+
+    captured: dict[str, object] = {}
+    real_init = config_mod.Settings.__init__
+
+    def _spy_init(self, **kwargs):
+        captured["reference_category"] = kwargs.get("reference_category")
+        real_init(self, **kwargs)
+
+    monkeypatch.setattr(config_mod.Settings, "__init__", _spy_init)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Sample methodology text for testing.")
+        input_path = f.name
+
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--input",
+                input_path,
+                "--caption",
+                "test",
+                "--dry-run",
+                "--reference-category",
+                "vision_perception, nlp_language",  # whitespace must be tolerated
+            ],
+        )
+        assert result.exit_code == 0
+        assert captured["reference_category"] == ["vision_perception", "nlp_language"]
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
 def test_generate_accepts_vector_flag():
     """--vector flag is accepted by the CLI in dry-run mode."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
