@@ -40,6 +40,9 @@ class VisualizerAgent(BaseAgent):
         self.output_dir = Path(output_dir)
         self._last_vector_paths: dict[str, str] = {}
 
+    def set_output_dir(self, output_dir: str | Path) -> None:
+        self.output_dir = Path(output_dir)
+
     @property
     def agent_name(self) -> str:
         return "visualizer"
