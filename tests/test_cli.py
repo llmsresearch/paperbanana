@@ -12,6 +12,24 @@ from paperbanana.cli import app
 
 runner = CliRunner()
 HELP_TERMINAL_WIDTH = 200
+HELP_ENV = {
+    "COLUMNS": str(HELP_TERMINAL_WIDTH),
+    "NO_COLOR": "1",
+    "TERM": "dumb",
+}
+
+
+def invoke_help(*args: str) -> str:
+    """Render CLI help in a stable plain-text format for assertions."""
+    result = runner.invoke(
+        app,
+        [*args, "--help"],
+        terminal_width=HELP_TERMINAL_WIDTH,
+        color=False,
+        env=HELP_ENV,
+    )
+    assert result.exit_code == 0
+    return result.output
 
 
 def test_generate_dry_run_valid_inputs():
@@ -874,21 +892,19 @@ def test_tikz_subcommand_missing_source_context():
 
 def test_tikz_subcommand_help():
     """paperbanana tikz --help shows expected options."""
-    result = runner.invoke(app, ["tikz", "--help"], terminal_width=HELP_TERMINAL_WIDTH)
-    assert result.exit_code == 0
-    assert "--input" in result.output
-    assert "--output" in result.output
-    assert "--source-context" in result.output
-    assert "--diagram-type" in result.output
-    assert "--vlm-provider" in result.output
-    assert "--venue" in result.output
+    output = invoke_help("tikz")
+    assert "--input" in output
+    assert "--output" in output
+    assert "--source-context" in output
+    assert "--diagram-type" in output
+    assert "--vlm-provider" in output
+    assert "--venue" in output
 
 
 def test_plot_accepts_export_pgfplots_flag(tmp_path):
     """paperbanana plot --help shows --export-pgfplots flag."""
-    result = runner.invoke(app, ["plot", "--help"], terminal_width=HELP_TERMINAL_WIDTH)
-    assert result.exit_code == 0
-    assert "--export-pgfplots" in result.output
+    output = invoke_help("plot")
+    assert "--export-pgfplots" in output
 
 
 def test_batch_prints_status_table_on_partial_failure(tmp_path, monkeypatch):
