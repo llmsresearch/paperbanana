@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from paperbanana.cli import app
 
 runner = CliRunner()
+HELP_TERMINAL_WIDTH = 200
 
 
 def test_generate_dry_run_valid_inputs():
@@ -681,7 +682,7 @@ def test_tikz_subcommand_missing_source_context():
 
 def test_tikz_subcommand_help():
     """paperbanana tikz --help shows expected options."""
-    result = runner.invoke(app, ["tikz", "--help"])
+    result = runner.invoke(app, ["tikz", "--help"], terminal_width=HELP_TERMINAL_WIDTH)
     assert result.exit_code == 0
     assert "--input" in result.output
     assert "--output" in result.output
@@ -693,7 +694,7 @@ def test_tikz_subcommand_help():
 
 def test_plot_accepts_export_pgfplots_flag(tmp_path):
     """paperbanana plot --help shows --export-pgfplots flag."""
-    result = runner.invoke(app, ["plot", "--help"])
+    result = runner.invoke(app, ["plot", "--help"], terminal_width=HELP_TERMINAL_WIDTH)
     assert result.exit_code == 0
     assert "--export-pgfplots" in result.output
 
