@@ -11,6 +11,7 @@ from paperbanana.studio import runs as runs_mod
 from paperbanana.studio.runner import (
     ASPECT_RATIO_CHOICES,
     IMAGE_PROVIDER_CHOICES,
+    REFERENCE_CATEGORY_CHOICES,
     VLM_PROVIDER_CHOICES,
     build_settings,
     merge_context,
@@ -220,6 +221,13 @@ def build_studio_app(
                     choices=ASPECT_RATIO_CHOICES,
                     value="default",
                 )
+                ref_cat = gr.Dropdown(
+                    label="Reference category filter",
+                    choices=REFERENCE_CATEGORY_CHOICES,
+                    value="",
+                    multiselect=True,
+                    info="Constrain retrieval to specific domains (empty = all)",
+                )
                 ref_ids = gr.Textbox(
                     label="Reference IDs (optional)",
                     placeholder="Comma-separated IDs, e.g. 2404.15806v1,2312.00001v1",
@@ -253,11 +261,15 @@ def build_studio_app(
                     file,
                     caption,
                     aspect,
+                    ref_cats,
                     ref_ids_str,
                 ):
                     _dotenv()
                     try:
+                        cats = [x for x in (ref_cats or []) if x]
                         st = _settings(od, c, vp, vm, ip, im, fo, it, au, mx, op, sp, sd)
+                        if cats:
+                            st.reference_category = cats
                         ctx = merge_context(text, _upload_path(file))
                         if not ctx.strip():
                             return "Context is empty.", None, []
@@ -297,6 +309,7 @@ def build_studio_app(
                         ctx_file,
                         cap,
                         ar,
+                        ref_cat,
                         ref_ids,
                     ],
                     outputs=[d_log, d_img, d_gal],

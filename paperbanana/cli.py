@@ -256,6 +256,16 @@ def generate(
         "--generate-caption",
         help="Auto-generate a publication-ready figure caption (one extra VLM call)",
     ),
+    reference_category: Optional[str] = typer.Option(
+        None,
+        "--reference-category",
+        help=(
+            "Filter reference examples by category (comma-separated). "
+            "Valid: agent_reasoning, generative_learning, healthcare_medical, "
+            "multimodal_fusion, nlp_language, optimization_theory, robotics_control, "
+            "science_applications, systems_networking, vision_perception"
+        ),
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
     ),
@@ -286,6 +296,29 @@ def generate(
             "[red]Error: --pdf-pages cannot be used with --continue or --continue-run[/red]"
         )
         raise typer.Exit(1)
+
+    _valid_categories = {
+        "agent_reasoning",
+        "generative_learning",
+        "healthcare_medical",
+        "multimodal_fusion",
+        "nlp_language",
+        "optimization_theory",
+        "robotics_control",
+        "science_applications",
+        "systems_networking",
+        "vision_perception",
+    }
+    parsed_categories: Optional[list[str]] = None
+    if reference_category:
+        parsed_categories = [c.strip() for c in reference_category.split(",") if c.strip()]
+        unknown = [c for c in parsed_categories if c not in _valid_categories]
+        if unknown:
+            console.print(
+                f"[red]Error: Unknown reference category: {', '.join(unknown)}.\n"
+                f"Valid categories: {', '.join(sorted(_valid_categories))}[/red]"
+            )
+            raise typer.Exit(1)
 
     configure_logging(verbose=verbose)
 
@@ -338,6 +371,8 @@ def generate(
         overrides["prompt_dir"] = prompt_dir
     if generate_caption:
         overrides["generate_caption"] = True
+    if parsed_categories:
+        overrides["reference_category"] = parsed_categories
 
     if config:
         settings = Settings.from_yaml(config, **overrides)
