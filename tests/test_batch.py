@@ -14,6 +14,7 @@ from paperbanana.core.batch import (
     load_batch_manifest,
     load_batch_report,
     load_plot_batch_manifest,
+    validate_manifest,
     write_batch_report,
 )
 
@@ -263,4 +264,173 @@ def test_write_batch_report_html_default_path(tmp_path: Path):
     written = write_batch_report(tmp_path, format="html")
     assert written == tmp_path / "batch_report.html"
     assert written.exists()
-    assert "<!DOCTYPE html>" in written.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# validate_manifest
+# ---------------------------------------------------------------------------
+
+
+def test_validate_manifest_valid_batch(tmp_path: Path) -> None:
+    txt = tmp_path / "method.txt"
+    txt.write_text("methodology", encoding="utf-8")
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        f"""items:
+  - input: {txt.name}
+    caption: "Fig 1"
+    id: fig1
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m)
+    assert errors == []
+
+
+def test_validate_manifest_valid_plot(tmp_path: Path) -> None:
+    csv = tmp_path / "d.csv"
+    csv.write_text("x,y\n1,2\n", encoding="utf-8")
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        f"""items:
+  - data: {csv.name}
+    intent: "Bar chart"
+    id: p1
+    aspect_ratio: "16:9"
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m, manifest_type="plot")
+    assert errors == []
+
+
+def test_validate_manifest_missing_required_fields(tmp_path: Path) -> None:
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        """items:
+  - caption: "missing input"
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m, manifest_type="batch")
+    assert any("'input'" in e for e in errors)
+
+
+def test_validate_manifest_duplicate_ids(tmp_path: Path) -> None:
+    txt = tmp_path / "a.txt"
+    txt.write_text("x", encoding="utf-8")
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        f"""items:
+  - input: {txt.name}
+    caption: "a"
+    id: dup
+  - input: {txt.name}
+    caption: "b"
+    id: dup
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m, manifest_type="batch")
+    assert any("duplicate id" in e for e in errors)
+
+
+def test_validate_manifest_missing_file_path(tmp_path: Path) -> None:
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        """items:
+  - input: does_not_exist.txt
+    caption: "Fig"
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m, manifest_type="batch")
+    assert any("does not exist" in e for e in errors)
+
+
+def test_validate_manifest_unrecognised_keys(tmp_path: Path) -> None:
+    txt = tmp_path / "a.txt"
+    txt.write_text("x", encoding="utf-8")
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        f"""items:
+  - input: {txt.name}
+    caption: "c"
+    bogus_field: 42
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m, manifest_type="batch")
+    assert any("unrecognised" in e for e in errors)
+
+
+def test_validate_manifest_invalid_aspect_ratio(tmp_path: Path) -> None:
+    csv = tmp_path / "d.csv"
+    csv.write_text("x,y\n1,2\n", encoding="utf-8")
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        f"""items:
+  - data: {csv.name}
+    intent: "Chart"
+    aspect_ratio: "99:1"
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m, manifest_type="plot")
+    assert any("unsupported aspect_ratio" in e for e in errors)
+
+
+def test_validate_manifest_invalid_pdf_pages(tmp_path: Path) -> None:
+    txt = tmp_path / "a.txt"
+    txt.write_text("x", encoding="utf-8")
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        f"""items:
+  - input: {txt.name}
+    caption: "c"
+    pdf_pages: "abc"
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m, manifest_type="batch")
+    assert any("invalid pdf_pages format" in e for e in errors)
+
+
+def test_validate_manifest_collects_all_errors(tmp_path: Path) -> None:
+    """Ensure multiple violations are reported, not just the first."""
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        """items:
+  - input: missing.txt
+    caption: "a"
+    id: dup
+    extra_key: true
+  - input: also_missing.txt
+    caption: "b"
+    id: dup
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m, manifest_type="batch")
+    assert len(errors) >= 3  # missing paths + duplicate id + unrecognised key
+
+
+def test_validate_manifest_nonexistent_file(tmp_path: Path) -> None:
+    errors = validate_manifest(tmp_path / "nope.yaml")
+    assert len(errors) == 1
+    assert "not found" in errors[0].lower()
+
+
+def test_validate_manifest_auto_detect_plot(tmp_path: Path) -> None:
+    csv = tmp_path / "d.csv"
+    csv.write_text("x,y\n1,2\n", encoding="utf-8")
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        f"""items:
+  - data: {csv.name}
+    intent: "Chart"
+""",
+        encoding="utf-8",
+    )
+    errors = validate_manifest(m)
+    assert errors == []

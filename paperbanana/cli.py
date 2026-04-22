@@ -3318,6 +3318,48 @@ def studio(
     )
 
 
+@app.command("validate-manifest")
+def validate_manifest(
+    manifest: str = typer.Option(
+        ...,
+        "--manifest",
+        "-m",
+        help="Path to the YAML or JSON manifest file to validate.",
+    ),
+    manifest_type: str = typer.Option(
+        "auto",
+        "--type",
+        "-t",
+        help="Manifest type: 'batch', 'plot', or 'auto' (detect from content).",
+    ),
+) -> None:
+    """Validate a batch or plot-batch manifest without running any generation."""
+    from paperbanana.core.batch import validate_manifest as _validate
+
+    if manifest_type not in ("batch", "plot", "auto"):
+        console.print(
+            f"[red]Error: --type must be 'batch', 'plot', or 'auto'. Got: {manifest_type}[/red]"
+        )
+        raise typer.Exit(1)
+
+    manifest_path = Path(manifest)
+    if not manifest_path.exists():
+        console.print(f"[red]Error: Manifest not found: {manifest}[/red]")
+        raise typer.Exit(1)
+
+    errors = _validate(manifest_path, manifest_type=manifest_type)  # type: ignore[arg-type]
+
+    if not errors:
+        console.print(f"[green]✓ Manifest is valid: {manifest}[/green]")
+        raise typer.Exit(0)
+
+    console.print(f"[red]✗ Manifest validation failed: {manifest}[/red]")
+    console.print(f"[red]  {len(errors)} violation(s) found:[/red]")
+    for i, err in enumerate(errors, 1):
+        console.print(f"  [red]{i}. {err}[/red]")
+    raise typer.Exit(1)
+
+
 @app.command("show-config")
 def show_config(
     json_output: bool = typer.Option(False, "--json", help="Emit resolved config as JSON"),
