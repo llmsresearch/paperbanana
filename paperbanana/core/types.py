@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
+
+VectorExportMode = Literal["none", "svg", "pdf", "both"]
 
 # Supported aspect ratios for diagram/plot generation.
 SUPPORTED_ASPECT_RATIOS = {
@@ -31,6 +33,8 @@ class PipelineProgressStage(str, Enum):
     PLANNER_END = "planner_end"
     STYLIST_START = "stylist_start"
     STYLIST_END = "stylist_end"
+    STRUCTURER_START = "structurer_start"
+    STRUCTURER_END = "structurer_end"
     VISUALIZER_START = "visualizer_start"
     VISUALIZER_END = "visualizer_end"
     CRITIC_START = "critic_start"
@@ -74,6 +78,18 @@ class GenerationInput(BaseModel):
             "Supported: 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9. "
             "If None, uses provider default."
         ),
+    )
+    reference_ids: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Explicit reference example IDs to use, bypassing automatic retrieval. "
+            "When provided, the RetrieverAgent is skipped and these examples are "
+            "looked up directly from the ReferenceStore."
+        ),
+    )
+    vector_export: Optional[VectorExportMode] = Field(
+        default=None,
+        description="Optional vector export (svg/pdf/both); None uses Settings.vector_export",
     )
 
     @field_validator("aspect_ratio")
@@ -146,6 +162,12 @@ class GenerationOutput(BaseModel):
     )
     tikz_path: Optional[str] = Field(
         default=None, description="Path to the exported LaTeX/TikZ source file, if generated"
+    )
+    vector_svg_path: Optional[str] = Field(
+        default=None, description="Path to exported SVG (methodology + vector export)"
+    )
+    vector_pdf_path: Optional[str] = Field(
+        default=None, description="Path to exported PDF (methodology + vector export)"
     )
 
 

@@ -158,6 +158,14 @@ class ProgressLog:
             self.append("Phase 1 — Stylist: refining aesthetics…")
         elif st == PipelineProgressStage.STYLIST_END:
             self.append(f"Phase 1 — Stylist: done{sec}")
+        elif st == PipelineProgressStage.STRUCTURER_START:
+            self.append("Vector — Structurer: building diagram IR…")
+        elif st == PipelineProgressStage.STRUCTURER_END:
+            ex = event.extra or {}
+            if ex.get("error"):
+                self.append(f"Vector — Structurer: failed{sec}")
+            else:
+                self.append(f"Vector — export done{sec}")
         elif st == PipelineProgressStage.VISUALIZER_START:
             it = event.iteration or "?"
             tot = (event.extra or {}).get("total_iterations")
@@ -188,6 +196,7 @@ def run_methodology(
     source_context: str,
     caption: str,
     aspect_ratio_label: str,
+    reference_ids: Optional[str] = None,
     verbose_logging: bool = False,
 ) -> tuple[str, Optional[str], list[tuple[str, str]], str]:
     """Run methodology diagram generation. Returns (log, final_path, gallery, error)."""
@@ -196,11 +205,15 @@ def run_methodology(
     log.append("Starting methodology diagram pipeline…")
     err = ""
     try:
+        ref_id_list = None
+        if reference_ids:
+            ref_id_list = [rid.strip() for rid in reference_ids.split(",") if rid.strip()]
         gen_in = GenerationInput(
             source_context=source_context,
             communicative_intent=caption.strip(),
             diagram_type=DiagramType.METHODOLOGY,
             aspect_ratio=_aspect_ratio_value(aspect_ratio_label),
+            reference_ids=ref_id_list,
         )
 
         async def _go():

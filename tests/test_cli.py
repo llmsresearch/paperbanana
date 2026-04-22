@@ -71,6 +71,198 @@ def test_generate_accepts_progress_json_flag():
         Path(input_path).unlink(missing_ok=True)
 
 
+def test_orchestrate_dry_run_writes_plan(tmp_path):
+    """orchestrate --dry-run should emit a package plan on disk."""
+    paper_path = tmp_path / "paper.txt"
+    paper_path.write_text(
+        "\n".join(
+            [
+                "A Very Good Paper Title",
+                "",
+                "1 Introduction",
+                "We introduce a new system.",
+                "",
+                "2 Method",
+                "Our method has encoder, retriever, and critic modules.",
+                "",
+                "3 Experiments",
+                "We compare against strong baselines.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "orchestrate",
+            "--paper",
+            str(paper_path),
+            "--output-dir",
+            str(tmp_path),
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Dry run complete" in result.output
+
+    plans = list(tmp_path.glob("orchestrate_*/orchestration_plan.json"))
+    assert len(plans) == 1
+    payload = json.loads(plans[0].read_text(encoding="utf-8"))
+    assert payload["paper_title"] == "A Very Good Paper Title"
+    assert len(payload["methodology_items"]) >= 1
+
+
+def test_orchestrate_generates_package_with_mocked_pipeline(tmp_path, monkeypatch):
+    """orchestrate writes package manifest + latex artifacts in execution mode."""
+    paper_path = tmp_path / "paper.txt"
+    paper_path.write_text(
+        "\n".join(
+            [
+                "Paper Title",
+                "",
+                "1 Method Overview",
+                "Our framework has three blocks.",
+                "",
+                "2 Training Pipeline",
+                "We optimize with curriculum and regularization.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    call_state = {"n": 0}
+
+    class _FakePipeline:
+        def __init__(self, settings=None, **kwargs):
+            self.settings = settings
+            self.run_id = "run_fake"
+
+        async def generate(self, gen_input):
+            from paperbanana.core.types import GenerationOutput
+
+            call_state["n"] += 1
+            out = tmp_path / f"fake_{call_state['n']}.png"
+            out.write_bytes(b"fake-png")
+            return GenerationOutput(
+                image_path=str(out),
+                description="desc",
+                iterations=[],
+                metadata={"run_id": f"run_{call_state['n']}"},
+            )
+
+    monkeypatch.setattr("paperbanana.core.pipeline.PaperBananaPipeline", _FakePipeline)
+
+    result = runner.invoke(
+        app,
+        [
+            "orchestrate",
+            "--paper",
+            str(paper_path),
+            "--output-dir",
+            str(tmp_path),
+            "--max-method-figures",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Orchestration complete" in result.output
+
+    packages = list(tmp_path.glob("orchestrate_*/figure_package.json"))
+    assert len(packages) == 1
+    package = json.loads(packages[0].read_text(encoding="utf-8"))
+    assert package["planned_methodology_items"] >= 1
+    assert len(package["generated_items"]) >= 1
+
+    package_dir = packages[0].parent
+    assert (package_dir / "figures.tex").exists()
+    assert (package_dir / "captions.md").exists()
+
+
+def test_orchestrate_resume_retry_failed_item(tmp_path, monkeypatch):
+    """resume-orchestrate retries failed tasks and updates package report."""
+    paper_path = tmp_path / "paper.txt"
+    paper_path.write_text(
+        "\n".join(
+            [
+                "Paper Title",
+                "",
+                "1 Method",
+                "A single section for one method figure.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    call_state = {"n": 0}
+
+    class _FlakyPipeline:
+        def __init__(self, settings=None, **kwargs):
+            self.settings = settings
+            self.run_id = "run_flaky"
+
+        async def generate(self, gen_input):
+            from paperbanana.core.types import GenerationOutput
+
+            call_state["n"] += 1
+            if call_state["n"] == 1:
+                raise RuntimeError("simulated generation failure")
+            out = tmp_path / "flaky_success.png"
+            out.write_bytes(b"ok")
+            return GenerationOutput(
+                image_path=str(out),
+                description="desc",
+                iterations=[],
+                metadata={"run_id": "run_success"},
+            )
+
+    monkeypatch.setattr("paperbanana.core.pipeline.PaperBananaPipeline", _FlakyPipeline)
+
+    first = runner.invoke(
+        app,
+        [
+            "orchestrate",
+            "--paper",
+            str(paper_path),
+            "--output-dir",
+            str(tmp_path),
+            "--max-method-figures",
+            "1",
+            "--max-plot-figures",
+            "0",
+        ],
+    )
+    assert first.exit_code == 1
+    assert "failed" in first.output.lower()
+
+    runs = list(tmp_path.glob("orchestrate_*"))
+    assert len(runs) == 1
+    orchestrate_dir = runs[0]
+    checkpoint_path = orchestrate_dir / "orchestration_checkpoint.json"
+    assert checkpoint_path.exists()
+    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    statuses = [x["status"] for x in checkpoint["items"].values()]
+    assert statuses == ["failed"]
+
+    second = runner.invoke(
+        app,
+        [
+            "orchestrate",
+            "--resume-orchestrate",
+            str(orchestrate_dir),
+            "--retry-failed",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+    assert second.exit_code == 0
+    assert "Orchestration complete" in second.output
+
+    package = json.loads((orchestrate_dir / "figure_package.json").read_text(encoding="utf-8"))
+    assert len(package["generated_items"]) == 1
+    assert package["failures"] == []
+
+
 def test_sweep_dry_run_writes_report(tmp_path):
     """sweep --dry-run plans variants and writes sweep_report.json."""
     input_path = tmp_path / "input.txt"
@@ -770,3 +962,147 @@ def test_evaluate_plot_rejects_missing_data_file(tmp_path):
     )
     assert result.exit_code == 1
     assert "Data file not found" in result.output
+
+
+# ── References subcommand tests ──────────────────────────────────
+
+
+def _build_reference_store(tmp_path, examples=None):
+    """Create a minimal reference store for testing."""
+    store_dir = tmp_path / "ref_store"
+    store_dir.mkdir()
+    (store_dir / "images").mkdir()
+
+    if examples is None:
+        examples = [
+            {
+                "id": "2404.00001v1",
+                "source_context": "Methodology section text.",
+                "caption": "Overview of our model architecture.",
+                "image_path": "images/2404.00001v1.jpg",
+                "category": "nlp_language",
+                "aspect_ratio": 1.5,
+            },
+            {
+                "id": "2404.00002v1",
+                "source_context": "Another methodology section.",
+                "caption": "Training pipeline for the vision model.",
+                "image_path": "images/2404.00002v1.jpg",
+                "category": "vision_perception",
+                "aspect_ratio": 2.0,
+            },
+            {
+                "id": "2404.00003v1",
+                "source_context": "Third methodology section.",
+                "caption": "Agent reasoning framework.",
+                "image_path": "images/2404.00003v1.jpg",
+                "category": "nlp_language",
+                "aspect_ratio": 1.0,
+            },
+        ]
+
+    data = {
+        "metadata": {
+            "name": "test",
+            "version": "1.0.0",
+            "categories": list({e["category"] for e in examples}),
+            "total_examples": len(examples),
+        },
+        "examples": examples,
+    }
+    (store_dir / "index.json").write_text(json.dumps(data), encoding="utf-8")
+    return store_dir
+
+
+def test_references_list(tmp_path, monkeypatch):
+    """references list prints a table with all examples."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "list"])
+    assert result.exit_code == 0
+    assert "2404.00001v1" in result.output
+    assert "2404.00002v1" in result.output
+    assert "2404.00003v1" in result.output
+    assert "3" in result.output  # count in title
+
+
+def test_references_list_filter_by_category(tmp_path, monkeypatch):
+    """references list --category filters correctly."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "list", "--category", "vision_perception"])
+    assert result.exit_code == 0
+    assert "2404.00002v1" in result.output
+    assert "2404.00001v1" not in result.output
+
+
+def test_references_list_json(tmp_path, monkeypatch):
+    """references list --json emits valid JSON."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "list", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert len(data) == 3
+    assert all("id" in item for item in data)
+
+
+def test_references_show(tmp_path, monkeypatch):
+    """references show displays details for a specific example."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "show", "2404.00001v1"])
+    assert result.exit_code == 0
+    assert "2404.00001v1" in result.output
+    assert "nlp_language" in result.output
+    assert "Overview of our model architecture" in result.output
+
+
+def test_references_show_not_found(tmp_path, monkeypatch):
+    """references show exits 1 for unknown ID."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "show", "nonexistent"])
+    assert result.exit_code == 1
+    assert "No reference found" in result.output
+
+
+def test_references_show_json(tmp_path, monkeypatch):
+    """references show --json emits valid JSON."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "show", "2404.00001v1", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["id"] == "2404.00001v1"
+    assert data["category"] == "nlp_language"
+
+
+def test_references_categories(tmp_path, monkeypatch):
+    """references categories shows category counts."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "categories"])
+    assert result.exit_code == 0
+    assert "nlp_language" in result.output
+    assert "vision_perception" in result.output
+    assert "3" in result.output  # total
+
+
+def test_references_categories_json(tmp_path, monkeypatch):
+    """references categories --json emits valid JSON with counts."""
+    store_dir = _build_reference_store(tmp_path)
+    monkeypatch.setenv("REFERENCE_SET_PATH", str(store_dir))
+
+    result = runner.invoke(app, ["references", "categories", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["nlp_language"] == 2
+    assert data["vision_perception"] == 1

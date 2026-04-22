@@ -236,19 +236,19 @@ def test_optimizer_from_yaml():
 
 
 def test_vector_export_defaults_false():
-    """vector_export defaults to False."""
+    """vector_export defaults to 'none'."""
     settings = Settings()
-    assert settings.vector_export is False
+    assert settings.vector_export == "none"
 
 
 def test_vector_export_can_be_enabled():
-    """vector_export can be enabled via constructor."""
+    """vector_export can be enabled via constructor (legacy bool -> both)."""
     settings = Settings(vector_export=True)
-    assert settings.vector_export is True
+    assert settings.vector_export == "both"
 
 
 def test_vector_export_from_yaml():
-    """output.vector_export loads from YAML config."""
+    """output.vector_export loads from YAML config (legacy bool -> both)."""
     import yaml
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
@@ -256,7 +256,7 @@ def test_vector_export_from_yaml():
         path = f.name
     try:
         settings = Settings.from_yaml(path)
-        assert settings.vector_export is True
+        assert settings.vector_export == "both"
     finally:
         Path(path).unlink(missing_ok=True)
 

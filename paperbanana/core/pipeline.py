@@ -16,6 +16,7 @@ from paperbanana.agents.ir_planner import IRPlannerAgent
 from paperbanana.agents.optimizer import InputOptimizerAgent
 from paperbanana.agents.planner import PlannerAgent
 from paperbanana.agents.retriever import RetrieverAgent
+from paperbanana.agents.structurer import StructurerAgent
 from paperbanana.agents.stylist import StylistAgent
 from paperbanana.agents.tikz_exporter import TikZExporterAgent
 from paperbanana.agents.visualizer import VisualizerAgent
@@ -55,6 +56,11 @@ from paperbanana.reference.exemplar_retrieval import (
     map_external_hits_to_examples,
 )
 from paperbanana.reference.store import ReferenceStore
+from paperbanana.vector.graphviz_render import (
+    diagram_ir_to_dot,
+    find_dot_executable,
+    render_dot_to_file,
+)
 
 logger = structlog.get_logger()
 
@@ -240,6 +246,9 @@ class PaperBananaPipeline:
             prompt_dir=prompt_dir,
             prompt_recorder=self._prompt_recorder,
         )
+        self.structurer = StructurerAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
         self.visualizer = VisualizerAgent(
             self._image_gen,
             self._vlm,
@@ -359,6 +368,131 @@ class PaperBananaPipeline:
         )
         return generated_caption, caption_seconds
 
+    def _build_final_output(
+        self,
+        iterations: list[IterationRecord],
+        run_dir: Path,
+        empty_warning: str,
+    ) -> str:
+        """Derive the final output image path from the last iteration.
+
+        Resolves the output format and file extension, constructs the
+        output path, and — for raster formats — loads the last
+        iteration's image and saves it in the requested format.  SVG
+        output requires caller-side handling after this method returns.
+
+        Returns:
+            The output file path, or ``""`` when *iterations* is empty.
+        """
+        output_format = getattr(self.settings, "output_format", "png").lower()
+        ext = "jpg" if output_format == "jpeg" else output_format
+        final_output_path = str(run_dir / f"final_output.{ext}")
+
+        if iterations:
+            if output_format != "svg":
+                final_image = iterations[-1].image_path
+                img = load_image(final_image)
+                save_image(img, final_output_path, format=output_format)
+        else:
+            final_output_path = ""
+            logger.warning(empty_warning, run_id=self.run_id)
+
+        return final_output_path
+
+    def _effective_vector_export(self, input: GenerationInput) -> str:
+        """Resolve vector export mode from input override or settings."""
+        if input.vector_export is not None:
+            return input.vector_export
+        return getattr(self.settings, "vector_export", "none") or "none"
+
+    async def _maybe_export_methodology_vector(
+        self,
+        *,
+        vector_mode: str,
+        diagram_type: DiagramType,
+        final_description: str,
+        source_context: str,
+        caption: str,
+        run_dir: Path,
+        progress_callback: Optional[Callable[[PipelineProgressEvent], None]],
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Optional SVG/PDF export for methodology diagrams (Graphviz)."""
+        if diagram_type != DiagramType.METHODOLOGY:
+            return None, None
+        if vector_mode == "none" or not final_description.strip():
+            return None, None
+
+        struct_start = time.perf_counter()
+        if self._cost_tracker:
+            self._cost_tracker.set_agent("structurer")
+        _emit_progress(
+            progress_callback,
+            PipelineProgressEvent(
+                stage=PipelineProgressStage.STRUCTURER_START,
+                message="Building vector diagram (structurer)",
+            ),
+        )
+        self._emit_progress("vector_export_started", mode=vector_mode)
+
+        try:
+            ir_model = await self.structurer.run(
+                description=final_description,
+                source_context=source_context,
+                caption=caption,
+            )
+        except Exception as e:
+            logger.warning("Vector structurer failed", error=str(e))
+            save_json({"error": str(e)}, run_dir / "vector_export_error.json")
+            struct_seconds = time.perf_counter() - struct_start
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.STRUCTURER_END,
+                    message="Structurer failed",
+                    seconds=struct_seconds,
+                    extra={"error": str(e)},
+                ),
+            )
+            self._emit_progress("vector_export_failed", error=str(e))
+            return None, None
+
+        save_json(ir_model.model_dump(), run_dir / "diagram_ir.json")
+        dot_src = diagram_ir_to_dot(ir_model)
+        (run_dir / "diagram.dot").write_text(dot_src, encoding="utf-8")
+
+        svg_path: Optional[str] = None
+        pdf_path: Optional[str] = None
+        if vector_mode in ("svg", "both"):
+            candidate = run_dir / "final_output.svg"
+            if render_dot_to_file(dot_src, str(candidate), "svg"):
+                svg_path = str(candidate)
+        if vector_mode in ("pdf", "both"):
+            candidate = run_dir / "final_output.pdf"
+            if render_dot_to_file(dot_src, str(candidate), "pdf"):
+                pdf_path = str(candidate)
+
+        struct_seconds = time.perf_counter() - struct_start
+        _emit_progress(
+            progress_callback,
+            PipelineProgressEvent(
+                stage=PipelineProgressStage.STRUCTURER_END,
+                message="Vector export done",
+                seconds=struct_seconds,
+                extra={
+                    "svg": svg_path,
+                    "pdf": pdf_path,
+                    "graphviz_on_path": find_dot_executable() is not None,
+                },
+            ),
+        )
+        self._emit_progress(
+            "vector_export_completed",
+            seconds=round(struct_seconds, 2),
+            svg=svg_path,
+            pdf=pdf_path,
+        )
+        return svg_path, pdf_path
+
     async def _resolve_retrieval_candidates(
         self, input: GenerationInput, candidates: list[ReferenceExample]
     ) -> tuple[list[ReferenceExample], str, list[str]]:
@@ -428,6 +562,7 @@ class PaperBananaPipeline:
                     "diagram_type": input.diagram_type.value,
                     "raw_data": input.raw_data,
                     "aspect_ratio": input.aspect_ratio,
+                    "vector_export": self._effective_vector_export(input),
                 },
                 self._run_dir / "run_input.json",
             )
@@ -535,24 +670,49 @@ class PaperBananaPipeline:
         )
         self._emit_progress("phase1_retrieval_started")
         retrieval_start = time.perf_counter()
-        candidates = self.reference_store.get_all()
-        (
-            candidates,
-            retrieval_mode,
-            external_candidate_ids,
-        ) = await self._resolve_retrieval_candidates(input, candidates)
-        if retrieval_mode == "external_only":
-            examples = candidates[: self.settings.num_retrieval_examples]
-        else:
-            examples = await _call_with_retry(
-                "retriever",
-                self.retriever.run,
-                source_context=input.source_context,
-                caption=input.communicative_intent,
-                candidates=candidates,
-                num_examples=self.settings.num_retrieval_examples,
-                diagram_type=input.diagram_type,
+
+        if input.reference_ids:
+            # Manual override: look up each ID, skip automatic retrieval
+            examples = []
+            missing_ids = []
+            for ref_id in input.reference_ids:
+                ref = self.reference_store.get_by_id(ref_id)
+                if ref is not None:
+                    examples.append(ref)
+                else:
+                    missing_ids.append(ref_id)
+            if missing_ids:
+                raise ValueError(
+                    f"Unknown reference IDs: {', '.join(missing_ids)}. "
+                    "Use 'paperbanana references list' to see available IDs."
+                )
+            retrieval_mode = "manual_override"
+            external_candidate_ids: list[str] = list(input.reference_ids)
+            logger.info(
+                "Using manual reference ID override",
+                ids=input.reference_ids,
+                resolved=len(examples),
             )
+        else:
+            candidates = self.reference_store.get_all()
+            (
+                candidates,
+                retrieval_mode,
+                external_candidate_ids,
+            ) = await self._resolve_retrieval_candidates(input, candidates)
+            if retrieval_mode == "external_only":
+                examples = candidates[: self.settings.num_retrieval_examples]
+            else:
+                examples = await _call_with_retry(
+                    "retriever",
+                    self.retriever.run,
+                    source_context=input.source_context,
+                    caption=input.communicative_intent,
+                    candidates=candidates,
+                    num_examples=self.settings.num_retrieval_examples,
+                    diagram_type=input.diagram_type,
+                )
+
         retrieval_seconds = time.perf_counter() - retrieval_start
         _emit_progress(
             progress_callback,
@@ -689,7 +849,7 @@ class PaperBananaPipeline:
         current_description = optimized_description
         iterations: list[IterationRecord] = []
         iteration_timings = []
-        vector_formats = ["svg", "pdf"] if self.settings.vector_export else None
+        vector_formats = ["svg", "pdf"] if self.settings.vector_export != "none" else None
 
         if self.settings.auto_refine:
             total_iters = self.settings.max_iterations
@@ -872,49 +1032,39 @@ class PaperBananaPipeline:
 
         # Final output
         output_format = getattr(self.settings, "output_format", "png").lower()
-        ext = "jpg" if output_format == "jpeg" else output_format
-        final_output_path = str(self._run_dir / f"final_output.{ext}")
+        final_output_path = self._build_final_output(
+            iterations,
+            self._run_dir,
+            "No iterations completed — budget exceeded during planning phases",
+        )
         ir_planner_status: str | None = None
         ir_planner_error: str | None = None
 
-        if iterations:
-            final_image = iterations[-1].image_path
-            if output_format == "svg":
-                if input.diagram_type == DiagramType.METHODOLOGY:
-                    try:
-                        diagram_ir = await self.ir_planner.run(
-                            source_context=input.source_context,
-                            caption=input.communicative_intent,
-                            styled_description=current_description,
-                        )
-                        ir_planner_status = "success"
-                        logger.info("IR planner produced structured diagram IR")
-                    except Exception as e:
-                        ir_planner_status = "fallback"
-                        ir_planner_error = str(e)
-                        logger.warning(
-                            "IR planner failed; falling back to heuristic IR",
-                            error=str(e),
-                        )
-                        diagram_ir = extract_diagram_ir(
-                            current_description,
-                            title=input.communicative_intent or "Methodology Diagram",
-                        )
-                    save_json(diagram_ir.model_dump(), self._run_dir / "diagram_ir.json")
-                    save_svg_from_ir(diagram_ir, final_output_path)
-                else:
-                    save_raster_wrapped_svg(final_image, final_output_path)
+        if iterations and output_format == "svg":
+            if input.diagram_type == DiagramType.METHODOLOGY:
+                try:
+                    diagram_ir = await self.ir_planner.run(
+                        source_context=input.source_context,
+                        caption=input.communicative_intent,
+                        styled_description=current_description,
+                    )
+                    ir_planner_status = "success"
+                    logger.info("IR planner produced structured diagram IR")
+                except Exception as e:
+                    ir_planner_status = "fallback"
+                    ir_planner_error = str(e)
+                    logger.warning(
+                        "IR planner failed; falling back to heuristic IR",
+                        error=str(e),
+                    )
+                    diagram_ir = extract_diagram_ir(
+                        current_description,
+                        title=input.communicative_intent or "Methodology Diagram",
+                    )
+                save_json(diagram_ir.model_dump(), self._run_dir / "diagram_ir.json")
+                save_svg_from_ir(diagram_ir, final_output_path)
             else:
-                # Load and save in desired format (handles PNG→JPEG/WebP conversion)
-                img = load_image(final_image)
-                save_image(img, final_output_path, format=output_format)
-        else:
-            # Budget exceeded before any iteration could complete
-            final_output_path = ""
-            logger.warning(
-                "No iterations completed — budget exceeded during planning phases",
-                run_id=self.run_id,
-            )
+                save_raster_wrapped_svg(iterations[-1].image_path, final_output_path)
 
         # ── Caption Generation (optional) ─────────────────────────────
         generated_caption, caption_seconds = await self._generate_caption(
@@ -928,11 +1078,11 @@ class PaperBananaPipeline:
 
         # ── Optional: TikZ / PGFPlots export ─────────────────────────
         tikz_path: str | None = None
-        should_export = (
+        should_export_tikz = (
             input.diagram_type == DiagramType.METHODOLOGY and self.settings.export_tikz
         ) or (input.diagram_type == DiagramType.STATISTICAL_PLOT and self.settings.export_pgfplots)
 
-        if should_export and final_output_path:
+        if should_export_tikz and final_output_path:
             if self._cost_tracker:
                 self._cost_tracker.set_agent("tikz_exporter")
             _emit_progress(
@@ -978,6 +1128,20 @@ class PaperBananaPipeline:
                 tikz_path=tikz_path,
             )
 
+        vector_mode = self._effective_vector_export(input)
+        structurer_seconds = 0.0
+        ve_start = time.perf_counter()
+        vector_svg_path, vector_pdf_path = await self._maybe_export_methodology_vector(
+            vector_mode=vector_mode,
+            diagram_type=input.diagram_type,
+            final_description=current_description,
+            source_context=input.source_context,
+            caption=input.communicative_intent,
+            run_dir=self._run_dir,
+            progress_callback=progress_callback,
+        )
+        structurer_seconds = time.perf_counter() - ve_start
+
         total_seconds = time.perf_counter() - total_start
         logger.info(
             "Total generation time",
@@ -1017,6 +1181,8 @@ class PaperBananaPipeline:
             "caption_seconds": caption_seconds,
             "iterations": iteration_timings,
         }
+        if input.diagram_type == DiagramType.METHODOLOGY and vector_mode != "none":
+            metadata_dict["timing"]["structurer_seconds"] = structurer_seconds
         metadata_dict["retrieval"] = {
             "mode": retrieval_mode,
             "external_enabled": self.settings.exemplar_retrieval_enabled,
@@ -1030,6 +1196,12 @@ class PaperBananaPipeline:
                 "fallback_used": ir_planner_status == "fallback",
                 "error": ir_planner_error,
             }
+        metadata_dict["vector_export"] = {
+            "mode": vector_mode,
+            "svg_path": vector_svg_path,
+            "pdf_path": vector_pdf_path,
+            "graphviz_available": find_dot_executable() is not None,
+        }
 
         if self._cost_tracker:
             cost_summary = self._cost_tracker.summary()
@@ -1039,7 +1211,7 @@ class PaperBananaPipeline:
             metadata_dict["cost"] = cost_summary
 
         # Include vector output paths when vector export was requested
-        if self.settings.vector_export and self.visualizer._last_vector_paths:
+        if self.settings.vector_export != "none" and self.visualizer._last_vector_paths:
             metadata_dict["vector_output_paths"] = self.visualizer._last_vector_paths
 
         # Always write metadata (including cost) to disk for every run
@@ -1054,6 +1226,8 @@ class PaperBananaPipeline:
             metadata=metadata_dict,
             generated_caption=generated_caption,
             tikz_path=tikz_path,
+            vector_svg_path=vector_svg_path,
+            vector_pdf_path=vector_pdf_path,
         )
 
         logger.info(
@@ -1115,7 +1289,7 @@ class PaperBananaPipeline:
         iterations: list[IterationRecord] = []
         iteration_timings = []
         budget_exceeded = False
-        vector_formats = ["svg", "pdf"] if self.settings.vector_export else None
+        vector_formats = ["svg", "pdf"] if self.settings.vector_export != "none" else None
 
         for i in range(total_iters):
             if budget_exceeded:
@@ -1292,48 +1466,39 @@ class PaperBananaPipeline:
 
         # Final output
         output_format = getattr(self.settings, "output_format", "png").lower()
-        ext = "jpg" if output_format == "jpeg" else output_format
-        final_output_path = str(run_dir / f"final_output.{ext}")
+        final_output_path = self._build_final_output(
+            iterations,
+            run_dir,
+            "No iterations completed — budget exceeded before first iteration",
+        )
         ir_planner_status: str | None = None
         ir_planner_error: str | None = None
 
-        if iterations:
-            final_image = iterations[-1].image_path
-            if output_format == "svg":
-                if resume_state.diagram_type == DiagramType.METHODOLOGY:
-                    try:
-                        diagram_ir = await self.ir_planner.run(
-                            source_context=resume_state.source_context,
-                            caption=resume_state.communicative_intent,
-                            styled_description=current_description,
-                        )
-                        ir_planner_status = "success"
-                        logger.info("IR planner produced structured diagram IR")
-                    except Exception as e:
-                        ir_planner_status = "fallback"
-                        ir_planner_error = str(e)
-                        logger.warning(
-                            "IR planner failed; falling back to heuristic IR",
-                            error=str(e),
-                        )
-                        diagram_ir = extract_diagram_ir(
-                            current_description,
-                            title=resume_state.communicative_intent or "Methodology Diagram",
-                        )
-                    save_json(diagram_ir.model_dump(), run_dir / "diagram_ir.json")
-                    save_svg_from_ir(diagram_ir, final_output_path)
-                else:
-                    save_raster_wrapped_svg(final_image, final_output_path)
+        if iterations and output_format == "svg":
+            if resume_state.diagram_type == DiagramType.METHODOLOGY:
+                try:
+                    diagram_ir = await self.ir_planner.run(
+                        source_context=resume_state.source_context,
+                        caption=resume_state.communicative_intent,
+                        styled_description=current_description,
+                    )
+                    ir_planner_status = "success"
+                    logger.info("IR planner produced structured diagram IR")
+                except Exception as e:
+                    ir_planner_status = "fallback"
+                    ir_planner_error = str(e)
+                    logger.warning(
+                        "IR planner failed; falling back to heuristic IR",
+                        error=str(e),
+                    )
+                    diagram_ir = extract_diagram_ir(
+                        current_description,
+                        title=resume_state.communicative_intent or "Methodology Diagram",
+                    )
+                save_json(diagram_ir.model_dump(), run_dir / "diagram_ir.json")
+                save_svg_from_ir(diagram_ir, final_output_path)
             else:
-                img = load_image(final_image)
-                save_image(img, final_output_path, format=output_format)
-        else:
-            # Budget exceeded before any iteration could complete
-            final_output_path = ""
-            logger.warning(
-                "No iterations completed — budget exceeded before first iteration",
-                run_id=self.run_id,
-            )
+                save_raster_wrapped_svg(iterations[-1].image_path, final_output_path)
 
         # ── Caption Generation (optional) ─────────────────────────────
         generated_caption, caption_seconds = await self._generate_caption(
@@ -1344,6 +1509,19 @@ class PaperBananaPipeline:
             diagram_type=resume_state.diagram_type,
             progress_callback=progress_callback,
         )
+
+        vector_mode = getattr(self.settings, "vector_export", "none") or "none"
+        ve_start = time.perf_counter()
+        vector_svg_path, vector_pdf_path = await self._maybe_export_methodology_vector(
+            vector_mode=vector_mode,
+            diagram_type=resume_state.diagram_type,
+            final_description=current_description,
+            source_context=resume_state.source_context,
+            caption=resume_state.communicative_intent,
+            run_dir=run_dir,
+            progress_callback=progress_callback,
+        )
+        structurer_seconds = time.perf_counter() - ve_start
 
         total_seconds = time.perf_counter() - total_start
         logger.info(
@@ -1380,6 +1558,8 @@ class PaperBananaPipeline:
             "caption_seconds": caption_seconds,
             "iterations": iteration_timings,
         }
+        if resume_state.diagram_type == DiagramType.METHODOLOGY and vector_mode != "none":
+            metadata_dict["timing"]["structurer_seconds"] = structurer_seconds
         metadata_dict["continued_from_iteration"] = start_iter
         if ir_planner_status is not None:
             metadata_dict["ir_planner"] = {
@@ -1391,6 +1571,12 @@ class PaperBananaPipeline:
             metadata_dict["user_feedback"] = user_feedback
         if generated_caption is not None:
             metadata_dict["generated_caption"] = generated_caption
+        metadata_dict["vector_export"] = {
+            "mode": vector_mode,
+            "svg_path": vector_svg_path,
+            "pdf_path": vector_pdf_path,
+            "graphviz_available": find_dot_executable() is not None,
+        }
 
         if self._cost_tracker:
             cost_summary = self._cost_tracker.summary()
@@ -1399,7 +1585,7 @@ class PaperBananaPipeline:
                 cost_summary["budget_usd"] = self.settings.budget_usd
             metadata_dict["cost"] = cost_summary
 
-        if self.settings.vector_export and self.visualizer._last_vector_paths:
+        if self.settings.vector_export != "none" and self.visualizer._last_vector_paths:
             metadata_dict["vector_output_paths"] = self.visualizer._last_vector_paths
 
         # Always write metadata (including cost) to disk for every run
@@ -1411,6 +1597,8 @@ class PaperBananaPipeline:
             iterations=iterations,
             metadata=metadata_dict,
             generated_caption=generated_caption,
+            vector_svg_path=vector_svg_path,
+            vector_pdf_path=vector_pdf_path,
         )
 
         return output
