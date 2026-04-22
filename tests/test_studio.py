@@ -235,6 +235,68 @@ def test_run_composite_dotdot_filename_falls_back(tmp_path):
     assert Path(output_path).name == "composite.png"
 
 
+def test_run_orchestration_requires_paper_or_resume(tmp_path):
+    from paperbanana.core.config import Settings
+    from paperbanana.studio.runner import run_orchestration
+
+    s = Settings().model_copy(update={"output_dir": str(tmp_path)})
+    log, orch, plan, pkg = run_orchestration(
+        s,
+        paper_file_path=None,
+        resume_orchestrate=None,
+        data_dir=None,
+        max_method_figures=2,
+        max_plot_figures=1,
+        pdf_pages=None,
+        dry_run=True,
+        venue="neurips",
+        retry_failed=False,
+        max_retries=0,
+        concurrency=1,
+        config_path=None,
+        verbose_logging=False,
+    )
+    assert "Error:" in log
+    assert orch == "" and plan == "" and pkg == ""
+
+
+def test_run_orchestration_rejects_paper_plus_resume(tmp_path):
+    from paperbanana.core.config import Settings
+    from paperbanana.studio.runner import run_orchestration
+
+    paper = tmp_path / "p.txt"
+    paper.write_text("hello", encoding="utf-8")
+    s = Settings().model_copy(update={"output_dir": str(tmp_path)})
+    log, orch, plan, pkg = run_orchestration(
+        s,
+        paper_file_path=str(paper),
+        resume_orchestrate="orchestrate_x",
+        data_dir=None,
+        max_method_figures=2,
+        max_plot_figures=0,
+        pdf_pages=None,
+        dry_run=True,
+        venue="neurips",
+        retry_failed=False,
+        max_retries=0,
+        concurrency=1,
+        config_path=None,
+        verbose_logging=False,
+    )
+    assert "clear the paper upload" in log.lower()
+    assert orch == ""
+
+
+def test_preview_json_file_truncates(tmp_path):
+    from paperbanana.studio import runner as runner_mod
+
+    p = tmp_path / "big.json"
+    p.write_text('{"x": "' + ("a" * 20_000) + '"}', encoding="utf-8")
+    prev = runner_mod._preview_json_file(p, max_chars=100)
+    assert "truncated" in prev
+    assert len(prev) <= 150
+
+
 def test_run_evaluate_plot_requires_data_file(tmp_path):
     """Plot evaluation mode validates data path before provider setup."""
     from paperbanana.core.config import Settings
