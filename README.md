@@ -290,6 +290,12 @@ paperbanana batch-report --batch-id batch_20250109_123456_abc --format html --ou
 
 Diagram batch reports include `batch_kind: methodology`; plot batches use `batch_kind: statistical_plot`. Human-readable reports (`paperbanana batch-report`) show the batch kind when present.
 
+**Sweep manifests** let you store the full sweep plan as YAML/JSON instead of eight comma-separated CLI flags. Mutually exclusive with the axis flags; see `examples/sweep_manifest.yaml`.
+
+```bash
+paperbanana sweep --manifest examples/sweep_manifest.yaml
+```
+
 **Sweep reports** produced by `paperbanana sweep` can be rendered the same way:
 
 ```bash

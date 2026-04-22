@@ -12,6 +12,7 @@ from paperbanana.core.sweep import (
     build_sweep_variants,
     generate_sweep_report_html,
     generate_sweep_report_md,
+    load_sweep_manifest,
     load_sweep_report,
     parse_csv_bools,
     parse_csv_ints,
@@ -477,3 +478,162 @@ def test_write_sweep_report_html_passes_through_thumbnails_flag(tmp_path: Path) 
     (tmp_path / SWEEP_REPORT_FILENAME).write_text(json.dumps(payload), encoding="utf-8")
     written = write_sweep_report(tmp_path, format="html", include_thumbnails=False)
     assert 'class="thumb-grid"' not in written.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# load_sweep_manifest
+# ---------------------------------------------------------------------------
+
+
+def _write_manifest_yaml(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / "sweep.yaml"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_load_sweep_manifest_yaml_success(tmp_path: Path) -> None:
+    input_file = tmp_path / "method.txt"
+    input_file.write_text("method body", encoding="utf-8")
+    manifest = _write_manifest_yaml(
+        tmp_path,
+        """
+input: method.txt
+caption: "Test caption"
+pdf_pages: "1-3"
+max_variants: 5
+axes:
+  vlm_providers: [gemini, openai]
+  refinement_iterations: [2, 3]
+  optimize_inputs: [false, true]
+""",
+    )
+    parsed = load_sweep_manifest(manifest)
+    assert parsed["input"] == str(input_file.resolve())
+    assert parsed["caption"] == "Test caption"
+    assert parsed["pdf_pages"] == "1-3"
+    assert parsed["max_variants"] == 5
+    assert parsed["axes"]["vlm_providers"] == ["gemini", "openai"]
+    assert parsed["axes"]["refinement_iterations"] == [2, 3]
+    assert parsed["axes"]["optimize_inputs"] == [False, True]
+    # Unset axes default to empty lists.
+    assert parsed["axes"]["auto_refine"] == []
+    assert parsed["axes"]["image_models"] == []
+
+
+def test_load_sweep_manifest_json_success(tmp_path: Path) -> None:
+    (tmp_path / "method.txt").write_text("x", encoding="utf-8")
+    payload = {
+        "input": "method.txt",
+        "caption": "A caption",
+        "axes": {"vlm_providers": ["gemini"]},
+    }
+    path = tmp_path / "sweep.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    parsed = load_sweep_manifest(path)
+    assert parsed["caption"] == "A caption"
+    assert parsed["axes"]["vlm_providers"] == ["gemini"]
+    assert parsed["pdf_pages"] is None
+    assert parsed["max_variants"] is None
+
+
+def test_load_sweep_manifest_resolves_relative_input(tmp_path: Path) -> None:
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    input_file = nested / "method.txt"
+    input_file.write_text("body", encoding="utf-8")
+    manifest = _write_manifest_yaml(
+        tmp_path,
+        'input: nested/method.txt\ncaption: "Test"\n',
+    )
+    parsed = load_sweep_manifest(manifest)
+    assert parsed["input"] == str(input_file.resolve())
+
+
+def test_load_sweep_manifest_missing_file() -> None:
+    with pytest.raises(FileNotFoundError, match="Sweep manifest not found"):
+        load_sweep_manifest(Path("/nonexistent/sweep.yaml"))
+
+
+def test_load_sweep_manifest_unsupported_suffix(tmp_path: Path) -> None:
+    p = tmp_path / "sweep.txt"
+    p.write_text("input: x\ncaption: y", encoding="utf-8")
+    with pytest.raises(ValueError, match=".yaml, .yml, or .json"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_top_level_not_mapping(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(tmp_path, "- just-a-list\n")
+    with pytest.raises(ValueError, match="mapping at the top level"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_missing_input(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(tmp_path, 'caption: "Test"\n')
+    with pytest.raises(ValueError, match="missing required key: 'input'"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_missing_caption(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(tmp_path, "input: method.txt\n")
+    with pytest.raises(ValueError, match="missing required key: 'caption'"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_caption_wrong_type(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(tmp_path, "input: method.txt\ncaption: 42\n")
+    with pytest.raises(ValueError, match="'caption' must be a string"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_pdf_pages_wrong_type(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(
+        tmp_path,
+        'input: method.txt\ncaption: "Test"\npdf_pages: 42\n',
+    )
+    with pytest.raises(ValueError, match="'pdf_pages' must be a string"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_max_variants_not_int(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(
+        tmp_path,
+        'input: method.txt\ncaption: "Test"\nmax_variants: "lots"\n',
+    )
+    with pytest.raises(ValueError, match="'max_variants' must be an integer"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_max_variants_zero(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(
+        tmp_path,
+        'input: method.txt\ncaption: "Test"\nmax_variants: 0\n',
+    )
+    with pytest.raises(ValueError, match="'max_variants' must be >= 1"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_axes_wrong_type(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(
+        tmp_path,
+        'input: method.txt\ncaption: "Test"\naxes: "not a dict"\n',
+    )
+    with pytest.raises(ValueError, match="'axes' must be a mapping"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_axis_value_not_list(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(
+        tmp_path,
+        'input: method.txt\ncaption: "Test"\naxes:\n  vlm_providers: gemini\n',
+    )
+    with pytest.raises(ValueError, match="axis 'vlm_providers' must be a list"):
+        load_sweep_manifest(p)
+
+
+def test_load_sweep_manifest_unknown_axis_rejected(tmp_path: Path) -> None:
+    p = _write_manifest_yaml(
+        tmp_path,
+        'input: method.txt\ncaption: "Test"\naxes:\n  typo_axis: [a, b]\n',
+    )
+    with pytest.raises(ValueError, match="unknown keys"):
+        load_sweep_manifest(p)
