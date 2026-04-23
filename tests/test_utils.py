@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from io import BytesIO
 from pathlib import Path
 
@@ -256,3 +257,77 @@ class TestCompressForApi:
 
         with pytest.raises(ValueError, match="could not be compressed"):
             _compress_for_api(str(p))
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not _has_fastmcp, reason="fastmcp not installed")
+async def test_mcp_continue_run_loads_state_and_calls_pipeline(tmp_path: Path, monkeypatch):
+    """continue_run MCP tool wires load_resume_state + PaperBananaPipeline.continue_run."""
+    monkeypatch.chdir(tmp_path)
+    from mcp_server import server
+    from paperbanana.core.types import GenerationOutput
+
+    captured: dict = {}
+
+    class FakePipeline:
+        def __init__(self, settings=None, progress_callback=None):
+            captured["settings_auto"] = settings.auto_refine if settings else None
+            captured["settings_iters"] = settings.refinement_iterations if settings else None
+
+        async def continue_run(
+            self,
+            resume_state,
+            additional_iterations=None,
+            user_feedback=None,
+            progress_callback=None,
+        ):
+            captured["run_id"] = resume_state.run_id
+            captured["user_feedback"] = user_feedback
+            captured["additional_iterations"] = additional_iterations
+            img = tmp_path / "outputs" / "run_mcp_test" / "final.png"
+            img.parent.mkdir(parents=True, exist_ok=True)
+            Image.new("RGB", (8, 8), color=(0, 128, 255)).save(img, format="PNG")
+            return GenerationOutput(image_path=str(img), description="done", iterations=[])
+
+    monkeypatch.setattr(server, "PaperBananaPipeline", FakePipeline)
+
+    run_id = "run_mcp_test"
+    run_dir = tmp_path / "outputs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "run_input.json").write_text(
+        json.dumps(
+            {
+                "source_context": "ctx",
+                "communicative_intent": "cap",
+                "diagram_type": "methodology",
+            }
+        ),
+        encoding="utf-8",
+    )
+    iter1 = run_dir / "iter_1"
+    iter1.mkdir()
+    (iter1 / "details.json").write_text(
+        json.dumps(
+            {
+                "description": "d1",
+                "critique": {"critic_suggestions": [], "revised_description": "rev"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from mcp_server.server import continue_run as continue_run_mcp
+
+    img = await continue_run_mcp(
+        run_id=run_id,
+        feedback="bigger labels",
+        iterations=2,
+        auto_refine=True,
+    )
+    assert captured["run_id"] == run_id
+    assert captured["user_feedback"] == "bigger labels"
+    assert captured["additional_iterations"] is None
+    assert captured["settings_auto"] is True
+    assert captured["settings_iters"] == 2
+    assert img.path is not None
+    assert Path(img.path).exists()

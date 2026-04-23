@@ -531,7 +531,7 @@ PaperBanana includes an MCP server for use with Claude Code, Cursor, or any MCP-
 }
 ```
 
-Four MCP tools are exposed: `generate_diagram`, `generate_plot`, `evaluate_diagram`, and `evaluate_plot`.
+MCP tools include `generate_diagram`, `continue_run` (resume a prior `run_*` with optional feedback), `generate_plot`, `evaluate_diagram`, and `evaluate_plot`.
 
 The repo also ships with 3 Claude Code skills:
 - `/generate-diagram <file> [caption]` - generate a methodology diagram from a text file

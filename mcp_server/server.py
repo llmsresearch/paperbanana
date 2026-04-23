@@ -5,6 +5,7 @@ Claude Code, Cursor, or any MCP client.
 
 Tools:
     generate_diagram    — Generate a methodology diagram from text
+    continue_run        — Continue refinement for a prior diagram or plot run
     generate_plot       — Generate a statistical plot from JSON data
     evaluate_diagram    — Evaluate a generated diagram against a reference
     evaluate_plot       — Evaluate a generated plot against a reference
@@ -32,6 +33,7 @@ from PIL import Image as PILImage
 
 from paperbanana.core.config import Settings
 from paperbanana.core.pipeline import PaperBananaPipeline
+from paperbanana.core.resume import load_resume_state
 from paperbanana.core.types import DiagramType, GenerationInput
 from paperbanana.core.utils import detect_image_mime_type, find_prompt_dir
 from paperbanana.core.workflow_runner import (
@@ -204,6 +206,74 @@ async def generate_diagram(
         logger.info(
             "generated_caption",
             tool="generate_diagram",
+            caption=result.generated_caption,
+        )
+
+    return Image(path=effective_path, format=fmt)
+
+
+@mcp.tool
+async def continue_run(
+    run_id: str,
+    feedback: str | None = None,
+    iterations: int = 3,
+    optimize: bool = False,
+    auto_refine: bool = False,
+    generate_caption: bool = False,
+) -> Image:
+    """Continue refinement for a previous diagram or plot run (CLI: ``generate --continue-run``).
+
+    Loads state from ``<output_dir>/<run_id>/`` (default ``outputs/`` from settings), then runs
+    additional visualizer/critic iterations in the same run directory. Optional ``feedback`` is
+    passed to the critic, matching ``--feedback`` on the CLI.
+
+    Args:
+        run_id: Directory name of the run (e.g. ``run_20260218_125448_e7b876`` under ``outputs/``).
+        feedback: Optional user notes for the critic (layout, labels, style).
+        iterations: Extra refinement iterations when ``auto_refine`` is False (default 3).
+        optimize: Passed to settings for symmetry with ``generate_diagram``; continuation does not
+            re-run Phase 0 input optimization.
+        auto_refine: When True, loop until the critic is satisfied (capped by ``max_iterations``).
+        generate_caption: When True, generate a caption after continuation (same as
+            ``generate_diagram``).
+
+    Returns:
+        The latest image from the continued run (PNG or compressed JPEG for MCP size limits).
+
+    Raises:
+        FileNotFoundError: If the run directory or ``run_input.json`` is missing.
+        ValueError: If saved run state cannot be resumed.
+    """
+    settings = Settings(
+        refinement_iterations=iterations,
+        optimize_inputs=optimize,
+        auto_refine=auto_refine,
+        generate_caption=generate_caption,
+    )
+
+    def _on_progress(event: str, payload: dict) -> None:
+        logger.info(
+            "mcp_progress",
+            tool="continue_run",
+            progress_event=event,
+            **payload,
+        )
+
+    state = load_resume_state(settings.output_dir, run_id)
+    pipeline = PaperBananaPipeline(settings=settings, progress_callback=_on_progress)
+
+    result = await pipeline.continue_run(
+        resume_state=state,
+        additional_iterations=None,
+        user_feedback=feedback,
+    )
+    effective_path, fmt = _compress_for_api(result.image_path)
+
+    if result.generated_caption:
+        _embed_caption(effective_path, result.generated_caption)
+        logger.info(
+            "generated_caption",
+            tool="continue_run",
             caption=result.generated_caption,
         )
 
