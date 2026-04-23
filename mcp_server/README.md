@@ -7,6 +7,7 @@ MCP server that exposes PaperBanana's diagram and plot generation as tools for C
 | Tool | Description |
 |------|-------------|
 | `generate_diagram` | Generate a methodology diagram from text context + caption |
+| `continue_run` | Continue refinement for an existing `run_*` directory (optional critic feedback) |
 | `generate_plot` | Generate a statistical plot from JSON data + intent description |
 | `evaluate_diagram` | Compare a generated diagram against a human reference (4 dimensions) |
 | `evaluate_plot` | Compare a generated statistical plot against a human reference (4 dimensions) |
@@ -105,6 +106,14 @@ User: Generate a diagram for this methodology:
        an iterative refinement phase with Visualizer and Critic agents."
       Caption: "Overview of the PaperBanana multi-agent framework"
 ```
+
+### Continue a previous run
+
+```
+User: Continue run run_20260218_125448_e7b876 with feedback: "Use larger font for axis labels"
+```
+
+The tool resolves `outputs/<run_id>/` using the same output directory as other MCP tools (from `Settings`, typically `outputs`). The run must contain `run_input.json` from a prior `generate_diagram` or `generate_plot` call (or CLI).
 
 ### Generate a statistical plot
 
