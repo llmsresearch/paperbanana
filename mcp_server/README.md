@@ -8,6 +8,8 @@ MCP server that exposes PaperBanana's diagram and plot generation as tools for C
 |------|-------------|
 | `generate_diagram` | Generate a methodology diagram from text context + caption |
 | `generate_plot` | Generate a statistical plot from JSON data + intent description |
+| `continue_diagram` | Continue a prior methodology `run_*` (more refinement and/or critic feedback); returns JSON paths |
+| `continue_plot` | Continue a prior statistical-plot `run_*`; same JSON contract as `continue_diagram` |
 | `evaluate_diagram` | Compare a generated diagram against a human reference (4 dimensions) |
 | `evaluate_plot` | Compare a generated statistical plot against a human reference (4 dimensions) |
 | `download_references` | Download the expanded reference set for stronger retrieval |
@@ -22,6 +24,10 @@ These tools return **pretty-printed JSON** with absolute paths to `batch_report.
 Long runs execute in a **worker thread** so they do not block the MCP server event loop; progress lines are logged via structlog (`mcp_orchestrate`, `mcp_batch_diagrams`, `mcp_batch_plots`).
 
 On validation errors (missing manifest, bad flags), the JSON body includes `"error"` and `"strict_success": false`.
+
+### Continue tools
+
+`continue_diagram` and `continue_plot` mirror ``paperbanana generate --continue-run`` / Studio continue: they load `run_input.json` and the latest iteration under `output_dir` / `run_id`, then run more visualizer–critic rounds. Pick the tool that matches the run’s `diagram_type` (`methodology` vs `statistical_plot`); otherwise the response is `strict_success: false` with a hint to use the other tool. Successful responses include `final_image_path`, `run_dir`, and `metadata_path` when present.
 
 ## Installation
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from io import BytesIO
 from pathlib import Path
 
@@ -256,3 +257,129 @@ class TestCompressForApi:
 
         with pytest.raises(ValueError, match="could not be compressed"):
             _compress_for_api(str(p))
+
+
+@pytest.mark.skipif(not _has_fastmcp, reason="fastmcp not installed")
+class TestMcpContinueRun:
+    """Tests for MCP continue_diagram / continue_plot helpers (no live API)."""
+
+    @staticmethod
+    def _write_resumable_run(
+        tmp_path: Path, *, diagram_type: str, run_id: str = "run_mcp_test"
+    ) -> Path:
+        out = tmp_path / "outputs"
+        run_dir = out / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "run_input.json").write_text(
+            json.dumps(
+                {
+                    "source_context": "Paper describes a two-phase pipeline.",
+                    "communicative_intent": "Overview figure.",
+                    "diagram_type": diagram_type,
+                }
+            ),
+            encoding="utf-8",
+        )
+        iter_dir = run_dir / "iter_1"
+        iter_dir.mkdir()
+        (iter_dir / "details.json").write_text(
+            json.dumps(
+                {
+                    "description": "First draft layout",
+                    "critique": {"revised_description": "Revised layout text"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        png = run_dir / "diagram_iter_1.png"
+        _write_png(png)
+        return out
+
+    @pytest.mark.asyncio
+    async def test_continue_diagram_rejects_plot_run(self, tmp_path: Path):
+        from mcp_server.server import _continue_run_mcp
+        from paperbanana.core.types import DiagramType
+
+        out = self._write_resumable_run(tmp_path, diagram_type="statistical_plot")
+        raw = await _continue_run_mcp(
+            expected=DiagramType.METHODOLOGY,
+            run_id="run_mcp_test",
+            output_dir=str(out),
+        )
+        data = json.loads(raw)
+        assert data["strict_success"] is False
+        assert "continue_plot" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_continue_plot_rejects_methodology_run(self, tmp_path: Path):
+        from mcp_server.server import _continue_run_mcp
+        from paperbanana.core.types import DiagramType
+
+        out = self._write_resumable_run(tmp_path, diagram_type="methodology")
+        raw = await _continue_run_mcp(
+            expected=DiagramType.STATISTICAL_PLOT,
+            run_id="run_mcp_test",
+            output_dir=str(out),
+        )
+        data = json.loads(raw)
+        assert data["strict_success"] is False
+        assert "continue_diagram" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_continue_diagram_missing_run(self, tmp_path: Path):
+        from mcp_server.server import _continue_run_mcp
+        from paperbanana.core.types import DiagramType
+
+        out = tmp_path / "empty_outputs"
+        out.mkdir()
+        raw = await _continue_run_mcp(
+            expected=DiagramType.METHODOLOGY,
+            run_id="run_nope",
+            output_dir=str(out),
+        )
+        data = json.loads(raw)
+        assert data["strict_success"] is False
+        assert "error" in data
+
+    @pytest.mark.asyncio
+    async def test_continue_diagram_success_mocked_pipeline(self, tmp_path: Path, monkeypatch):
+        import mcp_server.server as mcp_server_mod
+        from mcp_server.server import _continue_run_mcp
+        from paperbanana.core.types import DiagramType, GenerationOutput
+
+        out = self._write_resumable_run(tmp_path, diagram_type="methodology")
+
+        class _FakePipeline:
+            def __init__(self, settings=None, progress_callback=None):
+                self.settings = settings
+                self._progress_callback = progress_callback
+
+            async def continue_run(
+                self,
+                resume_state,
+                additional_iterations=None,
+                user_feedback=None,
+                progress_callback=None,
+            ):
+                final = tmp_path / "after_continue.png"
+                _write_png(final)
+                return GenerationOutput(
+                    image_path=str(final),
+                    description="final desc",
+                    iterations=[],
+                    metadata={"run_id": resume_state.run_id},
+                )
+
+        monkeypatch.setattr(mcp_server_mod, "PaperBananaPipeline", _FakePipeline)
+
+        raw = await _continue_run_mcp(
+            expected=DiagramType.METHODOLOGY,
+            run_id="run_mcp_test",
+            output_dir=str(out),
+            iterations=2,
+        )
+        data = json.loads(raw)
+        assert data["strict_success"] is True
+        assert data["run_id"] == "run_mcp_test"
+        assert Path(data["final_image_path"]).name == "after_continue.png"
+        assert data["new_iteration_count"] == 0
