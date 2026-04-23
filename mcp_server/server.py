@@ -633,16 +633,10 @@ async def _continue_run_mcp(
         return _json_result({"error": str(e), "strict_success": False})
 
     if resume_state.diagram_type != expected:
-        other = (
-            "continue_plot"
-            if expected == DiagramType.METHODOLOGY
-            else "continue_diagram"
-        )
+        other = "continue_plot" if expected == DiagramType.METHODOLOGY else "continue_diagram"
         return _json_result(
             {
-                "error": (
-                    f"This run is {resume_state.diagram_type.value}; use {other} instead."
-                ),
+                "error": (f"This run is {resume_state.diagram_type.value}; use {other} instead."),
                 "strict_success": False,
                 "actual_diagram_type": resume_state.diagram_type.value,
             }
