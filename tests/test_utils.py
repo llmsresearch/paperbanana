@@ -261,7 +261,7 @@ class TestCompressForApi:
 
 @pytest.mark.skipif(not _has_fastmcp, reason="fastmcp not installed")
 class TestMcpContinueRun:
-    """Tests for MCP continue_diagram / continue_plot helpers (no live API)."""
+    """Tests for MCP continue_run / continue_diagram / continue_plot (no live API)."""
 
     @staticmethod
     def _write_resumable_run(
@@ -383,3 +383,53 @@ class TestMcpContinueRun:
         assert data["run_id"] == "run_mcp_test"
         assert Path(data["final_image_path"]).name == "after_continue.png"
         assert data["new_iteration_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_continue_run_unified_tool_returns_image(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """continue_run accepts any resumable run and returns an Image (not JSON)."""
+        import mcp_server.server as mcp_server_mod
+        from mcp_server.server import continue_run as continue_run_mcp
+        from paperbanana.core.types import GenerationOutput
+
+        self._write_resumable_run(tmp_path, diagram_type="methodology")
+        monkeypatch.chdir(tmp_path)
+        captured: dict = {}
+
+        class _FakePipeline:
+            def __init__(self, settings=None, progress_callback=None):
+                captured["settings_auto"] = settings.auto_refine if settings else None
+                captured["settings_iters"] = settings.refinement_iterations if settings else None
+
+            async def continue_run(
+                self,
+                resume_state,
+                additional_iterations=None,
+                user_feedback=None,
+                progress_callback=None,
+            ):
+                captured["run_id"] = resume_state.run_id
+                captured["user_feedback"] = user_feedback
+                captured["additional_iterations"] = additional_iterations
+                final = tmp_path / "continue_run_out.png"
+                _write_png(final)
+                return GenerationOutput(
+                    image_path=str(final), description="done", iterations=[]
+                )
+
+        monkeypatch.setattr(mcp_server_mod, "PaperBananaPipeline", _FakePipeline)
+
+        img = await continue_run_mcp(
+            run_id="run_mcp_test",
+            feedback="bigger labels",
+            iterations=2,
+            auto_refine=True,
+        )
+        assert captured["run_id"] == "run_mcp_test"
+        assert captured["user_feedback"] == "bigger labels"
+        assert captured["additional_iterations"] is None
+        assert captured["settings_auto"] is True
+        assert captured["settings_iters"] == 2
+        assert img.path is not None
+        assert Path(img.path).exists()

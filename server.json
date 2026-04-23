@@ -24,6 +24,10 @@
       "description": "Generate a methodology diagram from text context and caption"
     },
     {
+      "name": "continue_run",
+      "description": "Continue refinement for an existing run directory (optional critic feedback)"
+    },
+    {
       "name": "generate_plot",
       "description": "Generate a statistical plot from JSON data and intent description"
     },
