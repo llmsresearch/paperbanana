@@ -123,6 +123,52 @@ def test_unknown_vlm_provider_raises():
         ProviderRegistry.create_vlm(settings)
 
 
+def test_create_minimax_vlm():
+    """Test creating a MiniMax VLM provider."""
+    settings = Settings(
+        vlm_provider="minimax",
+        vlm_model="MiniMax-M2.7",
+        minimax_api_key="test-key",
+    )
+    vlm = ProviderRegistry.create_vlm(settings)
+    assert vlm.name == "minimax"
+    assert vlm.model_name == "MiniMax-M2.7"
+
+
+def test_create_minimax_vlm_highspeed():
+    """Test creating a MiniMax VLM provider with highspeed model."""
+    settings = Settings(
+        vlm_provider="minimax",
+        vlm_model="MiniMax-M2.7-highspeed",
+        minimax_api_key="test-key",
+    )
+    vlm = ProviderRegistry.create_vlm(settings)
+    assert vlm.name == "minimax"
+    assert vlm.model_name == "MiniMax-M2.7-highspeed"
+
+
+def test_missing_minimax_api_key_raises_helpful_error():
+    """Test that missing MINIMAX_API_KEY raises a helpful error."""
+    settings = Settings(vlm_provider="minimax", minimax_api_key=None)
+    with pytest.raises(ValueError, match="MINIMAX_API_KEY not found") as exc_info:
+        ProviderRegistry.create_vlm(settings)
+    error_msg = str(exc_info.value)
+    assert "platform.minimax.io" in error_msg
+    assert "export MINIMAX_API_KEY" in error_msg
+
+
+def test_minimax_custom_base_url():
+    """Test that a custom MINIMAX_BASE_URL is passed to the provider."""
+    settings = Settings(
+        vlm_provider="minimax",
+        vlm_model="MiniMax-M2.7",
+        minimax_api_key="test-key",
+        minimax_base_url="https://custom.minimax.io/anthropic",
+    )
+    vlm = ProviderRegistry.create_vlm(settings)
+    assert getattr(vlm, "_base_url") == "https://custom.minimax.io/anthropic"
+
+
 def test_unknown_image_provider_raises():
     """Test that unknown image provider raises ValueError."""
     settings = Settings(image_provider="nonexistent")
