@@ -135,6 +135,12 @@ class Settings(BaseSettings):
     bedrock_vlm_model: Optional[str] = Field(default=None, alias="BEDROCK_VLM_MODEL")
     bedrock_image_model: Optional[str] = Field(default=None, alias="BEDROCK_IMAGE_MODEL")
 
+    # MiniMax settings
+    minimax_api_key: Optional[str] = Field(default=None, alias="MINIMAX_API_KEY")
+    minimax_base_url: str = Field(
+        default="https://api.minimax.io/anthropic", alias="MINIMAX_BASE_URL"
+    )
+
     @property
     def effective_vlm_model(self) -> str:
         """Return the VLM model for the active provider."""
