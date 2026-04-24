@@ -161,6 +161,7 @@ PaperBanana supports multiple VLM and image generation providers:
 | VLM | Google Gemini | `gemini-2.0-flash` | Free tier |
 | Image Generation | Google Gemini | `gemini-3-pro-image-preview` | Free tier |
 | VLM / Image | OpenRouter | Any supported model | Flexible routing |
+| VLM | MiniMax | `MiniMax-M2.7` | Set `MINIMAX_API_KEY` |
 
 Azure OpenAI / Foundry endpoints are auto-detected — set `OPENAI_BASE_URL` to your endpoint.
 Gemini-compatible gateways are also supported — set `GOOGLE_BASE_URL` when needed.

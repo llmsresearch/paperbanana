@@ -11,6 +11,13 @@ logger = structlog.get_logger()
 
 
 _API_KEY_HINTS = {
+    "MINIMAX_API_KEY": (
+        "MINIMAX_API_KEY not found.\n\n"
+        "To fix this:\n"
+        "  1. Get an API key at: https://platform.minimax.io\n"
+        "  2. Set the environment variable:\n\n"
+        "  export MINIMAX_API_KEY=your-key-here"
+    ),
     "GOOGLE_API_KEY": (
         "GOOGLE_API_KEY not found.\n\n"
         "To fix this:\n"
@@ -156,11 +163,20 @@ class ProviderRegistry:
                     " ensure `claude` is available on PATH."
                 )
             return vlm
+        elif provider == "minimax":
+            _validate_api_key(settings.minimax_api_key, "MINIMAX_API_KEY")
+            from paperbanana.providers.vlm.minimax import MiniMaxVLM
+
+            return MiniMaxVLM(
+                api_key=settings.minimax_api_key,
+                model=settings.vlm_model,
+                base_url=settings.minimax_base_url,
+            )
         else:
             raise ValueError(
                 "Unknown VLM provider: "
                 f"{provider}. Available: gemini, openrouter, openai, openai_local, "
-                f"bedrock, anthropic, ollama, claude_code"
+                f"bedrock, anthropic, ollama, claude_code, minimax"
             )
 
     @staticmethod
