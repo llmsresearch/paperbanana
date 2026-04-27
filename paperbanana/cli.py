@@ -3371,7 +3371,10 @@ def analytics(
         "outputs",
         "--path",
         "-p",
-        help="Root directory to scan for metadata.json, batch_report.json, and figure_package.json.",
+        help=(
+            "Root directory to scan for metadata.json, batch_report.json, "
+            "and figure_package.json."
+        ),
     ),
     format: str = typer.Option(
         "markdown",
