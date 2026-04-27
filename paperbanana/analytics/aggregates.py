@@ -33,4 +33,3 @@ def summarize_records(records: list[AnalyticsRecord]) -> AnalyticsSummary:
     summary.total_seconds = round(summary.total_seconds, 3)
     summary.total_cost_usd = round(summary.total_cost_usd, 6)
     return summary
-

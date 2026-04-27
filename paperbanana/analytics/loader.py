@@ -174,4 +174,3 @@ def load_analytics_records(root_path: str | Path) -> list[AnalyticsRecord]:
         records.extend(_load_orchestration_report(path))
     records.sort(key=lambda x: (x.source_type, x.source_id))
     return records
-

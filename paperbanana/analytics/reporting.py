@@ -67,4 +67,3 @@ def render_markdown_summary(summary: AnalyticsSummary) -> str:
         lines.append("  - (none)")
 
     return "\n".join(lines) + "\n"
-

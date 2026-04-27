@@ -32,4 +32,3 @@ class AnalyticsSummary:
     source_type_counts: dict[str, int] = field(default_factory=dict)
     vlm_provider_counts: dict[str, int] = field(default_factory=dict)
     image_provider_counts: dict[str, int] = field(default_factory=dict)
-
