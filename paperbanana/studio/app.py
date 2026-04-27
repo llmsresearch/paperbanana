@@ -887,10 +887,7 @@ def build_studio_app(
                             field = d.get("field")
                             left_val = d.get("left")
                             right_val = d.get("right")
-                            rows.append(
-                                f"- `{field}`: left=`{left_val}` | "
-                                f"right=`{right_val}`"
-                            )
+                            rows.append(f"- `{field}`: left=`{left_val}` | right=`{right_val}`")
                         diff_md = "\n".join(rows)
                     return (
                         left.get("final_image"),
