@@ -25,13 +25,23 @@ from paperbanana.core.logging import configure_logging
 from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.plot_data import load_statistical_plot_payload
 from paperbanana.core.resume import load_resume_state
+from paperbanana.core.source_loader import load_methodology_source
+from paperbanana.core.sweep import (
+    build_sweep_variants,
+    parse_csv_bools,
+    parse_csv_ints,
+    parse_csv_values,
+    quality_proxy_score,
+    rank_sweep_results,
+    summarize_sweep,
+)
 from paperbanana.core.types import (
     DiagramType,
     GenerationInput,
     PipelineProgressEvent,
     PipelineProgressStage,
 )
-from paperbanana.core.utils import ensure_dir, find_prompt_dir
+from paperbanana.core.utils import ensure_dir, find_prompt_dir, generate_run_id, save_json
 from paperbanana.evaluation.judge import VLMJudge
 from paperbanana.providers.registry import ProviderRegistry
 
@@ -855,6 +865,167 @@ def run_orchestration(
         pkg_preview = f"(not readable yet: {pkg_path})"
 
     return "\n".join(lines), orch_dir, plan_preview, pkg_preview
+
+
+def run_sweep(
+    settings: Settings,
+    *,
+    input_path: str,
+    caption: str,
+    pdf_pages: Optional[str] = None,
+    vlm_providers: str = "",
+    vlm_models: str = "",
+    image_providers: str = "",
+    image_models: str = "",
+    iterations: str = "",
+    optimize_modes: str = "",
+    auto_modes: str = "",
+    max_variants: Optional[int] = None,
+    dry_run: bool = False,
+    verbose_logging: bool = False,
+) -> tuple[str, str, str]:
+    """Run sweep using core sweep utilities. Returns (log, sweep_dir, report_path)."""
+    configure_logging(verbose=verbose_logging)
+    lines: list[str] = ["Starting parameter sweep..."]
+    input_file = Path(input_path)
+    if not input_file.is_file():
+        msg = f"Input file not found: {input_path}"
+        lines.append(msg)
+        return "\n".join(lines), "", ""
+    if not caption.strip():
+        msg = "Caption is required."
+        lines.append(msg)
+        return "\n".join(lines), "", ""
+    if max_variants is not None and max_variants < 1:
+        msg = "max_variants must be >= 1"
+        lines.append(msg)
+        return "\n".join(lines), "", ""
+
+    try:
+        variants = build_sweep_variants(
+            vlm_providers=parse_csv_values(vlm_providers),
+            vlm_models=parse_csv_values(vlm_models),
+            image_providers=parse_csv_values(image_providers),
+            image_models=parse_csv_values(image_models),
+            refinement_iterations=parse_csv_ints(iterations, field_name="iterations"),
+            optimize_inputs=parse_csv_bools(optimize_modes, field_name="optimize_modes"),
+            auto_refine=parse_csv_bools(auto_modes, field_name="auto_modes"),
+            max_variants=max_variants,
+        )
+    except ValueError as e:
+        lines.append(str(e))
+        return "\n".join(lines), "", ""
+    if not variants:
+        lines.append("Sweep generated zero variants.")
+        return "\n".join(lines), "", ""
+
+    try:
+        source_context = load_methodology_source(input_file, pdf_pages=pdf_pages)
+    except Exception as e:
+        lines.append(f"{type(e).__name__}: {e}")
+        return "\n".join(lines), "", ""
+
+    sweep_id = f"sweep_{generate_run_id()}"
+    sweep_dir = ensure_dir(Path(settings.output_dir) / sweep_id)
+    report_path = sweep_dir / "sweep_report.json"
+    lines.append(f"Sweep ID: {sweep_id}")
+    lines.append(f"Variants: {len(variants)}")
+    lines.append(f"Output: {sweep_dir}")
+
+    if dry_run:
+        preview = [variant.as_dict() for variant in variants[: min(10, len(variants))]]
+        report = {
+            "sweep_id": sweep_id,
+            "status": "dry_run",
+            "input": str(input_file.resolve()),
+            "caption": caption,
+            "total_variants": len(variants),
+            "preview": preview,
+        }
+        save_json(report, report_path)
+        lines.append("Dry run complete.")
+        lines.append(f"Report written: {report_path}")
+        return "\n".join(lines), str(sweep_dir), str(report_path)
+
+    all_results: list[dict[str, Any]] = []
+    total_start = time.perf_counter()
+    gen_input = GenerationInput(
+        source_context=source_context,
+        communicative_intent=caption.strip(),
+        diagram_type=DiagramType.METHODOLOGY,
+    )
+
+    for idx, variant in enumerate(variants, start=1):
+        lines.append(f"Variant {idx}/{len(variants)} — {variant.variant_id}")
+        variant_dir = ensure_dir(sweep_dir / variant.variant_id)
+        overrides: dict[str, Any] = {
+            "output_dir": str(variant_dir),
+            "output_format": settings.output_format,
+            "vlm_provider": variant.vlm_provider,
+            "image_provider": variant.image_provider,
+            "refinement_iterations": variant.refinement_iterations,
+            "optimize_inputs": variant.optimize_inputs,
+            "auto_refine": variant.auto_refine,
+        }
+        if variant.vlm_model:
+            overrides["vlm_model"] = variant.vlm_model
+        if variant.image_model:
+            overrides["image_model"] = variant.image_model
+        variant_settings = settings.model_copy(update=overrides)
+        try:
+            variant_start = time.perf_counter()
+            result = asyncio.run(PaperBananaPipeline(settings=variant_settings).generate(gen_input))
+            variant_seconds = time.perf_counter() - variant_start
+            final_critique = result.iterations[-1].critique if result.iterations else None
+            suggestion_count = len(final_critique.critic_suggestions) if final_critique else 0
+            score = quality_proxy_score(suggestion_count)
+            all_results.append(
+                {
+                    "status": "success",
+                    **variant.as_dict(),
+                    "run_id": result.metadata.get("run_id"),
+                    "output_path": result.image_path,
+                    "iterations_used": len(result.iterations),
+                    "critic_suggestions": suggestion_count,
+                    "quality_proxy_score": round(score, 2),
+                    "total_seconds": round(variant_seconds, 2),
+                }
+            )
+            lines.append(f"  ok: score={score:.1f}, {variant_seconds:.1f}s")
+        except Exception as e:
+            all_results.append(
+                {
+                    "status": "failed",
+                    **variant.as_dict(),
+                    "error": str(e),
+                }
+            )
+            lines.append(f"  failed: {e}")
+
+    successful_results = [item for item in all_results if item["status"] == "success"]
+    ranked_results = rank_sweep_results(successful_results)
+    summary = summarize_sweep(all_results)
+    report = {
+        "sweep_id": sweep_id,
+        "status": "completed",
+        "input": str(input_file.resolve()),
+        "caption": caption,
+        "total_seconds": round(time.perf_counter() - total_start, 2),
+        "summary": summary,
+        "results": all_results,
+        "ranked_results": ranked_results,
+        "quality_proxy_note": (
+            "quality_proxy_score = max(0, 100 - 12.5 * N) where N is critic suggestion "
+            "count on the final iteration"
+        ),
+    }
+    save_json(report, report_path)
+    lines.append("")
+    lines.append(f"Completed: {summary.get('completed', 0)}")
+    lines.append(f"Failed: {summary.get('failed', 0)}")
+    lines.append(f"Best variant: {summary.get('best_variant')}")
+    lines.append(f"Report written: {report_path}")
+    return "\n".join(lines), str(sweep_dir), str(report_path)
 
 
 def _sanitize_output_filename(name: str) -> str:

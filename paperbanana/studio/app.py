@@ -23,6 +23,7 @@ from paperbanana.studio.runner import (
     run_orchestration,
     run_plot,
     run_plot_batch,
+    run_sweep,
 )
 
 
@@ -927,6 +928,157 @@ def build_studio_app(
                         cmp_filename,
                     ],
                     outputs=[cmp_log, cmp_out],
+                )
+
+            # ── Sweep ─────────────────────────────────────────────────────
+            with gr.Tab("Sweep"):
+                gr.Markdown(
+                    "Run a multi-variant methodology sweep and rank outputs by the built-in "
+                    "quality proxy score. This currently uses a source file input."
+                )
+                sw_input = gr.File(
+                    label="Methodology source file",
+                    file_types=[".txt", ".md", ".pdf"],
+                )
+                sw_caption = gr.Textbox(label="Figure caption / communicative intent", lines=2)
+                sw_pdf_pages = gr.Textbox(
+                    label="PDF pages (optional)",
+                    placeholder="e.g. 1-5,7 (PDF inputs only)",
+                )
+                with gr.Row():
+                    sw_vlm_providers = gr.Textbox(
+                        label="VLM providers",
+                        value="",
+                        placeholder="Comma-separated, e.g. gemini,openai",
+                    )
+                    sw_vlm_models = gr.Textbox(
+                        label="VLM models",
+                        value="",
+                        placeholder="Optional comma-separated models",
+                    )
+                with gr.Row():
+                    sw_img_providers = gr.Textbox(
+                        label="Image providers",
+                        value="",
+                        placeholder="Comma-separated, e.g. google_imagen,openai_imagen",
+                    )
+                    sw_img_models = gr.Textbox(
+                        label="Image models",
+                        value="",
+                        placeholder="Optional comma-separated models",
+                    )
+                with gr.Row():
+                    sw_iterations = gr.Textbox(
+                        label="Iteration axis",
+                        value="",
+                        placeholder="Comma-separated ints, e.g. 2,3,4",
+                    )
+                    sw_opt_modes = gr.Textbox(
+                        label="Optimize axis",
+                        value="",
+                        placeholder="on,off",
+                    )
+                    sw_auto_modes = gr.Textbox(
+                        label="Auto-refine axis",
+                        value="",
+                        placeholder="off,on",
+                    )
+                with gr.Row():
+                    sw_max_variants = gr.Number(
+                        label="Max variants (optional)", value=None, precision=0
+                    )
+                    sw_dry_run = gr.Checkbox(label="Dry run (plan only)", value=False)
+                sw_log = gr.Textbox(label="Sweep log", lines=16)
+                sw_dir = gr.Textbox(label="Sweep output directory")
+                sw_report = gr.Textbox(label="sweep_report.json path")
+                sw_go = gr.Button("Run sweep", variant="primary")
+
+                def _do_sweep(
+                    od,
+                    c,
+                    vp,
+                    vm,
+                    ip,
+                    im,
+                    fo,
+                    it,
+                    au,
+                    mx,
+                    op,
+                    sp,
+                    sd,
+                    infile,
+                    caption,
+                    pdf_pages,
+                    svp,
+                    svm,
+                    sip,
+                    sim,
+                    siters,
+                    sopt,
+                    sauto,
+                    smax,
+                    sdry,
+                ):
+                    _dotenv()
+                    try:
+                        path = _upload_path(infile)
+                        if not path:
+                            return "Upload a methodology source file.", "", ""
+                        st = _settings(od, c, vp, vm, ip, im, fo, it, au, mx, op, sp, sd)
+                        max_variants_int: Optional[int] = None
+                        if smax is not None and not (isinstance(smax, float) and math.isnan(smax)):
+                            max_variants_int = int(smax)
+                        log, sweep_dir, report_path = run_sweep(
+                            st,
+                            input_path=path,
+                            caption=caption or "",
+                            pdf_pages=(pdf_pages or "").strip() or None,
+                            vlm_providers=svp or "",
+                            vlm_models=svm or "",
+                            image_providers=sip or "",
+                            image_models=sim or "",
+                            iterations=siters or "",
+                            optimize_modes=sopt or "",
+                            auto_modes=sauto or "",
+                            max_variants=max_variants_int,
+                            dry_run=bool(sdry),
+                            verbose_logging=False,
+                        )
+                        return log, sweep_dir, report_path
+                    except Exception as e:
+                        return f"{type(e).__name__}: {e}", "", ""
+
+                sw_go.click(
+                    _do_sweep,
+                    inputs=[
+                        out_dir,
+                        cfg,
+                        vlm_p,
+                        vlm_m,
+                        img_p,
+                        img_m,
+                        fmt,
+                        iters,
+                        auto_ref,
+                        max_it,
+                        opt_in,
+                        save_pr,
+                        seed_val,
+                        sw_input,
+                        sw_caption,
+                        sw_pdf_pages,
+                        sw_vlm_providers,
+                        sw_vlm_models,
+                        sw_img_providers,
+                        sw_img_models,
+                        sw_iterations,
+                        sw_opt_modes,
+                        sw_auto_modes,
+                        sw_max_variants,
+                        sw_dry_run,
+                    ],
+                    outputs=[sw_log, sw_dir, sw_report],
                 )
 
             # ── Runs browser ──────────────────────────────────────────────
