@@ -818,10 +818,11 @@ def build_studio_app(
                     root = (od or default_output_dir).strip() or default_output_dir
                     r = runs_mod.list_run_ids(root)
                     b = runs_mod.list_batch_ids(root)
+                    left_default = r[-2] if len(r) >= 2 else (r[-1] if r else None)
                     return (
                         gr.update(choices=r, value=r[-1] if r else None),
                         gr.update(choices=b, value=b[-1] if b else None),
-                        gr.update(choices=r, value=r[-2] if len(r) >= 2 else (r[-1] if r else None)),
+                        gr.update(choices=r, value=left_default),
                         gr.update(choices=r, value=r[-1] if r else None),
                     )
 
@@ -883,8 +884,12 @@ def build_studio_app(
                     else:
                         rows = ["### Differences", ""]
                         for d in diffs:
+                            field = d.get("field")
+                            left_val = d.get("left")
+                            right_val = d.get("right")
                             rows.append(
-                                f"- `{d.get('field')}`: left=`{d.get('left')}` | right=`{d.get('right')}`"
+                                f"- `{field}`: left=`{left_val}` | "
+                                f"right=`{right_val}`"
                             )
                         diff_md = "\n".join(rows)
                     return (
