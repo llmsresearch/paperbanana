@@ -831,7 +831,10 @@ def run_sweep(
             )
             lines.append(f"  failed: {e}")
 
-    ranked_results = rank_sweep_results([item for item in all_results if item["status"] == "success"])
+    successful_results = [
+        item for item in all_results if item["status"] == "success"
+    ]
+    ranked_results = rank_sweep_results(successful_results)
     summary = summarize_sweep(all_results)
     report = {
         "sweep_id": sweep_id,
