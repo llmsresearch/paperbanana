@@ -188,6 +188,176 @@ def load_plot_batch_manifest(manifest_path: Path) -> list[dict[str, Any]]:
     return result
 
 
+_BATCH_KNOWN_KEYS = {"input", "caption", "id", "pdf_pages"}
+_PLOT_BATCH_KNOWN_KEYS = {"data", "intent", "id", "aspect_ratio"}
+
+_PDF_PAGES_RE_PATTERN = r"^(\d+(-\d+)?)(,\s*\d+(-\d+)?)*$"
+
+
+def validate_manifest(
+    manifest_path: Path,
+    manifest_type: Literal["batch", "plot", "auto"] = "auto",
+) -> list[str]:
+    """Validate a batch or plot-batch manifest and return a list of all violations.
+
+    Returns an empty list when the manifest is valid.
+    """
+    import re
+
+    from paperbanana.core.types import SUPPORTED_ASPECT_RATIOS
+
+    errors: list[str] = []
+    manifest_path = Path(manifest_path).resolve()
+
+    # Parse inline (keeps the validator self-contained and lets us collect
+    # multiple violations instead of stopping at the first raise).
+    if not manifest_path.exists():
+        return [f"Manifest not found: {manifest_path}"]
+
+    suffix = manifest_path.suffix.lower()
+    if suffix not in (".yaml", ".yml", ".json"):
+        return [f"Manifest must be .yaml, .yml, or .json. Got: {manifest_path.suffix}"]
+
+    try:
+        raw = manifest_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"Failed to read manifest: {exc}"]
+
+    if suffix in (".yaml", ".yml"):
+        try:
+            import yaml
+        except ImportError:
+            return ["PyYAML is required for YAML manifests. Install with: pip install pyyaml"]
+        try:
+            data = yaml.safe_load(raw)
+        except yaml.YAMLError as exc:
+            return [f"Failed to parse YAML manifest: {exc}"]
+    else:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            return [f"Failed to parse JSON manifest: {exc}"]
+
+    if data is None:
+        return ["Manifest is empty"]
+
+    full_data: dict[str, Any] | None = None
+    if isinstance(data, list):
+        items_raw = data
+    elif isinstance(data, dict) and "items" in data:
+        items_raw = data["items"]
+        full_data = data
+    else:
+        return ["Manifest must be a list of items or an object with an 'items' list"]
+
+    if not items_raw:
+        return ["Manifest contains no items"]
+
+    # --- auto-detect type ---
+    detected: Literal["batch", "plot"] | None = None
+    if manifest_type == "auto":
+        first = items_raw[0] if items_raw else {}
+        if isinstance(first, dict):
+            if "data" in first and "intent" in first:
+                detected = "plot"
+            elif "input" in first and "caption" in first:
+                detected = "batch"
+        if detected is None:
+            return [
+                "Cannot auto-detect manifest type from first item. Use --type batch or --type plot."
+            ]
+    else:
+        detected = manifest_type  # type: ignore[assignment]
+
+    parent = manifest_path.parent
+
+    if detected == "batch":
+        required = {"input", "caption"}
+        known = _BATCH_KNOWN_KEYS
+    else:
+        required = {"data", "intent"}
+        known = _PLOT_BATCH_KNOWN_KEYS
+
+    seen_ids: dict[str, int] = {}
+
+    for i, entry in enumerate(items_raw):
+        prefix = f"Item {i}"
+        if not isinstance(entry, dict):
+            errors.append(f"{prefix}: must be an object, got {type(entry).__name__}")
+            continue
+
+        # --- required fields ---
+        for field in sorted(required):
+            val = entry.get(field)
+            if not val:
+                errors.append(f"{prefix}: missing required field '{field}'")
+
+        # --- unrecognised keys ---
+        extra = set(entry.keys()) - known
+        if extra:
+            errors.append(f"{prefix}: unrecognised keys: {', '.join(sorted(extra))}")
+
+        # --- duplicate id ---
+        item_id = entry.get("id")
+        if item_id is not None:
+            if item_id in seen_ids:
+                errors.append(
+                    f"{prefix}: duplicate id '{item_id}' (first seen at item {seen_ids[item_id]})"
+                )
+            else:
+                seen_ids[item_id] = i
+
+        # --- file path existence ---
+        path_field = "input" if detected == "batch" else "data"
+        raw_path = entry.get(path_field)
+        if raw_path:
+            p = Path(raw_path)
+            if not p.is_absolute():
+                p = (parent / p).resolve()
+            if not p.exists():
+                errors.append(f"{prefix}: referenced path does not exist: {p}")
+
+        if detected == "plot":
+            # data file suffix
+            if raw_path:
+                sfx = Path(raw_path).suffix.lower()
+                if sfx not in (".csv", ".json"):
+                    errors.append(f"{prefix}: 'data' must be a .csv or .json file, got '{sfx}'")
+            # aspect_ratio
+            ar = entry.get("aspect_ratio")
+            if ar is not None:
+                if not isinstance(ar, str):
+                    errors.append(f"{prefix}: 'aspect_ratio' must be a string when set")
+                elif ar not in SUPPORTED_ASPECT_RATIOS:
+                    supported = ", ".join(sorted(SUPPORTED_ASPECT_RATIOS))
+                    errors.append(
+                        f"{prefix}: unsupported aspect_ratio '{ar}'. Must be one of: {supported}"
+                    )
+
+        if detected == "batch":
+            # pdf_pages format
+            pp = entry.get("pdf_pages")
+            if pp is not None:
+                if not isinstance(pp, str):
+                    errors.append(f"{prefix}: 'pdf_pages' must be a string when set")
+                elif not re.match(_PDF_PAGES_RE_PATTERN, pp):
+                    errors.append(
+                        f"{prefix}: invalid pdf_pages format '{pp}'. "
+                        "Expected e.g. '1-5' or '2,4,6-8'"
+                    )
+
+    # --- composite section (batch only) ---
+    if full_data is not None and "composite" in full_data and detected == "batch":
+        try:
+            from paperbanana.core.composite import parse_composite_config
+
+            parse_composite_config(full_data)
+        except (ValueError, TypeError) as exc:
+            errors.append(f"Composite section: {exc}")
+
+    return errors
+
+
 def load_batch_report(batch_dir: Path) -> dict[str, Any]:
     """Load batch_report.json from a batch output directory.
 
