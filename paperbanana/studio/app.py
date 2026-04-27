@@ -985,7 +985,9 @@ def build_studio_app(
                     )
                 with gr.Row():
                     sw_max_variants = gr.Number(
-                        label="Max variants (optional)", value=None, precision=0
+                        label="Max variants (optional)",
+                        value=None,
+                        precision=0,
                     )
                     sw_dry_run = gr.Checkbox(label="Dry run (plan only)", value=False)
                 sw_log = gr.Textbox(label="Sweep log", lines=16)
