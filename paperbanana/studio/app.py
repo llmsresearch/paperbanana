@@ -794,14 +794,36 @@ def build_studio_app(
                 rb_inp = gr.Textbox(label="run_input.json (preview)", lines=10)
                 rb_gal = gr.Gallery(label="Iteration thumbnails", columns=4, height=220)
                 bb_report = gr.Textbox(label="batch_report.json (preview)", lines=14)
+                gr.Markdown("### Run Compare")
+                with gr.Row():
+                    cmp_left = gr.Dropdown(
+                        label="Left run",
+                        choices=[],
+                        allow_custom_value=True,
+                    )
+                    cmp_right = gr.Dropdown(
+                        label="Right run",
+                        choices=[],
+                        allow_custom_value=True,
+                    )
+                cmp_go = gr.Button("Compare runs")
+                with gr.Row():
+                    cmp_left_img = gr.Image(label="Left final output", type="filepath")
+                    cmp_right_img = gr.Image(label="Right final output", type="filepath")
+                cmp_diff = gr.Markdown()
+                cmp_left_details = gr.Textbox(label="Left run details", lines=12)
+                cmp_right_details = gr.Textbox(label="Right run details", lines=12)
 
                 def _refresh(od: str):
                     root = (od or default_output_dir).strip() or default_output_dir
                     r = runs_mod.list_run_ids(root)
                     b = runs_mod.list_batch_ids(root)
+                    left_default = r[-2] if len(r) >= 2 else (r[-1] if r else None)
                     return (
                         gr.update(choices=r, value=r[-1] if r else None),
                         gr.update(choices=b, value=b[-1] if b else None),
+                        gr.update(choices=r, value=left_default),
+                        gr.update(choices=r, value=r[-1] if r else None),
                     )
 
                 def _show_run(od: str, rid: Optional[str]):
@@ -822,10 +844,63 @@ def build_studio_app(
                     s = runs_mod.load_batch_summary(root, bid)
                     return s.get("report_preview") or ""
 
+                def _render_compare_details(data: dict[str, Any]) -> str:
+                    keys = [
+                        "run_id",
+                        "diagram_type",
+                        "caption",
+                        "aspect_ratio",
+                        "vlm_provider",
+                        "vlm_model",
+                        "image_provider",
+                        "image_model",
+                        "output_format",
+                        "refinement_iterations",
+                        "auto_refine",
+                        "max_iterations",
+                        "seed",
+                        "duration_seconds",
+                        "total_cost_usd",
+                    ]
+                    lines: list[str] = []
+                    for key in keys:
+                        lines.append(f"{key}: {data.get(key)}")
+                    return "\n".join(lines)
+
+                def _show_compare(od: str, left_id: Optional[str], right_id: Optional[str]):
+                    if not left_id or not right_id:
+                        msg = "Select both runs to compare."
+                        return None, None, msg, "", ""
+                    root = (od or default_output_dir).strip() or default_output_dir
+                    cmp = runs_mod.compare_runs(root, left_id, right_id)
+                    if cmp.get("error"):
+                        msg = str(cmp["error"])
+                        return None, None, msg, "", ""
+                    left = cmp.get("left") or {}
+                    right = cmp.get("right") or {}
+                    diffs = cmp.get("diffs") or []
+                    if not diffs:
+                        diff_md = "No differences detected in tracked comparison fields."
+                    else:
+                        rows = ["### Differences", ""]
+                        for d in diffs:
+                            field = d.get("field")
+                            left_val = d.get("left")
+                            right_val = d.get("right")
+                            rows.append(f"- `{field}`: left=`{left_val}` | right=`{right_val}`")
+                        diff_md = "\n".join(rows)
+                    return (
+                        left.get("final_image"),
+                        right.get("final_image"),
+                        diff_md,
+                        _render_compare_details(left),
+                        _render_compare_details(right),
+                    )
+
                 rb_refresh.click(
                     _refresh,
                     inputs=[out_dir],
-                    outputs=[run_pick, batch_pick],
+                    outputs=[run_pick, batch_pick, cmp_left, cmp_right],
                 )
                 run_pick.change(
                     _show_run,
@@ -836,6 +911,17 @@ def build_studio_app(
                     _show_batch,
                     inputs=[out_dir, batch_pick],
                     outputs=[bb_report],
+                )
+                cmp_go.click(
+                    _show_compare,
+                    inputs=[out_dir, cmp_left, cmp_right],
+                    outputs=[
+                        cmp_left_img,
+                        cmp_right_img,
+                        cmp_diff,
+                        cmp_left_details,
+                        cmp_right_details,
+                    ],
                 )
 
         gr.Markdown(
