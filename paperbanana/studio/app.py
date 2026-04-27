@@ -19,8 +19,10 @@ from paperbanana.studio.runner import (
     run_continue,
     run_evaluate,
     run_methodology,
+    run_orchestrate,
     run_plot,
     run_plot_batch,
+    run_sweep,
 )
 
 
@@ -772,6 +774,268 @@ def build_studio_app(
                         cmp_filename,
                     ],
                     outputs=[cmp_log, cmp_out],
+                )
+
+            # ── Sweep ─────────────────────────────────────────────────────
+            with gr.Tab("Sweep"):
+                gr.Markdown(
+                    "Run a multi-variant methodology sweep and rank outputs by the built-in "
+                    "quality proxy score. This currently uses a source file input."
+                )
+                sw_input = gr.File(
+                    label="Methodology source file",
+                    file_types=[".txt", ".md", ".pdf"],
+                )
+                sw_caption = gr.Textbox(label="Figure caption / communicative intent", lines=2)
+                sw_pdf_pages = gr.Textbox(
+                    label="PDF pages (optional)",
+                    placeholder="e.g. 1-5,7 (PDF inputs only)",
+                )
+                with gr.Row():
+                    sw_vlm_providers = gr.Textbox(
+                        label="VLM providers",
+                        value="",
+                        placeholder="Comma-separated, e.g. gemini,openai",
+                    )
+                    sw_vlm_models = gr.Textbox(
+                        label="VLM models",
+                        value="",
+                        placeholder="Optional comma-separated models",
+                    )
+                with gr.Row():
+                    sw_img_providers = gr.Textbox(
+                        label="Image providers",
+                        value="",
+                        placeholder="Comma-separated, e.g. google_imagen,openai_imagen",
+                    )
+                    sw_img_models = gr.Textbox(
+                        label="Image models",
+                        value="",
+                        placeholder="Optional comma-separated models",
+                    )
+                with gr.Row():
+                    sw_iterations = gr.Textbox(
+                        label="Iteration axis",
+                        value="",
+                        placeholder="Comma-separated ints, e.g. 2,3,4",
+                    )
+                    sw_opt_modes = gr.Textbox(
+                        label="Optimize axis",
+                        value="",
+                        placeholder="on,off",
+                    )
+                    sw_auto_modes = gr.Textbox(
+                        label="Auto-refine axis",
+                        value="",
+                        placeholder="off,on",
+                    )
+                with gr.Row():
+                    sw_max_variants = gr.Number(label="Max variants (optional)", value=None, precision=0)
+                    sw_dry_run = gr.Checkbox(label="Dry run (plan only)", value=False)
+                sw_log = gr.Textbox(label="Sweep log", lines=16)
+                sw_dir = gr.Textbox(label="Sweep output directory")
+                sw_report = gr.Textbox(label="sweep_report.json path")
+                sw_go = gr.Button("Run sweep", variant="primary")
+
+                def _do_sweep(
+                    od,
+                    c,
+                    vp,
+                    vm,
+                    ip,
+                    im,
+                    fo,
+                    it,
+                    au,
+                    mx,
+                    op,
+                    sp,
+                    sd,
+                    infile,
+                    caption,
+                    pdf_pages,
+                    svp,
+                    svm,
+                    sip,
+                    sim,
+                    siters,
+                    sopt,
+                    sauto,
+                    smax,
+                    sdry,
+                ):
+                    _dotenv()
+                    try:
+                        path = _upload_path(infile)
+                        if not path:
+                            return "Upload a methodology source file.", "", ""
+                        st = _settings(od, c, vp, vm, ip, im, fo, it, au, mx, op, sp, sd)
+                        max_variants_int: Optional[int] = None
+                        if smax is not None and not (isinstance(smax, float) and math.isnan(smax)):
+                            max_variants_int = int(smax)
+                        log, sweep_dir, report_path = run_sweep(
+                            st,
+                            input_path=path,
+                            caption=caption or "",
+                            pdf_pages=(pdf_pages or "").strip() or None,
+                            vlm_providers=svp or "",
+                            vlm_models=svm or "",
+                            image_providers=sip or "",
+                            image_models=sim or "",
+                            iterations=siters or "",
+                            optimize_modes=sopt or "",
+                            auto_modes=sauto or "",
+                            max_variants=max_variants_int,
+                            dry_run=bool(sdry),
+                            verbose_logging=False,
+                        )
+                        return log, sweep_dir, report_path
+                    except Exception as e:
+                        return f"{type(e).__name__}: {e}", "", ""
+
+                sw_go.click(
+                    _do_sweep,
+                    inputs=[
+                        out_dir,
+                        cfg,
+                        vlm_p,
+                        vlm_m,
+                        img_p,
+                        img_m,
+                        fmt,
+                        iters,
+                        auto_ref,
+                        max_it,
+                        opt_in,
+                        save_pr,
+                        seed_val,
+                        sw_input,
+                        sw_caption,
+                        sw_pdf_pages,
+                        sw_vlm_providers,
+                        sw_vlm_models,
+                        sw_img_providers,
+                        sw_img_models,
+                        sw_iterations,
+                        sw_opt_modes,
+                        sw_auto_modes,
+                        sw_max_variants,
+                        sw_dry_run,
+                    ],
+                    outputs=[sw_log, sw_dir, sw_report],
+                )
+
+            # ── Orchestrate ───────────────────────────────────────────────
+            with gr.Tab("Orchestrate"):
+                gr.Markdown(
+                    "Generate a full figure package from a paper path or resume an existing "
+                    "orchestration run."
+                )
+                or_paper = gr.File(
+                    label="Paper file (required for new orchestration)",
+                    file_types=[".pdf", ".txt", ".md"],
+                )
+                or_resume = gr.Textbox(
+                    label="Resume orchestration (ID or path)",
+                    placeholder="Optional: orchestrate_... or /path/to/orchestrate_dir",
+                )
+                with gr.Row():
+                    or_data_dir = gr.Textbox(
+                        label="Data directory (optional, new run only)",
+                        placeholder="Folder with CSV/JSON for plot extraction",
+                    )
+                    or_pdf_pages = gr.Textbox(
+                        label="PDF pages (optional, new run only)",
+                        placeholder="e.g. 1-6,9",
+                    )
+                with gr.Row():
+                    or_max_method = gr.Number(label="Max methodology figures", value=6, precision=0)
+                    or_max_plot = gr.Number(label="Max plot figures", value=4, precision=0)
+                with gr.Row():
+                    or_retry_failed = gr.Checkbox(label="Retry failed items", value=False)
+                    or_dry_run = gr.Checkbox(label="Dry run (plan only)", value=False)
+                with gr.Row():
+                    or_max_retries = gr.Number(label="Max retries per item", value=0, precision=0)
+                    or_concurrency = gr.Number(label="Concurrency", value=1, precision=0)
+                or_log = gr.Textbox(label="Orchestration log", lines=16)
+                or_summary = gr.Markdown()
+                or_go = gr.Button("Run orchestration", variant="primary")
+
+                def _do_orchestrate(
+                    od,
+                    c,
+                    vp,
+                    vm,
+                    ip,
+                    im,
+                    fo,
+                    it,
+                    au,
+                    mx,
+                    op,
+                    sp,
+                    sd,
+                    paper_file,
+                    resume_ref,
+                    data_dir,
+                    pdf_pages,
+                    max_method,
+                    max_plot,
+                    retry_failed,
+                    dry_run,
+                    max_retries,
+                    concurrency,
+                ):
+                    _dotenv()
+                    try:
+                        st = _settings(od, c, vp, vm, ip, im, fo, it, au, mx, op, sp, sd)
+                        paper_path = (_upload_path(paper_file) or "").strip() or None
+                        resume_val = (resume_ref or "").strip() or None
+                        log, summary = run_orchestrate(
+                            st,
+                            paper=paper_path,
+                            resume_orchestrate=resume_val,
+                            data_dir=(data_dir or "").strip() or None,
+                            max_method_figures=max(1, int(max_method or 1)),
+                            max_plot_figures=max(0, int(max_plot or 0)),
+                            pdf_pages=(pdf_pages or "").strip() or None,
+                            dry_run=bool(dry_run),
+                            retry_failed=bool(retry_failed),
+                            max_retries=max(0, int(max_retries or 0)),
+                            concurrency=max(1, int(concurrency or 1)),
+                        )
+                        return log, summary
+                    except Exception as e:
+                        return f"{type(e).__name__}: {e}", f"FAILED: {e}"
+
+                or_go.click(
+                    _do_orchestrate,
+                    inputs=[
+                        out_dir,
+                        cfg,
+                        vlm_p,
+                        vlm_m,
+                        img_p,
+                        img_m,
+                        fmt,
+                        iters,
+                        auto_ref,
+                        max_it,
+                        opt_in,
+                        save_pr,
+                        seed_val,
+                        or_paper,
+                        or_resume,
+                        or_data_dir,
+                        or_pdf_pages,
+                        or_max_method,
+                        or_max_plot,
+                        or_retry_failed,
+                        or_dry_run,
+                        or_max_retries,
+                        or_concurrency,
+                    ],
+                    outputs=[or_log, or_summary],
                 )
 
             # ── Runs browser ──────────────────────────────────────────────
