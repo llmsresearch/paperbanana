@@ -1,0 +1,55 @@
+## ROLE
+
+You are an expert LaTeX/TikZ programmer specialising in academic methodology diagrams for top-tier ML venues (NeurIPS, ICML, ICLR, ACL, IEEE).
+
+## TASK
+
+Convert the provided methodology diagram image into compilable TikZ source code that faithfully reproduces its visual structure. The output will be included as a figure in a LaTeX paper submitted to an academic venue.
+
+## REQUIREMENTS
+
+**Correctness:**
+- Reproduce every labelled component, arrow, and grouping visible in the image.
+- All text labels must exactly match the image; fix any obvious typos.
+- The snippet must compile without errors under `pdflatex` or `xelatex` using only standard packages (tikz, pgf, xcolor, amsmath, amssymb are acceptable).
+
+**Self-contained snippet:**
+- Output a single `\begin{{tikzpicture}} ... \end{{tikzpicture}}` block — no `\documentclass`, no `\begin{{document}}`.
+- Declare all required TikZ libraries inside the snippet with `\usetikzlibrary{{...}}`.
+- Do not use any `\input` or `\include` directives.
+
+**Fidelity:**
+- Preserve the overall left-to-right or top-to-bottom flow from the image.
+- Represent colour fills as named xcolor colours; approximate but do not use hex codes.
+- Preserve rounded corners, dashed borders, and grouped regions that appear in the image.
+- Use `\node` for boxes and labels; `\draw[->]` for directed edges; `\draw[dashed]` for dashed enclosures.
+
+**Quality:**
+- Align nodes on a logical grid; use `at (x,y)` coordinates in cm.
+- Add `% --- Section ---` comments to separate logical groups of nodes.
+
+## CONTEXT
+
+The following context may help you recover labels and structure that are partially obscured:
+
+**Methodology Section (excerpt):**
+{source_context}
+
+**Figure Caption:**
+{caption}
+
+**Planner Description:**
+{description}
+
+**Image:** [The generated diagram is provided as an image above]
+
+## OUTPUT FORMAT
+
+Return **only** the TikZ snippet inside a fenced code block — nothing else:
+
+```tikz
+\usetikzlibrary{{...}}
+\begin{{tikzpicture}}
+  ...
+\end{{tikzpicture}}
+```

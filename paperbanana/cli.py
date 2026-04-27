@@ -325,6 +325,11 @@ def generate(
         "--venue",
         help="Target venue style (neurips, icml, acl, ieee, custom)",
     ),
+    export_tikz: bool = typer.Option(
+        False,
+        "--export-tikz",
+        help="Export a compilable TikZ/LaTeX source file alongside the generated image",
+    ),
     vector_export: Optional[str] = typer.Option(
         None,
         "--vector-export",
@@ -427,6 +432,8 @@ def generate(
         overrides["prompt_dir"] = prompt_dir
     if generate_caption:
         overrides["generate_caption"] = True
+    if export_tikz:
+        overrides["export_tikz"] = True
 
     if config:
         settings = Settings.from_yaml(config, **overrides)
@@ -797,6 +804,8 @@ def generate(
         f" · {len(result.iterations)} iterations[/dim]\n"
     )
     console.print(f"  Output: [bold]{result.image_path}[/bold]")
+    if result.tikz_path:
+        console.print(f"  TikZ:   [bold]{result.tikz_path}[/bold]")
     console.print(f"  Run ID: [dim]{result.metadata.get('run_id', 'unknown')}[/dim]")
     if result.generated_caption:
         console.print("\n  [bold]Generated Caption:[/bold]")
@@ -1912,6 +1921,11 @@ def plot(
         "--generate-caption",
         help="Auto-generate a publication-ready figure caption (one extra VLM call)",
     ),
+    export_pgfplots: bool = typer.Option(
+        False,
+        "--export-pgfplots",
+        help="Export a compilable PGFPlots/LaTeX source file alongside the generated plot",
+    ),
     vector: bool = typer.Option(
         False,
         "--vector/--no-vector",
@@ -1956,6 +1970,7 @@ def plot(
         venue=venue,
         budget_usd=budget,
         generate_caption=generate_caption,
+        export_pgfplots=export_pgfplots,
         vector_export=vector,
     )
 
@@ -2006,6 +2021,8 @@ def plot(
 
     result = asyncio.run(_run())
     console.print(f"\n[green]Done![/green] Plot saved to: [bold]{result.image_path}[/bold]")
+    if result.tikz_path:
+        console.print(f"  PGFPlots: [bold]{result.tikz_path}[/bold]")
     vector_paths = result.metadata.get("vector_output_paths", {})
     for fmt, path in vector_paths.items():
         console.print(f"[green]Vector ({fmt.upper()}):[/green] [bold]{path}[/bold]")
@@ -2019,6 +2036,139 @@ def plot(
             f"  Cost: [bold]${cost_data['total_usd']:.4f}[/bold]"
             f" [dim](VLM: ${cost_data['vlm_usd']:.4f})[/dim]"
         )
+
+
+@app.command()
+def tikz(
+    input: str = typer.Option(
+        ...,
+        "--input",
+        "-i",
+        help="Path to an existing generated image to convert to LaTeX/TikZ",
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output .tex file path (default: same directory as input, with .tex extension)",
+    ),
+    source_context: Optional[str] = typer.Option(
+        None,
+        "--source-context",
+        help="Path to a methodology text file for context (improves TikZ fidelity)",
+    ),
+    caption: str = typer.Option(
+        "",
+        "--caption",
+        "-c",
+        help="Figure caption / communicative intent (improves TikZ fidelity)",
+    ),
+    diagram_type: str = typer.Option(
+        "diagram",
+        "--diagram-type",
+        help="Type of illustration: diagram (→ TikZ) or plot (→ PGFPlots)",
+    ),
+    vlm_provider: Optional[str] = typer.Option(
+        None, "--vlm-provider", help="VLM provider (gemini, openai, anthropic, …)"
+    ),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name override"),
+    venue: Optional[str] = typer.Option(
+        None,
+        "--venue",
+        help="Target venue style (neurips, icml, acl, ieee, custom)",
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to a YAML config file"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
+):
+    """Convert an existing generated image to a compilable LaTeX/TikZ source file."""
+    input_path = Path(input)
+    if not input_path.exists():
+        console.print(f"[red]Error: Input file not found: {input}[/red]")
+        raise typer.Exit(1)
+
+    if diagram_type not in ("diagram", "plot"):
+        console.print("[red]Error: --diagram-type must be 'diagram' or 'plot'[/red]")
+        raise typer.Exit(1)
+
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
+        console.print(
+            f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+        )
+        raise typer.Exit(1)
+
+    configure_logging(verbose=verbose)
+
+    # Resolve output path
+    tex_path = Path(output) if output else input_path.with_suffix(".tex")
+
+    # Load optional source context
+    context_text = ""
+    if source_context:
+        sc_path = Path(source_context)
+        if not sc_path.exists():
+            console.print(f"[red]Error: Source context file not found: {source_context}[/red]")
+            raise typer.Exit(1)
+        context_text = sc_path.read_text(encoding="utf-8")
+
+    # Build settings
+    overrides: dict = {}
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if venue:
+        overrides["venue"] = venue
+
+    if config:
+        settings = Settings.from_yaml(config, **overrides)
+    else:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+        settings = Settings(**overrides)
+
+    from paperbanana.agents.tikz_exporter import TikZExporterAgent
+    from paperbanana.core.types import DiagramType
+    from paperbanana.providers.registry import ProviderRegistry
+
+    dtype = DiagramType.METHODOLOGY if diagram_type == "diagram" else DiagramType.STATISTICAL_PLOT
+
+    console.print(
+        Panel.fit(
+            f"[bold]PaperBanana[/bold] — Export to LaTeX/TikZ\n\n"
+            f"Input:  {input_path}\n"
+            f"Output: {tex_path}\n"
+            f"Type:   {'TikZ' if dtype == DiagramType.METHODOLOGY else 'PGFPlots'}\n"
+            f"VLM:    {settings.vlm_provider} / {settings.effective_vlm_model}",
+            border_style="blue",
+        )
+    )
+
+    async def _run():
+        vlm = ProviderRegistry.create_vlm(settings)
+        agent = TikZExporterAgent(vlm)
+        return await agent.run(
+            image_path=str(input_path),
+            source_context=context_text,
+            caption=caption,
+            diagram_type=dtype,
+            venue=settings.venue,
+        )
+
+    console.print()
+    console.print("  [dim]●[/dim] Generating TikZ source...", end="")
+    try:
+        tikz_source = asyncio.run(_run())
+    except Exception as e:
+        console.print(f" [red]✗[/red]\n[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(" [green]✓[/green]")
+
+    tex_path.parent.mkdir(parents=True, exist_ok=True)
+    tex_path.write_text(tikz_source, encoding="utf-8")
+
+    console.print(f"\n[green]Done![/green] LaTeX source saved to: [bold]{tex_path}[/bold]")
 
 
 @app.command()

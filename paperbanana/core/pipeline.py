@@ -18,6 +18,7 @@ from paperbanana.agents.planner import PlannerAgent
 from paperbanana.agents.retriever import RetrieverAgent
 from paperbanana.agents.structurer import StructurerAgent
 from paperbanana.agents.stylist import StylistAgent
+from paperbanana.agents.tikz_exporter import TikZExporterAgent
 from paperbanana.agents.visualizer import VisualizerAgent
 from paperbanana.core.config import Settings
 from paperbanana.core.cost_tracker import CostTracker
@@ -64,6 +65,16 @@ from paperbanana.vector.graphviz_render import (
 logger = structlog.get_logger()
 
 _ssl_skip_applied = False
+
+
+def _get_version() -> str:
+    """Return the installed PaperBanana version, or 'unknown' if unavailable."""
+    try:
+        from importlib.metadata import version
+
+        return version("paperbanana")
+    except Exception:
+        return "unknown"
 
 
 def _emit_progress(
@@ -249,6 +260,9 @@ class PaperBananaPipeline:
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
         self.caption_agent = CaptionAgent(
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+        )
+        self.tikz_exporter = TikZExporterAgent(
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
         )
 
@@ -1062,7 +1076,60 @@ class PaperBananaPipeline:
             progress_callback=progress_callback,
         )
 
+        # ── Optional: TikZ / PGFPlots export ─────────────────────────
+        tikz_path: str | None = None
+        should_export_tikz = (
+            input.diagram_type == DiagramType.METHODOLOGY and self.settings.export_tikz
+        ) or (input.diagram_type == DiagramType.STATISTICAL_PLOT and self.settings.export_pgfplots)
+
+        if should_export_tikz and final_output_path:
+            if self._cost_tracker:
+                self._cost_tracker.set_agent("tikz_exporter")
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.TIKZ_EXPORTER_START,
+                    message="Exporting to LaTeX/TikZ",
+                ),
+            )
+            self._emit_progress("tikz_export_started")
+            tikz_start = time.perf_counter()
+            try:
+                tikz_source = await self.tikz_exporter.run(
+                    image_path=final_output_path,
+                    source_context=input.source_context,
+                    caption=input.communicative_intent,
+                    diagram_type=input.diagram_type,
+                    description=current_description,
+                    source_label=str(self._run_dir),
+                    model_label=getattr(self._vlm, "model_name", ""),
+                    venue=self.settings.venue,
+                    version=_get_version(),
+                )
+                tex_path = Path(final_output_path).with_suffix(".tex")
+                tex_path.write_text(tikz_source, encoding="utf-8")
+                tikz_path = str(tex_path)
+                logger.info("TikZ export saved", path=tikz_path)
+            except Exception:
+                logger.warning("TikZ export failed", exc_info=True)
+            tikz_seconds = time.perf_counter() - tikz_start
+            _emit_progress(
+                progress_callback,
+                PipelineProgressEvent(
+                    stage=PipelineProgressStage.TIKZ_EXPORTER_END,
+                    message="TikZ export done",
+                    seconds=tikz_seconds,
+                    extra={"tikz_path": tikz_path},
+                ),
+            )
+            self._emit_progress(
+                "tikz_export_completed",
+                seconds=round(tikz_seconds, 1),
+                tikz_path=tikz_path,
+            )
+
         vector_mode = self._effective_vector_export(input)
+        structurer_seconds = 0.0
         ve_start = time.perf_counter()
         vector_svg_path, vector_pdf_path = await self._maybe_export_methodology_vector(
             vector_mode=vector_mode,
@@ -1148,6 +1215,8 @@ class PaperBananaPipeline:
             metadata_dict["vector_output_paths"] = self.visualizer._last_vector_paths
 
         # Always write metadata (including cost) to disk for every run
+        if tikz_path:
+            metadata_dict["tikz_path"] = tikz_path
         save_json(metadata_dict, self._run_dir / "metadata.json")
 
         output = GenerationOutput(
@@ -1156,6 +1225,7 @@ class PaperBananaPipeline:
             iterations=iterations,
             metadata=metadata_dict,
             generated_caption=generated_caption,
+            tikz_path=tikz_path,
             vector_svg_path=vector_svg_path,
             vector_pdf_path=vector_pdf_path,
         )
