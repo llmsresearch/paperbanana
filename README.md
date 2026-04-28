@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/llmsresearch-paperbanana-badge.png)](https://mseep.ai/app/llmsresearch-paperbanana)
+
 <!-- mcp-name: io.github.llmsresearch/paperbanana -->
 <table align="center" width="100%" style="border: none; border-collapse: collapse;">
   <tr>
