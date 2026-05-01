@@ -767,6 +767,30 @@ async def test_openai_vlm_generate_builds_correct_messages():
 
 
 @pytest.mark.asyncio
+async def test_openai_vlm_generate_omits_temperature_for_gpt5_models():
+    """GPT-5 family chat models use the API default temperature."""
+    from paperbanana.providers.vlm.openai import OpenAIVLM
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Generated analysis"
+    mock_response.usage = None
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+    vlm = OpenAIVLM(api_key="test-key", model="gpt-5.5")
+    vlm._client = mock_client
+
+    result = await vlm.generate(prompt="Analyze this diagram", temperature=0.3)
+
+    assert result == "Generated analysis"
+    call_kwargs = mock_client.chat.completions.create.call_args[1]
+    assert call_kwargs["model"] == "gpt-5.5"
+    assert "temperature" not in call_kwargs
+
+
+@pytest.mark.asyncio
 async def test_openai_vlm_generate_encodes_images_as_base64():
     """OpenAIVLM.generate() encodes images as base64 data URIs in the payload."""
     from paperbanana.providers.vlm.openai import OpenAIVLM
@@ -848,6 +872,42 @@ def test_openai_imagen_size_mapping():
     assert gen._size_string(1024, 1024) == "1024x1024"
     # Near-square (within threshold)
     assert gen._size_string(1100, 1024) == "1024x1024"
+
+
+@pytest.mark.asyncio
+async def test_openai_imagen_gpt_image_2_uses_custom_size_and_quality():
+    """gpt-image-2 supports custom valid sizes and quality settings."""
+    import base64
+    from io import BytesIO
+
+    from paperbanana.providers.image_gen.openai_imagen import OpenAIImageGen
+
+    img = Image.new("RGB", (64, 64), color=(0, 128, 255))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    b64_data = base64.b64encode(buf.getvalue()).decode()
+
+    mock_result = MagicMock()
+    mock_result.data = [MagicMock()]
+    mock_result.data[0].b64_json = b64_data
+
+    mock_client = AsyncMock()
+    mock_client.images.generate = AsyncMock(return_value=mock_result)
+
+    gen = OpenAIImageGen(api_key="test-key", model="gpt-image-2")
+    gen._client = mock_client
+
+    await gen.generate(
+        prompt="A high-resolution methodology diagram",
+        width=3840,
+        height=2160,
+        quality="high",
+    )
+
+    call_kwargs = mock_client.images.generate.call_args[1]
+    assert call_kwargs["model"] == "gpt-image-2"
+    assert call_kwargs["size"] == "3840x2160"
+    assert call_kwargs["quality"] == "high"
 
 
 @pytest.mark.asyncio

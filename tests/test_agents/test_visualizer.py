@@ -127,3 +127,11 @@ def test_last_vector_paths_reset_on_each_run_call(tmp_path):
     output_path2 = str(tmp_path / "plot2.png")
     agent._execute_plot_code(_SIMPLE_PLOT_CODE, output_path2)
     assert agent._last_vector_paths == {}
+
+
+def test_ratio_to_dimensions_supports_high_resolution_landscape():
+    assert VisualizerAgent._ratio_to_dimensions("16:9", output_resolution="4k") == (3840, 2160)
+
+
+def test_ratio_to_dimensions_supports_2k_landscape():
+    assert VisualizerAgent._ratio_to_dimensions("16:9", output_resolution="2k") == (2048, 1152)

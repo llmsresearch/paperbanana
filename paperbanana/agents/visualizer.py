@@ -34,11 +34,15 @@ class VisualizerAgent(BaseAgent):
         prompt_dir: str = "prompts",
         output_dir: str = "outputs",
         prompt_recorder=None,
+        output_resolution: str = "2k",
+        image_quality: str = "auto",
     ):
         super().__init__(vlm_provider, prompt_dir, prompt_recorder=prompt_recorder)
         self.image_gen = image_gen
         self.output_dir = Path(output_dir)
         self._last_vector_paths: dict[str, str] = {}
+        self.output_resolution = output_resolution
+        self.image_quality = image_quality
 
     @property
     def agent_name(self) -> str:
@@ -104,7 +108,10 @@ class VisualizerAgent(BaseAgent):
         logger.info("Generating diagram image", iteration=iteration)
 
         # Determine dimensions from aspect ratio or use defaults
-        w, h = self._ratio_to_dimensions(aspect_ratio) if aspect_ratio else (1792, 1024)
+        w, h = self._ratio_to_dimensions(
+            aspect_ratio or "16:9",
+            output_resolution=self.output_resolution,
+        )
 
         image = await self.image_gen.generate(
             prompt=prompt,
@@ -112,6 +119,7 @@ class VisualizerAgent(BaseAgent):
             height=h,
             seed=seed,
             aspect_ratio=aspect_ratio,
+            quality=self.image_quality,
         )
 
         if output_path is None:
@@ -122,19 +130,46 @@ class VisualizerAgent(BaseAgent):
         return output_path
 
     @staticmethod
-    def _ratio_to_dimensions(ratio: str) -> tuple[int, int]:
+    def _ratio_to_dimensions(ratio: str, output_resolution: str = "2k") -> tuple[int, int]:
         """Convert aspect ratio string to pixel dimensions."""
-        mapping = {
-            "21:9": (2016, 864),
-            "16:9": (1792, 1024),
-            "4:3": (1365, 1024),
-            "3:2": (1536, 1024),
-            "1:1": (1024, 1024),
-            "2:3": (1024, 1536),
-            "3:4": (1024, 1365),
-            "9:16": (1024, 1792),
+        ratios = {
+            "21:9": (21, 9),
+            "16:9": (16, 9),
+            "4:3": (4, 3),
+            "3:2": (3, 2),
+            "1:1": (1, 1),
+            "2:3": (2, 3),
+            "3:4": (3, 4),
+            "9:16": (9, 16),
         }
-        return mapping.get(ratio, (1792, 1024))
+        rw, rh = ratios.get(ratio, (16, 9))
+        resolution = str(output_resolution).lower()
+        long_edge = {"1k": 1536, "2k": 2048, "4k": 3840}.get(resolution, 2048)
+        if ratio == "1:1" and resolution == "1k":
+            long_edge = 1024
+
+        if rw >= rh:
+            width = long_edge
+            height = round(long_edge * rh / rw)
+        else:
+            height = long_edge
+            width = round(long_edge * rw / rh)
+
+        width = max(16, round(width / 16) * 16)
+        height = max(16, round(height / 16) * 16)
+
+        max_pixels = 8_294_400
+        if width * height > max_pixels:
+            scale = (max_pixels / (width * height)) ** 0.5
+            width = max(16, round((width * scale) / 16) * 16)
+            height = max(16, round((height * scale) / 16) * 16)
+            while width * height > max_pixels:
+                if width >= height:
+                    width -= 16
+                else:
+                    height -= 16
+
+        return width, height
 
     async def _generate_plot(
         self,

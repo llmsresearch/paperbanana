@@ -244,6 +244,8 @@ class PaperBananaPipeline:
             prompt_dir=prompt_dir,
             output_dir=str(self._run_dir),
             prompt_recorder=self._prompt_recorder,
+            output_resolution=self.settings.output_resolution,
+            image_quality=self.settings.image_quality,
         )
         self.critic = CriticAgent(
             self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder

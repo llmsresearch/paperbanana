@@ -10,6 +10,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 OutputFormat = Literal["png", "jpeg", "webp"]
+ImageQuality = Literal["low", "medium", "high", "auto"]
 ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
 Venue = Literal["neurips", "icml", "acl", "ieee", "custom"]
 VectorExportMode = Literal["none", "svg", "pdf", "both"]
@@ -70,7 +71,8 @@ class Settings(BaseSettings):
     auto_refine: bool = False
     max_iterations: int = 30
     optimize_inputs: bool = False
-    output_resolution: str = "2k"
+    output_resolution: str = Field(default="2k", alias="OUTPUT_RESOLUTION")
+    image_quality: ImageQuality = Field(default="auto", alias="IMAGE_QUALITY")
     seed: Optional[int] = None
     exemplar_retrieval_enabled: bool = False
     exemplar_retrieval_endpoint: Optional[str] = None
@@ -178,6 +180,28 @@ class Settings(BaseSettings):
             raise ValueError(f"output_format must be png, jpeg, or webp. Got: {v}")
         return v
 
+    @field_validator("output_resolution", mode="before")
+    @classmethod
+    def validate_output_resolution(cls, v: Any) -> str:
+        """Validate output_resolution is 1k, 2k, or 4k."""
+        if v is None:
+            return "2k"
+        v = str(v).lower()
+        if v not in ("1k", "2k", "4k"):
+            raise ValueError(f"output_resolution must be 1k, 2k, or 4k. Got: {v}")
+        return v
+
+    @field_validator("image_quality", mode="before")
+    @classmethod
+    def validate_image_quality(cls, v: Any) -> str:
+        """Validate image_quality is low, medium, high, or auto."""
+        if v is None:
+            return "auto"
+        v = str(v).lower()
+        if v not in ("low", "medium", "high", "auto"):
+            raise ValueError(f"image_quality must be low, medium, high, or auto. Got: {v}")
+        return v
+
     @field_validator("exemplar_retrieval_top_k")
     @classmethod
     def validate_exemplar_retrieval_top_k(cls, v: int) -> int:
@@ -254,6 +278,7 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "vlm.model": "vlm_model",
         "image.provider": "image_provider",
         "image.model": "image_model",
+        "image.quality": "image_quality",
         "pipeline.num_retrieval_examples": "num_retrieval_examples",
         "pipeline.refinement_iterations": "refinement_iterations",
         "pipeline.auto_refine": "auto_refine",

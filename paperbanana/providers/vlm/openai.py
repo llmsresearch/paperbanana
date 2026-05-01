@@ -14,6 +14,11 @@ from paperbanana.providers.base import VLMProvider
 logger = structlog.get_logger()
 
 
+def _uses_fixed_temperature(model: str) -> bool:
+    """Return true when the model only accepts the API default temperature."""
+    return model.lower().startswith("gpt-5")
+
+
 class OpenAIVLM(VLMProvider):
     """VLM provider using the OpenAI Python SDK (async).
 
@@ -99,8 +104,9 @@ class OpenAIVLM(VLMProvider):
         kwargs = {
             "model": self._model,
             "messages": messages,
-            "temperature": temperature,
         }
+        if not _uses_fixed_temperature(self._model):
+            kwargs["temperature"] = temperature
 
         if response_format == "json" and self._json_mode:
             kwargs["response_format"] = {"type": "json_object"}

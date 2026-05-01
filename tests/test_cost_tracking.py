@@ -24,6 +24,12 @@ class TestPricingLookup:
         assert result is not None
         assert result["input_per_1k"] > 0
 
+    def test_openai_gpt_5_5_pricing(self):
+        result = lookup_vlm_price("openai", "gpt-5.5")
+        assert result is not None
+        assert result["input_per_1k"] == pytest.approx(0.005)
+        assert result["output_per_1k"] == pytest.approx(0.03)
+
     def test_unknown_vlm_returns_none(self):
         result = lookup_vlm_price("unknown_provider", "unknown_model")
         assert result is None
@@ -37,6 +43,10 @@ class TestPricingLookup:
         result = lookup_image_price("openai_imagen", "gpt-image-1.5")
         assert result is not None
         assert result > 0
+
+    def test_openai_gpt_image_2_pricing(self):
+        result = lookup_image_price("openai_imagen", "gpt-image-2")
+        assert result == pytest.approx(0.211)
 
     def test_unknown_image_returns_none(self):
         result = lookup_image_price("unknown", "unknown")
