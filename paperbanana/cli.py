@@ -364,7 +364,8 @@ def generate(
         raise typer.Exit(1)
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
+            "[red]Error: --venue must be neurips, icml, acl, ieee, ums, "
+            f"or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
     if vector_export and vector_export.lower() not in ("none", "svg", "pdf", "both"):
@@ -1181,7 +1182,8 @@ def batch(
         raise typer.Exit(1)
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
+            "[red]Error: --venue must be neurips, icml, acl, ieee, ums, "
+            f"or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
     if max_retries < 0:
@@ -1534,7 +1536,8 @@ def orchestrate(
         raise typer.Exit(1)
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
+            "[red]Error: --venue must be neurips, icml, acl, ieee, ums, "
+            f"or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
     if max_method_figures < 1:
@@ -1771,7 +1774,8 @@ def plot_batch(
         raise typer.Exit(1)
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
+            "[red]Error: --venue must be neurips, icml, acl, ieee, ums, "
+            f"or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
     if max_retries < 0:
@@ -1924,7 +1928,8 @@ def plot(
         raise typer.Exit(1)
     if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
+            "[red]Error: --venue must be neurips, icml, acl, ieee, ums, "
+            f"or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
 

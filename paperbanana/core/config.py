@@ -228,9 +228,7 @@ class Settings(BaseSettings):
             return "neurips"
         v = str(v).lower()
         if v not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
-            raise ValueError(
-                f"venue must be neurips, icml, acl, ieee, ums, or custom. Got: {v}"
-            )
+            raise ValueError(f"venue must be neurips, icml, acl, ieee, ums, or custom. Got: {v}")
         return v
 
     @classmethod
