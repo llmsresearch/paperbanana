@@ -29,7 +29,7 @@ class TestVenueSettings:
         settings = Settings()
         assert settings.venue == "neurips"
 
-    @pytest.mark.parametrize("venue", ["neurips", "icml", "acl", "ieee", "custom"])
+    @pytest.mark.parametrize("venue", ["neurips", "icml", "acl", "ieee", "ums", "custom"])
     def test_valid_venues_accepted(self, venue):
         settings = Settings(venue=venue)
         assert settings.venue == venue
@@ -76,7 +76,7 @@ def guidelines_tree(tmp_path):
     (tmp_path / "plot_style_guide.md").write_text("flat-plot")
 
     # Venue-specific files
-    for venue in ("neurips", "icml", "acl", "ieee"):
+    for venue in ("neurips", "icml", "acl", "ieee", "ums"):
         d = tmp_path / venue
         d.mkdir()
         (d / "methodology_style_guide.md").write_text(f"{venue}-methodology")
@@ -114,7 +114,7 @@ class TestMethodologyGuidelinesLoader:
         result = load_methodology_guidelines("/nonexistent/path", venue="neurips")
         assert result == DEFAULT_METHODOLOGY_GUIDELINES
 
-    @pytest.mark.parametrize("venue", ["neurips", "icml", "acl", "ieee"])
+    @pytest.mark.parametrize("venue", ["neurips", "icml", "acl", "ieee", "ums"])
     def test_all_venues_resolve(self, guidelines_tree, venue):
         result = load_methodology_guidelines(str(guidelines_tree), venue=venue)
         assert result == f"{venue}-methodology"
@@ -147,7 +147,7 @@ class TestPlotGuidelinesLoader:
         result = load_plot_guidelines("/nonexistent/path", venue="neurips")
         assert result == DEFAULT_PLOT_GUIDELINES
 
-    @pytest.mark.parametrize("venue", ["neurips", "icml", "acl", "ieee"])
+    @pytest.mark.parametrize("venue", ["neurips", "icml", "acl", "ieee", "ums"])
     def test_all_venues_resolve(self, guidelines_tree, venue):
         result = load_plot_guidelines(str(guidelines_tree), venue=venue)
         assert result == f"{venue}-plot"
@@ -161,14 +161,14 @@ class TestShippedGuidelineFiles:
 
     GUIDELINES_DIR = Path(__file__).resolve().parent.parent / "data" / "guidelines"
 
-    @pytest.mark.parametrize("venue", ["icml", "acl", "ieee"])
+    @pytest.mark.parametrize("venue", ["icml", "acl", "ieee", "ums"])
     def test_methodology_guide_exists(self, venue):
         path = self.GUIDELINES_DIR / venue / "methodology_style_guide.md"
         assert path.exists(), f"Missing: {path}"
         content = path.read_text(encoding="utf-8")
         assert len(content) > 100, f"Guideline file looks too short: {path}"
 
-    @pytest.mark.parametrize("venue", ["icml", "acl", "ieee"])
+    @pytest.mark.parametrize("venue", ["icml", "acl", "ieee", "ums"])
     def test_plot_guide_exists(self, venue):
         path = self.GUIDELINES_DIR / venue / "plot_style_guide.md"
         assert path.exists(), f"Missing: {path}"

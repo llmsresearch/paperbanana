@@ -91,8 +91,8 @@ def run_methodology_batch(
     manifest_path = Path(manifest_path).resolve()
     if format not in ("png", "jpeg", "webp"):
         raise ValueError(f"Format must be png, jpeg, or webp. Got: {format}")
-    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
-        raise ValueError(f"venue must be neurips, icml, acl, ieee, or custom. Got: {venue}")
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
+        raise ValueError(f"venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}")
     if max_retries < 0:
         raise ValueError("max_retries must be >= 0")
     if concurrency < 1:
@@ -335,8 +335,8 @@ def run_plot_batch(
     manifest_path = Path(manifest_path).resolve()
     if format not in ("png", "jpeg", "webp"):
         raise ValueError(f"Format must be png, jpeg, or webp. Got: {format}")
-    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
-        raise ValueError(f"venue must be neurips, icml, acl, ieee, or custom. Got: {venue}")
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
+        raise ValueError(f"venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}")
     if max_retries < 0:
         raise ValueError("max_retries must be >= 0")
     if concurrency < 1:
@@ -550,8 +550,8 @@ def run_orchestration_package(
     is_resume = bool(resume_orchestrate)
     if format not in ("png", "jpeg", "webp"):
         raise ValueError(f"Format must be png, jpeg, or webp. Got: {format}")
-    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
-        raise ValueError(f"venue must be neurips, icml, acl, ieee, or custom. Got: {venue}")
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
+        raise ValueError(f"venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}")
     if max_method_figures < 1:
         raise ValueError("max_method_figures must be >= 1")
     if max_plot_figures < 0:

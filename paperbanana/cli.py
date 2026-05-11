@@ -323,7 +323,7 @@ def generate(
     venue: Optional[str] = typer.Option(
         None,
         "--venue",
-        help="Target venue style (neurips, icml, acl, ieee, custom)",
+        help="Target venue style (neurips, icml, acl, ieee, ums, custom)",
     ),
     vector_export: Optional[str] = typer.Option(
         None,
@@ -362,9 +362,9 @@ def generate(
             "[red]Error: --exemplar-mode must be external_then_rerank or external_only[/red]"
         )
         raise typer.Exit(1)
-    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
     if vector_export and vector_export.lower() not in ("none", "svg", "pdf", "both"):
@@ -1157,7 +1157,7 @@ def batch(
     venue: Optional[str] = typer.Option(
         None,
         "--venue",
-        help="Target venue style (neurips, icml, acl, ieee, custom)",
+        help="Target venue style (neurips, icml, acl, ieee, ums, custom)",
     ),
     auto_download_data: bool = typer.Option(
         False, "--auto-download-data", help="Auto-download curated expansion if needed"
@@ -1179,9 +1179,9 @@ def batch(
     if format not in ("png", "jpeg", "webp"):
         console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
         raise typer.Exit(1)
-    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
     if max_retries < 0:
@@ -1515,7 +1515,7 @@ def orchestrate(
     venue: Optional[str] = typer.Option(
         None,
         "--venue",
-        help="Target venue style (neurips, icml, acl, ieee, custom)",
+        help="Target venue style (neurips, icml, acl, ieee, ums, custom)",
     ),
     concurrency: int = typer.Option(
         1, "--concurrency", help="Maximum concurrent figure generations"
@@ -1532,9 +1532,9 @@ def orchestrate(
     if format not in ("png", "jpeg", "webp"):
         console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
         raise typer.Exit(1)
-    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
     if max_method_figures < 1:
@@ -1745,7 +1745,7 @@ def plot_batch(
     venue: Optional[str] = typer.Option(
         None,
         "--venue",
-        help="Target venue style (neurips, icml, acl, ieee, custom)",
+        help="Target venue style (neurips, icml, acl, ieee, ums, custom)",
     ),
     aspect_ratio: Optional[str] = typer.Option(
         None,
@@ -1769,9 +1769,9 @@ def plot_batch(
     if format not in ("png", "jpeg", "webp"):
         console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
         raise typer.Exit(1)
-    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
     if max_retries < 0:
@@ -1895,7 +1895,7 @@ def plot(
     venue: Optional[str] = typer.Option(
         None,
         "--venue",
-        help="Target venue style (neurips, icml, acl, ieee, custom)",
+        help="Target venue style (neurips, icml, acl, ieee, ums, custom)",
     ),
     cost_only: bool = typer.Option(
         False,
@@ -1922,9 +1922,9 @@ def plot(
     if format not in ("png", "jpeg", "webp"):
         console.print(f"[red]Error: Format must be png, jpeg, or webp. Got: {format}[/red]")
         raise typer.Exit(1)
-    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "custom"):
+    if venue and venue.lower() not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
         console.print(
-            f"[red]Error: --venue must be neurips, icml, acl, ieee, or custom. Got: {venue}[/red]"
+            f"[red]Error: --venue must be neurips, icml, acl, ieee, ums, or custom. Got: {venue}[/red]"
         )
         raise typer.Exit(1)
 
