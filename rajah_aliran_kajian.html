@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<title>Rajah Aliran Proses Kajian</title>
+<style>
+  body {
+    font-family: Tahoma, Geneva, sans-serif;
+    background: #ffffff;
+    margin: 20px;
+    color: #111;
+  }
+  .container {
+    max-width: 1500px;
+    margin: 0 auto;
+  }
+  h1.tajuk {
+    font-family: Tahoma, sans-serif;
+    font-size: 13pt;
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .caption {
+    text-align: center;
+    font-family: Tahoma, sans-serif;
+    font-size: 10.5pt;
+    font-style: italic;
+    color: #333;
+    margin-top: 12px;
+  }
+  svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+    background: #ffffff;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+<h1 class="tajuk">Rajah Aliran Proses Kajian</h1>
+
+<svg viewBox="0 0 1450 720" xmlns="http://www.w3.org/2000/svg"
+     font-family="Tahoma, Geneva, sans-serif">
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/>
+    </marker>
+  </defs>
+
+  <!-- ========== PHASE FRAMES ========== -->
+  <!-- FASA 1: Light Blue -->
+  <rect x="60" y="95" width="400" height="598" rx="8" ry="8"
+        fill="#DAE8FC" stroke="#6C8EBF" stroke-width="1.8"/>
+  <!-- FASA 2: Light Orange/Peach -->
+  <rect x="500" y="95" width="400" height="598" rx="8" ry="8"
+        fill="#FFE6CC" stroke="#D79B00" stroke-width="1.8"/>
+  <!-- FASA 3: Light Green -->
+  <rect x="940" y="95" width="400" height="364" rx="8" ry="8"
+        fill="#D5E8D4" stroke="#82B366" stroke-width="1.8"/>
+
+  <!-- ========== PHASE TITLES ========== -->
+  <text x="260" y="119" font-size="11pt" font-weight="bold" text-anchor="middle" fill="#1F2D3D">
+    FASA 1: Pembentukan Asas Kajian
+  </text>
+  <text x="700" y="119" font-size="11pt" font-weight="bold" text-anchor="middle" fill="#1F2D3D">
+    FASA 2: Pembangunan Metodologi dan Instrumen
+  </text>
+  <text x="1140" y="119" font-size="11pt" font-weight="bold" text-anchor="middle" fill="#1F2D3D">
+    FASA 3: Analisis Data dan Pelaporan
+  </text>
+
+  <!-- ========== MULA ========== -->
+  <ellipse cx="260" cy="50" rx="55" ry="20"
+           fill="#D9D9D9" stroke="#595959" stroke-width="1.5"/>
+  <text x="260" y="54" font-size="10pt" text-anchor="middle">Mula</text>
+
+  <!-- Mula -> first box of FASA 1 -->
+  <line x1="260" y1="70" x2="260" y2="142" stroke="#000" stroke-width="1.5"
+        marker-end="url(#arrow)"/>
+
+  <!-- ========== TOP INTER-PHASE CONNECTORS ========== -->
+  <!-- FASA 1 top-right -> FASA 2 top-center -->
+  <path d="M 430 95 L 430 22 L 700 22 L 700 92" fill="none"
+        stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <!-- FASA 2 top-right -> FASA 3 top-center -->
+  <path d="M 870 95 L 870 22 L 1140 22 L 1140 92" fill="none"
+        stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============================================================ -->
+  <!-- ================== FASA 1 BOXES ============================ -->
+  <!-- ============================================================ -->
+
+  <!-- Box 1 -->
+  <rect x="85" y="145" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="260" y="172">Memahami konteks kajian sekolah</tspan>
+    <tspan x="260" y="188">rendah luar bandar Sabah</tspan>
+  </text>
+
+  <!-- Box 2 -->
+  <rect x="85" y="239" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text x="260" y="274" font-size="10pt" text-anchor="middle">Mendefinisikan masalah</text>
+
+  <!-- Box 3 -->
+  <rect x="85" y="333" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text x="260" y="368" font-size="10pt" text-anchor="middle">Sorotan literatur</text>
+
+  <!-- Box 4 -->
+  <rect x="85" y="427" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text x="260" y="462" font-size="10pt" text-anchor="middle">Mengenal pasti jurang</text>
+
+  <!-- Box 5 -->
+  <rect x="85" y="521" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text x="260" y="556" font-size="10pt" text-anchor="middle">Membangunkan model</text>
+
+  <!-- Box 6 -->
+  <rect x="85" y="615" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="260" y="642">Membentuk persoalan, objektif</tspan>
+    <tspan x="260" y="658">dan hipotesis</tspan>
+  </text>
+
+  <!-- FASA 1 internal arrows -->
+  <line x1="260" y1="205" x2="260" y2="237" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="260" y1="299" x2="260" y2="331" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="260" y1="393" x2="260" y2="425" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="260" y1="487" x2="260" y2="519" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="260" y1="581" x2="260" y2="613" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============================================================ -->
+  <!-- ================== FASA 2 BOXES ============================ -->
+  <!-- ============================================================ -->
+
+  <!-- Box 1 -->
+  <rect x="525" y="145" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="700" y="172">Reka bentuk kuantitatif:</tspan>
+    <tspan x="700" y="188">tinjauan keratan lintang</tspan>
+  </text>
+
+  <!-- Box 2 -->
+  <rect x="525" y="223" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="700" y="250">Operasionalisasi konstruk</tspan>
+    <tspan x="700" y="266">dan pengukuran</tspan>
+  </text>
+
+  <!-- Box 3 -->
+  <rect x="525" y="301" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text x="700" y="336" font-size="10pt" text-anchor="middle">Pembangunan soal</text>
+
+  <!-- Box 4 -->
+  <rect x="525" y="379" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="700" y="406">Penentuan unit analisis dan</tspan>
+    <tspan x="700" y="422">reka bentuk persampelan</tspan>
+  </text>
+
+  <!-- Box 5 -->
+  <rect x="525" y="457" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="700" y="484">Pra-ujian instrumen: kesahan</tspan>
+    <tspan x="700" y="500">kandungan dan kebolehpercayaan</tspan>
+  </text>
+
+  <!-- Box 6 -->
+  <rect x="525" y="535" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text x="700" y="570" font-size="10pt" text-anchor="middle">Kajian rintis</text>
+
+  <!-- Box 7 -->
+  <rect x="525" y="613" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text x="700" y="648" font-size="10pt" text-anchor="middle">Pengumpulan data</text>
+
+  <!-- FASA 2 internal arrows -->
+  <line x1="700" y1="205" x2="700" y2="221" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="283" x2="700" y2="299" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="361" x2="700" y2="377" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="439" x2="700" y2="455" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="517" x2="700" y2="533" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="595" x2="700" y2="611" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============================================================ -->
+  <!-- ================== FASA 3 BOXES ============================ -->
+  <!-- ============================================================ -->
+
+  <!-- Box 1 -->
+  <rect x="965" y="145" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="1140" y="172">Saringan data menggunakan</tspan>
+    <tspan x="1140" y="188">SPSS versi 29</tspan>
+  </text>
+
+  <!-- Box 2 -->
+  <rect x="965" y="223" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="1140" y="250">Pengujian hipotesis melalui</tspan>
+    <tspan x="1140" y="266">PLS-SEM dalam SmartPLS</tspan>
+  </text>
+
+  <!-- Box 3 -->
+  <rect x="965" y="301" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text x="1140" y="336" font-size="10pt" text-anchor="middle">Tafsiran dapatan</text>
+
+  <!-- Box 4 -->
+  <rect x="965" y="379" width="350" height="60" rx="3" ry="3"
+        fill="#FFFFFF" stroke="#333" stroke-width="1.1"/>
+  <text font-size="10pt" text-anchor="middle">
+    <tspan x="1140" y="406">Perbincangan, rumusan</tspan>
+    <tspan x="1140" y="422">dan pendokumentasian</tspan>
+  </text>
+
+  <!-- FASA 3 internal arrows -->
+  <line x1="1140" y1="205" x2="1140" y2="221" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="1140" y1="283" x2="1140" y2="299" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="1140" y1="361" x2="1140" y2="377" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ========== TAMAT ========== -->
+  <!-- Arrow from FASA 3 box 4 -> Tamat -->
+  <line x1="1140" y1="439" x2="1140" y2="467" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <ellipse cx="1140" cy="488" rx="55" ry="20"
+           fill="#D9D9D9" stroke="#595959" stroke-width="1.5"/>
+  <text x="1140" y="492" font-size="10pt" text-anchor="middle">Tamat</text>
+
+</svg>
+
+<div class="caption">
+  Rajah 1: Aliran proses kajian merentas tiga fasa &mdash; pembentukan asas kajian,
+  pembangunan metodologi dan instrumen, serta analisis data dan pelaporan
+  (mengikut gaya penulisan UMS).
+</div>
+
+</div>
+</body>
+</html>
