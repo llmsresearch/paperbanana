@@ -60,12 +60,15 @@ def _parse_layout(layout: str, image_count: int) -> tuple[int, int]:
 def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Try to load a TrueType font, fall back to default."""
     try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
+        return ImageFont.truetype("Tahoma.ttf", size)
     except (OSError, IOError):
         try:
-            return ImageFont.truetype("Arial Bold.ttf", size)
+            return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
         except (OSError, IOError):
-            return ImageFont.load_default()
+            try:
+                return ImageFont.truetype("Arial Bold.ttf", size)
+            except (OSError, IOError):
+                return ImageFont.load_default()
 
 
 def compose_images(
