@@ -10,6 +10,7 @@ from pathlib import Path
 
 import structlog
 
+from paperbanana.config.fonts import FontConfig, get_default_font_config
 from paperbanana.core.types import DiagramIR
 
 logger = structlog.get_logger()
@@ -56,16 +57,29 @@ def _escape_dot_label(text: str) -> str:
     return s
 
 
-def diagram_ir_to_dot(ir: DiagramIR) -> str:
-    """Convert Diagram IR to a Graphviz digraph (UTF-8)."""
+def diagram_ir_to_dot(ir: DiagramIR, font_config: FontConfig | None = None) -> str:
+    """Convert Diagram IR to a Graphviz digraph (UTF-8).
+
+    Args:
+        ir: The diagram intermediate representation.
+        font_config: Font configuration for text rendering. Uses default (Tahoma)
+                     if not provided.
+
+    Returns:
+        A Graphviz digraph string.
+    """
+    if font_config is None:
+        font_config = get_default_font_config()
+
     id_map = _build_dot_id_map(ir)
     rankdir = getattr(ir, "layout_direction", "LR")
+    font_string = font_config.get_font_string()
 
     lines: list[str] = [
         "digraph G {",
-        f'  graph [rankdir={rankdir}, bgcolor="white", fontname="Helvetica"];',
-        '  node [fontname="Helvetica", fontsize=10];',
-        '  edge [fontname="Helvetica", fontsize=9];',
+        f'  graph [rankdir={rankdir}, bgcolor="white", fontname="{font_string}"];',
+        f'  node [fontname="{font_string}", fontsize=10];',
+        f'  edge [fontname="{font_string}", fontsize=9];',
     ]
 
     # Nodes not assigned to any group

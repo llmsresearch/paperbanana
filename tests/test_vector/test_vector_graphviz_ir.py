@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from paperbanana.config.fonts import FontConfig, get_legacy_font_config
 from paperbanana.core.types import DiagramIR, DiagramIREdge, DiagramIRNode
 from paperbanana.vector.graphviz_render import (
     diagram_ir_to_dot,
@@ -72,3 +73,41 @@ def test_diagram_ir_json_roundtrip() -> None:
     data = json.loads(ir.model_dump_json())
     ir2 = DiagramIR.model_validate(data)
     assert ir2.nodes[0].id == "x"
+
+
+def test_diagram_ir_to_dot_uses_default_tahoma_font() -> None:
+    ir = DiagramIR(
+        title="Font Test",
+        nodes=[DiagramIRNode(id="n1", label="Node")],
+        edges=[],
+    )
+    dot = diagram_ir_to_dot(ir)
+    assert "Tahoma" in dot
+    assert "Helvetica" in dot
+    assert "Arial" in dot
+
+
+def test_diagram_ir_to_dot_with_custom_font_config() -> None:
+    ir = DiagramIR(
+        title="Font Test",
+        nodes=[DiagramIRNode(id="n1", label="Node")],
+        edges=[],
+    )
+    config = get_legacy_font_config()
+    dot = diagram_ir_to_dot(ir, font_config=config)
+    assert "Helvetica,Arial" in dot
+    assert "Tahoma" not in dot
+
+
+def test_diagram_ir_to_dot_font_config_in_graph_node_and_edge() -> None:
+    ir = DiagramIR(
+        title="Font Test",
+        nodes=[DiagramIRNode(id="n1", label="Node")],
+        edges=[],
+    )
+    config = FontConfig(primary_fonts=["CustomFont"])
+    dot = diagram_ir_to_dot(ir, font_config=config)
+    assert 'fontname="CustomFont,Helvetica,Arial,sans-serif"' in dot
+    lines = dot.split("\n")
+    fontname_lines = [line for line in lines if "fontname=" in line]
+    assert len(fontname_lines) >= 3
