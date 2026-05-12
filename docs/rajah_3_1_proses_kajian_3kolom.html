@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rajah 3.1: Proses Kajian</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Tahoma, Arial, sans-serif;
+            background: white;
+            padding: 40px 20px;
+            line-height: 1.4;
+        }
+
+        .container {
+            display: flex;
+            gap: 30px;
+            max-width: 1600px;
+            margin: 0 auto;
+            justify-content: space-between;
+        }
+
+        .phase {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .phase-header {
+            border: 2px solid #000;
+            padding: 12px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 13px;
+            margin-bottom: 15px;
+            background: #f0f0f0;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .phase-content {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .oval {
+            border: 2px solid #000;
+            border-radius: 50%;
+            padding: 15px 25px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            min-height: 50px;
+        }
+
+        .box {
+            border: 2px solid #000;
+            padding: 12px 10px;
+            text-align: center;
+            font-size: 12px;
+            background: white;
+            line-height: 1.5;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .arrow {
+            height: 15px;
+            position: relative;
+        }
+
+        .arrow::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #000;
+            transform: translateX(-50%);
+        }
+
+        .arrow::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: -8px;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 8px solid #000;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        .title {
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 30px;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- FASA 1 -->
+        <div class="phase">
+            <div class="phase-header">FASA 1<br/>PEMBENTUKAN ASAS KAJIAN</div>
+            <div class="phase-content">
+                <div class="oval">Mula</div>
+                <div class="arrow"></div>
+
+                <div class="box">Memahami konteks kajian sekolah rendah luar bandar Sabah</div>
+                <div class="arrow"></div>
+
+                <div class="box">Mendefinisikan masalah kajian</div>
+                <div class="arrow"></div>
+
+                <div class="box">Soratan literatur dan teori</div>
+                <div class="arrow"></div>
+
+                <div class="box">Mengenal pasti jurang kajian</div>
+                <div class="arrow"></div>
+
+                <div class="box">Membangunkan model kajian</div>
+                <div class="arrow"></div>
+
+                <div class="box">Membentuk persoalan, objektif dan hipotesis kajian</div>
+            </div>
+        </div>
+
+        <!-- FASA 2 -->
+        <div class="phase">
+            <div class="phase-header">FASA 2<br/>PEMBANGUNAN METODOLOGI DAN INSTRUMEN</div>
+            <div class="phase-content">
+                <div class="box">Reka bentuk kuantitatif: tinjauan keratan lintang</div>
+                <div class="arrow"></div>
+
+                <div class="box">Operasionalisasi konstruk dan pengukuran</div>
+                <div class="arrow"></div>
+
+                <div class="box">Pembangunan soal selidik</div>
+                <div class="arrow"></div>
+
+                <div class="box">Penentuan unit analisis dan reka bentuk persampelan</div>
+                <div class="arrow"></div>
+
+                <div class="box">Pra-ujian instrumen: kesahan kandungan dan kebolehpercayaan</div>
+                <div class="arrow"></div>
+
+                <div class="box">Kajian rintis</div>
+                <div class="arrow"></div>
+
+                <div class="box">Pengumpulan data</div>
+            </div>
+        </div>
+
+        <!-- FASA 3 -->
+        <div class="phase">
+            <div class="phase-header">FASA 3<br/>ANALISIS DATA DAN PELAPORAN</div>
+            <div class="phase-content">
+                <div class="box">Saringan data menggunakan SPSS versi 29</div>
+                <div class="arrow"></div>
+
+                <div class="box">Pengujian hipotesis melalui PLS-SEM dalam SmartPLS</div>
+                <div class="arrow"></div>
+
+                <div class="box">Tafsiran dapatan</div>
+                <div class="arrow"></div>
+
+                <div class="box">Perbincangan, rumusan dan pendokumentasian</div>
+                <div class="arrow"></div>
+
+                <div class="oval">Tamat</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="title">Rajah 3.1: Proses Kajian</div>
+</body>
+</html>
