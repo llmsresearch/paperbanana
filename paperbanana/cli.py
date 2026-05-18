@@ -14,6 +14,11 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
+from paperbanana.analytics import (
+    load_analytics_records,
+    render_markdown_summary,
+    summarize_records,
+)
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
 from paperbanana.core.types import (
@@ -3358,6 +3363,43 @@ def validate_manifest(
     for i, err in enumerate(errors, 1):
         console.print(f"  [red]{i}. {err}[/red]")
     raise typer.Exit(1)
+
+
+@app.command("analytics")
+def analytics(
+    path: str = typer.Option(
+        "outputs",
+        "--path",
+        "-p",
+        help=(
+            "Root directory to scan for metadata.json, batch_report.json, and figure_package.json."
+        ),
+    ),
+    format: str = typer.Option(
+        "markdown",
+        "--format",
+        "-f",
+        help="Output format: markdown or json.",
+    ),
+) -> None:
+    """Analyze historical run artifacts and report aggregate cost/latency/success KPIs."""
+    output_format = format.lower().strip()
+    if output_format not in {"markdown", "json"}:
+        console.print(f"[red]Error: --format must be 'markdown' or 'json'. Got: {format}[/red]")
+        raise typer.Exit(1)
+    try:
+        records = load_analytics_records(Path(path))
+    except FileNotFoundError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1)
+
+    summary = summarize_records(records)
+    if output_format == "json":
+        from paperbanana.analytics.reporting import summary_to_dict
+
+        console.print_json(json_mod.dumps(summary_to_dict(summary), indent=2))
+    else:
+        console.print(render_markdown_summary(summary))
 
 
 @app.command("show-config")
