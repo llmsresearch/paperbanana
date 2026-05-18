@@ -132,6 +132,11 @@ class Settings(BaseSettings):
     )
     openai_local_json_mode: bool = Field(default=False, alias="OPENAI_LOCAL_JSON_MODE")
 
+    # LiteLLM settings
+    litellm_model: Optional[str] = Field(default=None, alias="LITELLM_MODEL")
+    litellm_api_key: Optional[str] = Field(default=None, alias="LITELLM_API_KEY")
+    litellm_api_base: Optional[str] = Field(default=None, alias="LITELLM_API_BASE")
+
     # AWS Bedrock settings
     aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
     aws_profile: Optional[str] = Field(default=None, alias="AWS_PROFILE")

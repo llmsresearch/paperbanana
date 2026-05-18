@@ -156,11 +156,25 @@ class ProviderRegistry:
                     " ensure `claude` is available on PATH."
                 )
             return vlm
+        elif provider == "litellm":
+            from paperbanana.providers.vlm.litellm import LiteLLMVLM
+
+            vlm = LiteLLMVLM(
+                model=settings.litellm_model or settings.vlm_model,
+                api_key=settings.litellm_api_key,
+                api_base=settings.litellm_api_base,
+            )
+            if not vlm.is_available():
+                raise ImportError(
+                    "litellm is required for the LiteLLM provider. "
+                    "Install with: pip install 'paperbanana[litellm]'"
+                )
+            return vlm
         else:
             raise ValueError(
                 "Unknown VLM provider: "
                 f"{provider}. Available: gemini, openrouter, openai, openai_local, "
-                f"bedrock, anthropic, ollama, claude_code"
+                f"bedrock, anthropic, ollama, claude_code, litellm"
             )
 
     @staticmethod
