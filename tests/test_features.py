@@ -385,6 +385,58 @@ async def test_continue_run_resumes_from_last_iteration(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_continue_run_rebinds_visualizer_output_dir_to_resumed_run(tmp_path):
+    """continue_run() must write new images into the resumed run directory."""
+    run_id = "run_resume_output_dir_test"
+    run_dir = tmp_path / "outputs" / run_id
+    run_dir.mkdir(parents=True)
+
+    (run_dir / "run_input.json").write_text(
+        json.dumps(
+            {
+                "source_context": "Encoder-decoder with attention",
+                "communicative_intent": "Architecture overview",
+                "diagram_type": "methodology",
+            }
+        )
+    )
+    iter1 = run_dir / "iter_1"
+    iter1.mkdir()
+    (iter1 / "details.json").write_text(
+        json.dumps(
+            {
+                "description": "Description from iter 1",
+                "critique": {
+                    "critic_suggestions": [],
+                    "revised_description": None,
+                },
+            }
+        )
+    )
+
+    state = load_resume_state(str(tmp_path / "outputs"), run_id)
+    vlm = _MockVLM([_critic_json([], None)])
+    image_gen = _MockImageGen()
+    settings = Settings(
+        output_dir=str(tmp_path / "outputs"),
+        reference_set_path=str(tmp_path / "refs"),
+        refinement_iterations=1,
+        save_iterations=False,
+    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=image_gen)
+    stale_output_dir = pipeline.visualizer.output_dir
+
+    result = await pipeline.continue_run(resume_state=state, additional_iterations=1)
+
+    resumed_iter_path = run_dir / "diagram_iter_2.png"
+    assert stale_output_dir != run_dir
+    assert pipeline.visualizer.output_dir == run_dir
+    assert result.iterations[0].image_path == str(resumed_iter_path)
+    assert resumed_iter_path.exists()
+    assert not (stale_output_dir / "diagram_iter_2.png").exists()
+
+
+@pytest.mark.asyncio
 async def test_continue_run_passes_user_feedback_to_critic(tmp_path):
     """continue_run() forwards user_feedback into the critic's prompt."""
     run_id = "run_feedback_test"

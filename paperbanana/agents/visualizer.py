@@ -44,6 +44,9 @@ class VisualizerAgent(BaseAgent):
         self.output_resolution = output_resolution
         self.image_quality = image_quality
 
+    def set_output_dir(self, output_dir: str | Path) -> None:
+        self.output_dir = Path(output_dir)
+
     @property
     def agent_name(self) -> str:
         return "visualizer"
