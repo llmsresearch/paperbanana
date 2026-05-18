@@ -52,6 +52,19 @@ ASPECT_RATIO_CHOICES = [
     "16:9",
     "21:9",
 ]
+REFERENCE_CATEGORY_CHOICES = [
+    "",
+    "agent_reasoning",
+    "generative_learning",
+    "healthcare_medical",
+    "multimodal_fusion",
+    "nlp_language",
+    "optimization_theory",
+    "robotics_control",
+    "science_applications",
+    "systems_networking",
+    "vision_perception",
+]
 
 
 def read_text_file(path: str | None, max_chars: int = 500_000) -> str:
@@ -90,6 +103,7 @@ def build_settings(
     optimize_inputs: bool,
     save_prompts: bool,
     seed: Optional[int] = None,
+    reference_category: Optional[list[str]] = None,
 ) -> Settings:
     """Merge YAML config (optional), environment, and Studio overrides."""
     base_defaults = Settings()
@@ -111,6 +125,8 @@ def build_settings(
             overrides["seed"] = int(seed)
         except ValueError:
             pass
+    if reference_category:
+        overrides["reference_category"] = reference_category
 
     if config_path and str(config_path).strip():
         return Settings.from_yaml(Path(config_path).expanduser(), **overrides)
