@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 import types
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -119,7 +118,9 @@ class TestLiteLLMVLMGenerate:
         assert call_kwargs["response_format"] == {"type": "json_object"}
 
     @pytest.mark.asyncio
-    async def test_generate_passes_temperature_and_max_tokens(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_generate_passes_temp_and_max_tokens(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         mock_acompletion = _install_litellm_stub(monkeypatch)
         mock_acompletion.return_value = _mock_response("ok")
 
@@ -238,7 +239,9 @@ class TestLiteLLMVLMCostTracking:
     @pytest.mark.asyncio
     async def test_cost_tracker_called_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         mock_acompletion = _install_litellm_stub(monkeypatch)
-        mock_acompletion.return_value = _mock_response("ok", prompt_tokens=100, completion_tokens=50)
+        mock_acompletion.return_value = _mock_response(
+            "ok", prompt_tokens=100, completion_tokens=50
+        )
 
         tracker = MagicMock()
         vlm = LiteLLMVLM(model="anthropic/claude-sonnet-4-6")
@@ -264,7 +267,9 @@ class TestLiteLLMVLMCostTracking:
         assert text == "ok"
 
     @pytest.mark.asyncio
-    async def test_no_usage_in_response_skips_tracking(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_no_usage_in_response_skips_tracking(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         mock_acompletion = _install_litellm_stub(monkeypatch)
         message = types.SimpleNamespace(content="ok")
         choice = types.SimpleNamespace(message=message)
