@@ -106,7 +106,7 @@ def load_methodology_guidelines(
 
     Args:
         guidelines_path: Base directory for guideline files. If None, uses defaults.
-        venue: Target venue (neurips, icml, acl, ieee). When set to "custom" or
+        venue: Target venue (neurips, icml, acl, ieee, ums). When set to "custom" or
             None, the loader skips venue subdirectory resolution and looks for
             files directly under guidelines_path (original behavior).
 

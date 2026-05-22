@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings
 OutputFormat = Literal["png", "jpeg", "webp"]
 ImageQuality = Literal["low", "medium", "high", "auto"]
 ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
-Venue = Literal["neurips", "icml", "acl", "ieee", "custom"]
+Venue = Literal["neurips", "icml", "acl", "ieee", "ums", "custom"]
 VectorExportMode = Literal["none", "svg", "pdf", "both"]
 
 
@@ -257,8 +257,8 @@ class Settings(BaseSettings):
         if v is None:
             return "neurips"
         v = str(v).lower()
-        if v not in ("neurips", "icml", "acl", "ieee", "custom"):
-            raise ValueError(f"venue must be neurips, icml, acl, ieee, or custom. Got: {v}")
+        if v not in ("neurips", "icml", "acl", "ieee", "ums", "custom"):
+            raise ValueError(f"venue must be neurips, icml, acl, ieee, ums, or custom. Got: {v}")
         return v
 
     @classmethod
