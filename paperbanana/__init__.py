@@ -18,3 +18,8 @@ __all__ = [
     "GenerationInput",
     "GenerationOutput",
 ]
+
+
+def get_version() -> str:
+    """Return the current PaperBanana version."""
+    return __version__
