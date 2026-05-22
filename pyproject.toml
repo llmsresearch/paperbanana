@@ -40,6 +40,7 @@ dependencies = [
     "structlog>=24.0",
     "python-dotenv>=1.0",
     "platformdirs>=4.0",
+    "fonts>=1.0",
 ]
 
 [project.optional-dependencies]
