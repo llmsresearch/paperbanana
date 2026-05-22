@@ -1,4 +1,5 @@
 <!-- mcp-name: io.github.llmsresearch/paperbanana -->
+
 <table align="center" width="100%" style="border: none; border-collapse: collapse;">
   <tr>
     <td width="220" align="left" valign="middle" style="border: none;">
@@ -24,7 +25,7 @@
   </tr>
 </table>
 
----
+***
 
 > **Disclaimer**: This is an **unofficial, community-driven open-source implementation** of the paper
 > *"PaperBanana: Automating Academic Illustration for AI Scientists"* by Dawei Zhu, Rui Meng, Yale Song,
@@ -49,7 +50,7 @@ An agentic framework for generating publication-quality academic diagrams and st
   <img src="assets/img/hero_image.png" alt="PaperBanana takes paper as input and provide diagram as output" style="max-width: 960px; width: 100%; height: auto;"/>
 </p>
 
----
+***
 
 ## Quick Start
 
@@ -126,15 +127,15 @@ paperbanana studio
 
 Open the URL shown in the terminal (default `http://127.0.0.1:7860/`). The Studio exposes the same workflows as the CLI: methodology diagrams, statistical plots, comparative evaluation, continuing a prior run, batch manifests (methodology or **plot** batch via the Batch tab), and a simple browser for `run_*` / `batch_*` output folders. Use `--host`, `--port`, `--config`, and `--output-dir` as needed.
 
----
+***
 
 ## How It Works
 
 PaperBanana implements a multi-agent pipeline with up to 7 specialized agents:
 
-**Phase 0 -- Input Optimization (optional, `--optimize`):**
+**Phase 0 -- Input Optimization (optional,** **`--optimize`):**
 
-0. **Input Optimizer** runs two parallel VLM calls:
+1. **Input Optimizer** runs two parallel VLM calls:
    - **Context Enricher** structures raw methodology text into diagram-ready format (components, flows, groupings, I/O)
    - **Caption Sharpener** transforms vague captions into precise visual specifications
 
@@ -146,26 +147,26 @@ PaperBanana implements a multi-agent pipeline with up to 7 specialized agents:
 
 **Phase 2 -- Iterative Refinement:**
 
-4. **Visualizer** renders the description into an image
-5. **Critic** evaluates the generated image against the source context and provides a revised description addressing any issues
-6. Steps 4-5 repeat for a fixed number of iterations (default 3), or until the critic is satisfied (`--auto`)
+1. **Visualizer** renders the description into an image
+2. **Critic** evaluates the generated image against the source context and provides a revised description addressing any issues
+3. Steps 4-5 repeat for a fixed number of iterations (default 3), or until the critic is satisfied (`--auto`)
 
 ## Providers
 
 PaperBanana supports multiple VLM and image generation providers:
 
-| Component | Provider | Model | Notes |
-|-----------|----------|-------|-------|
-| VLM (planning, critique) | OpenAI | `gpt-5.2` | Default |
-| Image Generation | OpenAI | `gpt-image-1.5` | Default |
-| VLM | Google Gemini | `gemini-2.0-flash` | Free tier |
-| Image Generation | Google Gemini | `gemini-3-pro-image-preview` | Free tier |
-| VLM / Image | OpenRouter | Any supported model | Flexible routing |
+| Component                | Provider      | Model                        | Notes            |
+| ------------------------ | ------------- | ---------------------------- | ---------------- |
+| VLM (planning, critique) | OpenAI        | `gpt-5.2`                    | Default          |
+| Image Generation         | OpenAI        | `gpt-image-1.5`              | Default          |
+| VLM                      | Google Gemini | `gemini-2.0-flash`           | Free tier        |
+| Image Generation         | Google Gemini | `gemini-3-pro-image-preview` | Free tier        |
+| VLM / Image              | OpenRouter    | Any supported model          | Flexible routing |
 
 Azure OpenAI / Foundry endpoints are auto-detected — set `OPENAI_BASE_URL` to your endpoint.
 Gemini-compatible gateways are also supported — set `GOOGLE_BASE_URL` when needed.
 
----
+***
 
 ## CLI Reference
 
@@ -198,27 +199,27 @@ paperbanana generate \
   --pdf-pages "3-8"
 ```
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--input` | `-i` | Path to methodology text file or PDF (required for new runs) |
-| `--caption` | `-c` | Figure caption / communicative intent (required for new runs) |
-| `--output` | `-o` | Output image path (default: auto-generated in `outputs/`) |
-| `--iterations` | `-n` | Number of Visualizer-Critic refinement rounds (default: 3) |
-| `--auto` | | Loop until critic is satisfied (with `--max-iterations` safety cap) |
-| `--max-iterations` | | Safety cap for `--auto` mode (default: 30) |
-| `--optimize` | | Preprocess inputs with parallel context enrichment and caption sharpening |
-| `--continue` | | Continue from the latest run in `outputs/` |
-| `--continue-run` | | Continue from a specific run ID |
-| `--feedback` | | User feedback for the critic when continuing a run |
-| `--pdf-pages` | | PDF input only: 1-based pages (e.g. `1-5`, `2,4,6-8`; default: all) |
-| `--vlm-provider` | | VLM provider name (default: `openai`) |
-| `--vlm-model` | | VLM model name (default: `gpt-5.2`) |
-| `--image-provider` | | Image gen provider (default: `openai_imagen`) |
-| `--image-model` | | Image gen model (default: `gpt-image-1.5`) |
-| `--format` | `-f` | Output format: `png`, `jpeg`, or `webp` (default: `png`) |
-| `--config` | | Path to YAML config file (see `configs/config.yaml`) |
-| `--verbose` | `-v` | Show detailed agent progress and timing |
-| `--progress-json` | | Emit JSON progress events to stdout during generation |
+| Flag               | Short  | Description                                                               |
+| ------------------ | ------ | ------------------------------------------------------------------------- |
+| `--input`          | `-i`   | Path to methodology text file or PDF (required for new runs)              |
+| `--caption`        | `-c`   | Figure caption / communicative intent (required for new runs)             |
+| `--output`         | `-o`   | Output image path (default: auto-generated in `outputs/`)                 |
+| `--iterations`     | `-n`   | Number of Visualizer-Critic refinement rounds (default: 3)                |
+| `--auto`           | <br /> | Loop until critic is satisfied (with `--max-iterations` safety cap)       |
+| `--max-iterations` | <br /> | Safety cap for `--auto` mode (default: 30)                                |
+| `--optimize`       | <br /> | Preprocess inputs with parallel context enrichment and caption sharpening |
+| `--continue`       | <br /> | Continue from the latest run in `outputs/`                                |
+| `--continue-run`   | <br /> | Continue from a specific run ID                                           |
+| `--feedback`       | <br /> | User feedback for the critic when continuing a run                        |
+| `--pdf-pages`      | <br /> | PDF input only: 1-based pages (e.g. `1-5`, `2,4,6-8`; default: all)       |
+| `--vlm-provider`   | <br /> | VLM provider name (default: `openai`)                                     |
+| `--vlm-model`      | <br /> | VLM model name (default: `gpt-5.2`)                                       |
+| `--image-provider` | <br /> | Image gen provider (default: `openai_imagen`)                             |
+| `--image-model`    | <br /> | Image gen model (default: `gpt-image-1.5`)                                |
+| `--format`         | `-f`   | Output format: `png`, `jpeg`, or `webp` (default: `png`)                  |
+| `--config`         | <br /> | Path to YAML config file (see `configs/config.yaml`)                      |
+| `--verbose`        | `-v`   | Show detailed agent progress and timing                                   |
+| `--progress-json`  | <br /> | Emit JSON progress events to stdout during generation                     |
 
 ### `paperbanana plot` -- Statistical Plots
 
@@ -228,12 +229,16 @@ paperbanana plot \
   --intent "Bar chart comparing model accuracy across benchmarks"
 ```
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--data` | `-d` | Path to data file, CSV or JSON (required) |
-| `--intent` | | Communicative intent for the plot (required) |
-| `--output` | `-o` | Output image path |
-| `--iterations` | `-n` | Refinement iterations (default: 3) |
+| Flag           | Short  | Description                                  |
+| -------------- | ------ | -------------------------------------------- |
+| `--data`       | `-d`   | Path to data file, CSV or JSON (required)    |
+| `--intent`     | <br /> | Communicative intent for the plot (required) |
+| `--output`     | `-o`   | Output image path                            |
+| `--vlm-provider`   | <br /> | VLM provider name (default: `gemini`)    |
+| `--vlm-model`      | <br /> | VLM model name (default: `gemini-2.0-flash`) |
+| `--config`         | <br /> | Path to YAML config file (see `configs/config.yaml`)                      |
+| `--verbose`        | `-v`   | Show detailed agent progress and timing                                   |
+| `--iterations` | `-n`   | Refinement iterations (default: 3)           |
 
 ### `paperbanana batch` -- Batch Generation
 
@@ -306,16 +311,16 @@ paperbanana sweep-report --sweep-id sweep_20250109_123456_abc --format markdown
 
 Rendered sweep reports include a summary, a top-5 ranked table, the full variants table (with per-variant provider/model, iterations, critic-suggestion count, proxy score, and output path), and the `quality_proxy_score` note. Dry-run reports render a simplified "Planned Variants" section.
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--manifest` | `-m` | Path to manifest file (required) |
-| `--output-dir` | `-o` | Parent directory for batch run (default: outputs) |
-| `--config` | | Path to config YAML |
-| `--iterations` | `-n` | Refinement iterations per item |
-| `--optimize` | | Preprocess inputs for each item |
-| `--auto` | | Loop until critic satisfied per item |
-| `--format` | `-f` | Output image format (png, jpeg, webp) |
-| `--auto-download-data` | | Download expanded reference set if needed |
+| Flag                   | Short  | Description                                       |
+| ---------------------- | ------ | ------------------------------------------------- |
+| `--manifest`           | `-m`   | Path to manifest file (required)                  |
+| `--output-dir`         | `-o`   | Parent directory for batch run (default: outputs) |
+| `--config`             | <br /> | Path to config YAML                               |
+| `--iterations`         | `-n`   | Refinement iterations per item                    |
+| `--optimize`           | <br /> | Preprocess inputs for each item                   |
+| `--auto`               | <br /> | Loop until critic satisfied per item              |
+| `--format`             | `-f`   | Output image format (png, jpeg, webp)             |
+| `--auto-download-data` | <br /> | Download expanded reference set if needed         |
 
 ### `paperbanana plot-batch` -- Batch Statistical Plots
 
@@ -339,28 +344,29 @@ items:
 
 Paths are resolved relative to the manifest file’s directory.
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--manifest` | `-m` | Path to manifest (required) |
-| `--output-dir` | `-o` | Parent directory for `batch_*` (default: outputs) |
-| `--config` | | Path to config YAML |
-| `--vlm-provider` | | VLM provider (default: gemini) |
-| `--vlm-model` | | VLM model override |
-| `--image-provider` | | Image gen provider |
-| `--image-model` | | Image gen model |
-| `--iterations` | `-n` | Refinement iterations per item |
-| `--auto` | | Loop until critic satisfied per item |
-| `--max-iterations` | | Safety cap for `--auto` |
-| `--optimize` | | Input optimization per item |
-| `--format` | `-f` | png, jpeg, or webp |
-| `--save-prompts` / `--no-save-prompts` | | Persist prompts (default: on, same as `plot`) |
-| `--venue` | | Venue style (neurips, icml, acl, ieee, custom) |
-| `--aspect-ratio` | `-ar` | Default aspect ratio when not set in the manifest |
-| `--verbose` | `-v` | Verbose logging |
+| Flag                                   | Short  | Description                                       |
+| -------------------------------------- | ------ | ------------------------------------------------- |
+| `--manifest`                           | `-m`   | Path to manifest (required)                       |
+| `--output-dir`                         | `-o`   | Parent directory for `batch_*` (default: outputs) |
+| `--config`                             | <br /> | Path to config YAML                               |
+| `--vlm-provider`                       | <br /> | VLM provider (default: gemini)                    |
+| `--vlm-model`                          | <br /> | VLM model override                                |
+| `--image-provider`                     | <br /> | Image gen provider                                |
+| `--image-model`                        | <br /> | Image gen model                                   |
+| `--iterations`                         | `-n`   | Refinement iterations per item                    |
+| `--auto`                               | <br /> | Loop until critic satisfied per item              |
+| `--max-iterations`                     | <br /> | Safety cap for `--auto`                           |
+| `--optimize`                           | <br /> | Input optimization per item                       |
+| `--format`                             | `-f`   | png, jpeg, or webp                                |
+| `--save-prompts` / `--no-save-prompts` | <br /> | Persist prompts (default: on, same as `plot`)     |
+| `--venue`                              | <br /> | Venue style (neurips, icml, acl, ieee, custom)    |
+| `--aspect-ratio`                       | `-ar`  | Default aspect ratio when not set in the manifest |
+| `--verbose`                            | `-v`   | Verbose logging                                   |
 
 ### `paperbanana orchestrate` -- Full-Paper Figure Package
 
 Generate a publication-focused figure bundle from a full paper source, with optional data-driven plots. The command:
+
 - parses the paper (`.txt`, `.md`, or `.pdf`)
 - plans multiple methodology figures from section structure
 - optionally discovers CSV/JSON files to plan statistical plots
@@ -379,23 +385,23 @@ paperbanana orchestrate \
 Use `--dry-run` to only plan and inspect `orchestration_plan.json` without API calls.
 Use `--resume-orchestrate <id-or-path>` to continue an interrupted orchestration from checkpoint state.
 
-| Flag | Description |
-|------|-------------|
-| `--paper` / `-p` | Paper source path (`.txt`, `.md`, or `.pdf`) |
-| `--resume-orchestrate` | Resume an existing orchestration by ID or directory |
-| `--retry-failed` | When resuming, include previously failed tasks |
-| `--max-retries` | Extra retries per task after first failure |
-| `--data-dir` | Optional directory containing CSV/JSON files for plot planning |
-| `--output-dir` / `-o` | Parent output directory (creates `orchestrate_*`) |
-| `--max-method-figures` | Max methodology figures to plan/generate |
-| `--max-plot-figures` | Max plot figures to plan/generate |
-| `--pdf-pages` | PDF-only page selection (e.g. `1-5`, `2,4,6-8`) |
-| `--optimize` | Enable input optimization for generated items |
-| `--iterations` / `-n` | Refinement iterations per generated item |
-| `--auto` + `--max-iterations` | Critic-driven auto-refine mode with safety cap |
-| `--concurrency` | Parallel figure generation workers |
-| `--format` / `-f` | Output format (`png`, `jpeg`, `webp`) |
-| `--dry-run` | Plan package only; no generation calls |
+| Flag                          | Description                                                    |
+| ----------------------------- | -------------------------------------------------------------- |
+| `--paper` / `-p`              | Paper source path (`.txt`, `.md`, or `.pdf`)                   |
+| `--resume-orchestrate`        | Resume an existing orchestration by ID or directory            |
+| `--retry-failed`              | When resuming, include previously failed tasks                 |
+| `--max-retries`               | Extra retries per task after first failure                     |
+| `--data-dir`                  | Optional directory containing CSV/JSON files for plot planning |
+| `--output-dir` / `-o`         | Parent output directory (creates `orchestrate_*`)              |
+| `--max-method-figures`        | Max methodology figures to plan/generate                       |
+| `--max-plot-figures`          | Max plot figures to plan/generate                              |
+| `--pdf-pages`                 | PDF-only page selection (e.g. `1-5`, `2,4,6-8`)                |
+| `--optimize`                  | Enable input optimization for generated items                  |
+| `--iterations` / `-n`         | Refinement iterations per generated item                       |
+| `--auto` + `--max-iterations` | Critic-driven auto-refine mode with safety cap                 |
+| `--concurrency`               | Parallel figure generation workers                             |
+| `--format` / `-f`             | Output format (`png`, `jpeg`, `webp`)                          |
+| `--dry-run`                   | Plan package only; no generation calls                         |
 
 ### `paperbanana composite` -- Compose Multi-Panel Figures
 
@@ -408,15 +414,15 @@ paperbanana composite \
   --output figure2.png
 ```
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `IMAGES` | | Positional: paths to images to compose |
-| `--layout` | `-l` | Grid layout: `RxC` (e.g. `1x3`, `2x2`) or `auto` (default: auto) |
-| `--labels` | | Comma-separated labels, or `none` to disable (default: auto `(a),(b),...`) |
-| `--spacing` | `-s` | Pixel spacing between panels (default: 20) |
-| `--label-position` | | `top` or `bottom` (default: bottom) |
-| `--label-font-size` | | Font size for labels (default: 32) |
-| `--output` | `-o` | Output path (default: composite_output.png) |
+| Flag                | Short  | Description                                                                |
+| ------------------- | ------ | -------------------------------------------------------------------------- |
+| `IMAGES`            | <br /> | Positional: paths to images to compose                                     |
+| `--layout`          | `-l`   | Grid layout: `RxC` (e.g. `1x3`, `2x2`) or `auto` (default: auto)           |
+| `--labels`          | <br /> | Comma-separated labels, or `none` to disable (default: auto `(a),(b),...`) |
+| `--spacing`         | `-s`   | Pixel spacing between panels (default: 20)                                 |
+| `--label-position`  | <br /> | `top` or `bottom` (default: bottom)                                        |
+| `--label-font-size` | <br /> | Font size for labels (default: 32)                                         |
+| `--output`          | `-o`   | Output path (default: composite\_output.png)                               |
 
 This command works on any existing images — no API calls needed. It is also triggered automatically when a batch manifest includes a `composite` section (see `paperbanana batch` above).
 
@@ -432,15 +438,16 @@ paperbanana evaluate \
   --caption "Overview of our framework"
 ```
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--generated` | `-g` | Path to generated image (required) |
-| `--reference` | `-r` | Path to human reference image (required) |
-| `--context` | | Path to source context text file or PDF (required) |
-| `--caption` | `-c` | Figure caption (required) |
-| `--pdf-pages` | | PDF context only: 1-based page selection (default: all) |
+| Flag          | Short  | Description                                             |
+| ------------- | ------ | ------------------------------------------------------- |
+| `--generated` | `-g`   | Path to generated image (required)                      |
+| `--reference` | `-r`   | Path to human reference image (required)                |
+| `--context`   | <br /> | Path to source context text file or PDF (required)      |
+| `--caption`   | `-c`   | Figure caption (required)                               |
+| `--pdf-pages` | <br /> | PDF context only: 1-based page selection (default: all) |
 
 Scores on 4 dimensions (hierarchical aggregation per the paper):
+
 - **Primary**: Faithfulness, Readability
 - **Secondary**: Conciseness, Aesthetics
 
@@ -453,14 +460,14 @@ paperbanana studio
 paperbanana studio --port 8080 --output-dir ./my_outputs
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--host` | Bind address (default `127.0.0.1`) |
-| `--port` | Port (default `7860`) |
-| `--share` | Create a temporary public Gradio link (do not use with sensitive data) |
-| `--config` | Path to YAML config |
-| `--output-dir` / `-o` | Default output directory for runs |
-| `--root-path` | URL subpath when behind a reverse proxy |
+| Flag                  | Description                                                            |
+| --------------------- | ---------------------------------------------------------------------- |
+| `--host`              | Bind address (default `127.0.0.1`)                                     |
+| `--port`              | Port (default `7860`)                                                  |
+| `--share`             | Create a temporary public Gradio link (do not use with sensitive data) |
+| `--config`            | Path to YAML config                                                    |
+| `--output-dir` / `-o` | Default output directory for runs                                      |
+| `--root-path`         | URL subpath when behind a reverse proxy                                |
 
 ### `paperbanana setup` -- First-Time Configuration
 
@@ -471,7 +478,7 @@ paperbanana setup
 Interactive wizard that first asks whether to use the official Gemini API.
 If you choose official API, it follows the default AI Studio key flow; if not, it asks for a custom Gemini-compatible URL and API key.
 
----
+***
 
 ## Python API
 
@@ -519,7 +526,7 @@ result = asyncio.run(pipeline.continue_run(
 
 See `examples/generate_diagram.py` and `examples/generate_plot.py` for complete working examples.
 
----
+***
 
 ## MCP Server
 
@@ -540,13 +547,14 @@ PaperBanana includes an MCP server for use with Claude Code, Cursor, or any MCP-
 MCP tools include `generate_diagram`, `continue_run` (resume a prior `run_*` with optional feedback), `generate_plot`, `evaluate_diagram`, and `evaluate_plot`.
 
 The repo also ships with 3 Claude Code skills:
+
 - `/generate-diagram <file> [caption]` - generate a methodology diagram from a text file
 - `/generate-plot <data-file> [intent]` - generate a statistical plot from CSV/JSON data
 - `/evaluate-diagram <generated> <reference>` - evaluate a diagram against a human reference
 
 See [`mcp_server/README.md`](mcp_server/README.md) for full setup details (Claude Code, Cursor, local development).
 
----
+***
 
 ## Configuration
 
@@ -603,7 +611,7 @@ GOOGLE_VLM_MODEL=gemini-2.0-flash          # override Gemini VLM model
 GOOGLE_IMAGE_MODEL=gemini-3-pro-image-preview  # override Gemini image model
 ```
 
----
+***
 
 ## Project Structure
 
@@ -663,7 +671,7 @@ This is an **unofficial** implementation. If you use this work, please cite the 
 }
 ```
 
-**Original paper**: [https://arxiv.org/abs/2601.23265](https://arxiv.org/abs/2601.23265)
+**Original paper**: <https://arxiv.org/abs/2601.23265>
 
 ## Disclaimer
 

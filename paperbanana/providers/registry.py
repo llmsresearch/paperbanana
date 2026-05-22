@@ -183,7 +183,11 @@ class ProviderRegistry:
         provider = settings.image_provider.lower()
         logger.info("Creating image gen provider", provider=provider, model=settings.image_model)
 
-        if provider == "google_imagen":
+        if provider == "none":
+            from paperbanana.providers.image_gen.dummy import DummyImageGen
+
+            return DummyImageGen()
+        elif provider == "google_imagen":
             _validate_api_key(settings.google_api_key, "GOOGLE_API_KEY")
             from paperbanana.providers.image_gen.google_imagen import GoogleImagenGen
 
@@ -223,5 +227,5 @@ class ProviderRegistry:
         else:
             raise ValueError(
                 f"Unknown image provider: {provider}. "
-                f"Available: google_imagen, openrouter_imagen, openai_imagen, bedrock_imagen"
+                f"Available: none, google_imagen, openrouter_imagen, openai_imagen, bedrock_imagen"
             )
