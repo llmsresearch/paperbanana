@@ -210,8 +210,10 @@ def _scan_bracket_json(text: str, open_ch: str, close_ch: str) -> dict | list | 
     return None
 
 
-def extract_json(text: str) -> dict | list | None:
+def extract_json(text: str | None) -> dict | list | None:
     """Best-effort JSON extraction from free-form VLM output."""
+    if not text:
+        return None
     text = text.strip()
     result = _try_parse_json(text)
     if result is not None:
