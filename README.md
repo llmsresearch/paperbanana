@@ -170,7 +170,7 @@ PaperBanana supports multiple VLM and image generation providers:
 | VLM (planning, critique) | OpenAI | `gpt-5.2` | Default |
 | Image Generation | OpenAI | `gpt-image-1.5` | Default |
 | VLM | Atlas Cloud | `deepseek-ai/DeepSeek-V3-0324` | OpenAI-compatible chat endpoint |
-| Image Generation | Atlas Cloud | `seedream-3.0` | Async prediction API |
+| Image Generation | Atlas Cloud | `openai/gpt-image-2/text-to-image` | Async prediction API |
 | VLM | Google Gemini | `gemini-2.0-flash` | Free tier |
 | Image Generation | Google Gemini | `gemini-3-pro-image-preview` | Free tier |
 | VLM / Image | OpenRouter | Any supported model | Flexible routing |
@@ -618,7 +618,7 @@ ATLASCLOUD_API_KEY=your-key
 ATLASCLOUD_BASE_URL=https://api.atlascloud.ai/v1
 ATLASCLOUD_VLM_MODEL=deepseek-ai/DeepSeek-V3-0324
 ATLASCLOUD_IMAGE_BASE_URL=https://api.atlascloud.ai/api/v1
-ATLASCLOUD_IMAGE_MODEL=seedream-3.0
+ATLASCLOUD_IMAGE_MODEL=openai/gpt-image-2/text-to-image
 
 # Google Gemini (alternative, free)
 GOOGLE_API_KEY=your-key

@@ -110,7 +110,7 @@ def test_create_atlas_image_gen():
     """Atlas image provider uses Atlas-specific image settings."""
     settings = Settings(
         image_provider="atlas_image",
-        image_model="seedream-3.0",
+        image_model="openai/gpt-image-2/text-to-image",
         atlascloud_image_model="google/imagen4-fast",
         atlascloud_image_base_url="https://api.atlascloud.ai/api/v1",
         atlascloud_api_key="test-key",

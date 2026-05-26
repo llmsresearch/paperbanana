@@ -158,7 +158,7 @@ def test_effective_image_model_atlas_override():
     """Atlas image model override is used when provider is atlas_image."""
     settings = Settings(
         image_provider="atlas_image",
-        image_model="seedream-3.0",
+        image_model="openai/gpt-image-2/text-to-image",
         atlascloud_image_model="google/imagen4-fast",
     )
     assert settings.effective_image_model == "google/imagen4-fast"

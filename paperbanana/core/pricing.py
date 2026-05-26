@@ -57,7 +57,7 @@ IMAGE_GEN_PRICING: dict[tuple[str, str], float] = {
     ("openai_imagen", "gpt-image-1"): 0.04,
     ("openai_imagen", "dall-e-3"): 0.04,
     # Atlas Cloud
-    ("atlas_image", "seedream-3.0"): 0.03,
+    ("atlas_image", "openai/gpt-image-2/text-to-image"): 0.03,
     # Bedrock Nova Canvas
     ("bedrock_imagen", "amazon.nova-canvas"): 0.04,
     # OpenRouter — depends on underlying model

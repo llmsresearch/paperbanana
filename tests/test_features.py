@@ -789,14 +789,14 @@ def test_atlas_image_provider_creation():
     settings = Settings(
         image_provider="atlas_image",
         atlascloud_api_key="test-atlas-key",
-        atlascloud_image_model="seedream-3.0",
+        atlascloud_image_model="openai/gpt-image-2/text-to-image",
         atlascloud_image_base_url="https://api.atlascloud.ai/api/v1",
     )
     gen = ProviderRegistry.create_image_gen(settings)
 
     assert isinstance(gen, AtlasImageGen)
     assert gen.name == "atlas_image"
-    assert gen.model_name == "seedream-3.0"
+    assert gen.model_name == "openai/gpt-image-2/text-to-image"
     assert gen._base_url == "https://api.atlascloud.ai/api/v1"
     assert gen.is_available() is True
 
@@ -1078,7 +1078,7 @@ async def test_atlas_image_generate_polls_and_downloads_image():
     mock_client.post = AsyncMock(return_value=create_response)
     mock_client.get = AsyncMock(side_effect=[poll_response, download_response])
 
-    gen = AtlasImageGen(api_key="test-key", model="seedream-3.0")
+    gen = AtlasImageGen(api_key="test-key", model="openai/gpt-image-2/text-to-image")
     gen._client = mock_client
 
     result = await gen.generate(
@@ -1090,6 +1090,9 @@ async def test_atlas_image_generate_polls_and_downloads_image():
     assert isinstance(result, Image.Image)
     assert result.size == (64, 64)
     create_kwargs = mock_client.post.call_args[1]
-    assert create_kwargs["json"]["model"] == "seedream-3.0"
+    assert create_kwargs["json"]["model"] == "openai/gpt-image-2/text-to-image"
+    assert create_kwargs["json"]["enable_base64_output"] is False
+    assert create_kwargs["json"]["enable_sync_mode"] is False
+    assert create_kwargs["json"]["size"] == "1536x1024"
     assert "16:9 format" in create_kwargs["json"]["prompt"]
     assert "Avoid: blurred labels" in create_kwargs["json"]["prompt"]

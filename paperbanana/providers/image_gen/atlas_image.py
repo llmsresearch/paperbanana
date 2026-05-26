@@ -21,7 +21,7 @@ class AtlasImageGen(ImageGenProvider):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "seedream-3.0",
+        model: str = "openai/gpt-image-2/text-to-image",
         base_url: str = "https://api.atlascloud.ai/api/v1",
         poll_interval_seconds: float = 2.0,
         max_poll_attempts: int = 60,
@@ -72,6 +72,14 @@ class AtlasImageGen(ImageGenProvider):
         if ratio < 0.8:
             return "portrait format (2:3)"
         return "square format (1:1)"
+
+    def _size_string(self, width: int, height: int) -> str:
+        ratio = width / height
+        if 0.85 <= ratio <= 1.15:
+            return "1024x1024"
+        if ratio > 1.0:
+            return "1536x1024"
+        return "1024x1536"
 
     def _build_prompt(
         self,
@@ -126,6 +134,9 @@ class AtlasImageGen(ImageGenProvider):
         payload: dict[str, Any] = {
             "model": self._model,
             "prompt": self._build_prompt(prompt, negative_prompt, width, height, aspect_ratio),
+            "enable_base64_output": False,
+            "enable_sync_mode": False,
+            "size": self._size_string(width, height),
         }
         if seed is not None:
             payload["seed"] = seed
