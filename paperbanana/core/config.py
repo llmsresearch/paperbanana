@@ -115,6 +115,7 @@ class Settings(BaseSettings):
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    atlascloud_api_key: Optional[str] = Field(default=None, alias="ATLASCLOUD_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
     google_base_url: Optional[str] = Field(default=None, alias="GOOGLE_BASE_URL")
     google_vlm_model: Optional[str] = Field(default=None, alias="GOOGLE_VLM_MODEL")
@@ -122,6 +123,16 @@ class Settings(BaseSettings):
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
     openai_vlm_model: Optional[str] = Field(default=None, alias="OPENAI_VLM_MODEL")
     openai_image_model: Optional[str] = Field(default=None, alias="OPENAI_IMAGE_MODEL")
+    atlascloud_base_url: str = Field(
+        default="https://api.atlascloud.ai/v1",
+        alias="ATLASCLOUD_BASE_URL",
+    )
+    atlascloud_vlm_model: Optional[str] = Field(default=None, alias="ATLASCLOUD_VLM_MODEL")
+    atlascloud_image_base_url: str = Field(
+        default="https://api.atlascloud.ai/api/v1",
+        alias="ATLASCLOUD_IMAGE_BASE_URL",
+    )
+    atlascloud_image_model: Optional[str] = Field(default=None, alias="ATLASCLOUD_IMAGE_MODEL")
 
     ollama_base_url: str = Field(default="http://localhost:11434/v1", alias="OLLAMA_BASE_URL")
     ollama_model: Optional[str] = Field(default=None, alias="OLLAMA_MODEL")
@@ -150,6 +161,8 @@ class Settings(BaseSettings):
             return self.google_vlm_model
         if self.vlm_provider == "openai" and self.openai_vlm_model:
             return self.openai_vlm_model
+        if self.vlm_provider == "atlas" and self.atlascloud_vlm_model:
+            return self.atlascloud_vlm_model
         if self.vlm_provider == "bedrock" and self.bedrock_vlm_model:
             return self.bedrock_vlm_model
         return self.vlm_model
@@ -161,6 +174,8 @@ class Settings(BaseSettings):
             return self.google_image_model
         if self.image_provider == "openai_imagen" and self.openai_image_model:
             return self.openai_image_model
+        if self.image_provider == "atlas_image" and self.atlascloud_image_model:
+            return self.atlascloud_image_model
         if self.image_provider == "bedrock_imagen" and self.bedrock_image_model:
             return self.bedrock_image_model
         return self.image_model

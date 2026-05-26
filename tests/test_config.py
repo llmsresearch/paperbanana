@@ -134,6 +134,16 @@ def test_effective_vlm_model_gemini_override():
     assert settings.effective_vlm_model == "gemini-2.5-flash"
 
 
+def test_effective_vlm_model_atlas_override():
+    """Atlas VLM model override is used when provider is atlas."""
+    settings = Settings(
+        vlm_provider="atlas",
+        vlm_model="deepseek-ai/DeepSeek-V3-0324",
+        atlascloud_vlm_model="qwen-turbo",
+    )
+    assert settings.effective_vlm_model == "qwen-turbo"
+
+
 def test_effective_image_model_gemini_override():
     """Gemini image model override is used when provider is google_imagen."""
     settings = Settings(
@@ -142,3 +152,13 @@ def test_effective_image_model_gemini_override():
         google_image_model="gemini-2.5-flash-image-preview",
     )
     assert settings.effective_image_model == "gemini-2.5-flash-image-preview"
+
+
+def test_effective_image_model_atlas_override():
+    """Atlas image model override is used when provider is atlas_image."""
+    settings = Settings(
+        image_provider="atlas_image",
+        image_model="seedream-3.0",
+        atlascloud_image_model="google/imagen4-fast",
+    )
+    assert settings.effective_image_model == "google/imagen4-fast"
