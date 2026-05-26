@@ -724,6 +724,26 @@ def test_openai_vlm_provider_creation():
     assert vlm.is_available() is True
 
 
+def test_atlas_vlm_provider_creation():
+    """Registry creates AtlasVLM with Atlas-specific settings."""
+    from paperbanana.providers.registry import ProviderRegistry
+    from paperbanana.providers.vlm.atlas import AtlasVLM
+
+    settings = Settings(
+        vlm_provider="atlas",
+        atlascloud_api_key="test-atlas-key",
+        atlascloud_vlm_model="deepseek-ai/DeepSeek-V3-0324",
+        atlascloud_base_url="https://api.atlascloud.ai/v1",
+    )
+    vlm = ProviderRegistry.create_vlm(settings)
+
+    assert isinstance(vlm, AtlasVLM)
+    assert vlm.name == "atlas"
+    assert vlm.model_name == "deepseek-ai/DeepSeek-V3-0324"
+    assert vlm._base_url == "https://api.atlascloud.ai/v1"
+    assert vlm.is_available() is True
+
+
 def test_openai_vlm_falls_back_to_vlm_model():
     """When openai_vlm_model is not set, OpenAI VLM uses the generic vlm_model."""
     from paperbanana.providers.registry import ProviderRegistry
@@ -761,6 +781,26 @@ def test_openai_imagen_provider_creation():
     assert gen.is_available() is True
 
 
+def test_atlas_image_provider_creation():
+    """Registry creates AtlasImageGen with Atlas-specific image settings."""
+    from paperbanana.providers.image_gen.atlas_image import AtlasImageGen
+    from paperbanana.providers.registry import ProviderRegistry
+
+    settings = Settings(
+        image_provider="atlas_image",
+        atlascloud_api_key="test-atlas-key",
+        atlascloud_image_model="openai/gpt-image-2/text-to-image",
+        atlascloud_image_base_url="https://api.atlascloud.ai/api/v1",
+    )
+    gen = ProviderRegistry.create_image_gen(settings)
+
+    assert isinstance(gen, AtlasImageGen)
+    assert gen.name == "atlas_image"
+    assert gen.model_name == "openai/gpt-image-2/text-to-image"
+    assert gen._base_url == "https://api.atlascloud.ai/api/v1"
+    assert gen.is_available() is True
+
+
 def test_openai_missing_api_key_raises_helpful_error():
     """Missing OPENAI_API_KEY raises ValueError with setup instructions."""
     from paperbanana.providers.registry import ProviderRegistry
@@ -771,6 +811,18 @@ def test_openai_missing_api_key_raises_helpful_error():
     error_msg = str(exc_info.value)
     assert "platform.openai.com" in error_msg
     assert "export OPENAI_API_KEY" in error_msg
+
+
+def test_atlas_missing_api_key_raises_helpful_error():
+    """Missing ATLASCLOUD_API_KEY raises ValueError with setup instructions."""
+    from paperbanana.providers.registry import ProviderRegistry
+
+    settings = Settings(vlm_provider="atlas", atlascloud_api_key=None)
+    with pytest.raises(ValueError, match="ATLASCLOUD_API_KEY not found") as exc_info:
+        ProviderRegistry.create_vlm(settings)
+    error_msg = str(exc_info.value)
+    assert "atlascloud.ai" in error_msg
+    assert "export ATLASCLOUD_API_KEY" in error_msg
 
 
 def test_openai_vlm_not_available_without_key():
@@ -994,3 +1046,53 @@ async def test_openai_imagen_appends_negative_prompt():
     sent_prompt = call_kwargs["prompt"]
     assert "A clean architecture diagram" in sent_prompt
     assert "Avoid: blurry, low quality" in sent_prompt
+
+
+@pytest.mark.asyncio
+async def test_atlas_image_generate_polls_and_downloads_image():
+    """AtlasImageGen polls async predictions and downloads the final image."""
+    from io import BytesIO
+
+    from paperbanana.providers.image_gen.atlas_image import AtlasImageGen
+
+    img = Image.new("RGB", (64, 64), color=(12, 34, 56))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    image_bytes = buf.getvalue()
+
+    create_response = MagicMock()
+    create_response.json.return_value = {"data": {"id": "pred_123"}}
+    create_response.raise_for_status = MagicMock()
+
+    poll_response = MagicMock()
+    poll_response.json.return_value = {
+        "data": {"status": "completed", "outputs": ["https://cdn.atlascloud.ai/test.png"]}
+    }
+    poll_response.raise_for_status = MagicMock()
+
+    download_response = MagicMock()
+    download_response.content = image_bytes
+    download_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=create_response)
+    mock_client.get = AsyncMock(side_effect=[poll_response, download_response])
+
+    gen = AtlasImageGen(api_key="test-key", model="openai/gpt-image-2/text-to-image")
+    gen._client = mock_client
+
+    result = await gen.generate(
+        prompt="A clean academic pipeline diagram",
+        negative_prompt="blurred labels",
+        aspect_ratio="16:9",
+    )
+
+    assert isinstance(result, Image.Image)
+    assert result.size == (64, 64)
+    create_kwargs = mock_client.post.call_args[1]
+    assert create_kwargs["json"]["model"] == "openai/gpt-image-2/text-to-image"
+    assert create_kwargs["json"]["enable_base64_output"] is False
+    assert create_kwargs["json"]["enable_sync_mode"] is False
+    assert create_kwargs["json"]["size"] == "1536x1024"
+    assert "16:9 format" in create_kwargs["json"]["prompt"]
+    assert "Avoid: blurred labels" in create_kwargs["json"]["prompt"]

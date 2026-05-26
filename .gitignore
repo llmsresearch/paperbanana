@@ -32,6 +32,7 @@ run_*/
 !data/reference_sets/**/*.png
 !data/reference_sets/**/*.jpg
 !assets/img/hero_image.png
+!assets/img/atlas_cloud_logo.png
 
 # Reference set build artifacts (large, copyrighted PDFs)
 data/reference_sets/output/

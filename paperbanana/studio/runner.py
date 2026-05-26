@@ -45,10 +45,11 @@ from paperbanana.core.utils import ensure_dir, find_prompt_dir, generate_run_id,
 from paperbanana.evaluation.judge import VLMJudge
 from paperbanana.providers.registry import ProviderRegistry
 
-VLM_PROVIDER_CHOICES = ["gemini", "openai", "openrouter", "bedrock", "anthropic"]
+VLM_PROVIDER_CHOICES = ["gemini", "openai", "atlas", "openrouter", "bedrock", "anthropic"]
 IMAGE_PROVIDER_CHOICES = [
     "google_imagen",
     "openai_imagen",
+    "atlas_image",
     "openrouter_imagen",
     "bedrock_imagen",
 ]

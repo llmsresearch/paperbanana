@@ -32,10 +32,10 @@
 > This project is **not affiliated with or endorsed by** the original authors or Google Research.
 > The implementation is based on the publicly available paper and may differ from the original system.
 
-An agentic framework for generating publication-quality academic diagrams and statistical plots from text descriptions. Supports OpenAI (GPT-5.2 + GPT-Image-1.5), Azure OpenAI / Foundry, and Google Gemini providers.
+An agentic framework for generating publication-quality academic diagrams and statistical plots from text descriptions. Supports OpenAI (GPT-5.2 + GPT-Image-1.5), Azure OpenAI / Foundry, Google Gemini, and Atlas Cloud providers.
 
 - Two-phase multi-agent pipeline with iterative refinement
-- Multiple VLM and image generation providers (OpenAI, Azure, Gemini)
+- Multiple VLM and image generation providers (OpenAI, Azure, Gemini, Atlas Cloud)
 - Input optimization layer for better generation quality
 - Auto-refine mode and run continuation with user feedback
 - CLI, Python API, and MCP server for IDE integration
@@ -48,6 +48,17 @@ An agentic framework for generating publication-quality academic diagrams and st
 <p align="center">
   <img src="assets/img/hero_image.png" alt="PaperBanana takes paper as input and provide diagram as output" style="max-width: 960px; width: 100%; height: auto;"/>
 </p>
+
+## Atlas Cloud
+
+<p align="center">
+  <img src="assets/img/atlas_cloud_logo.png" alt="Atlas Cloud Logo" width="180"/>
+</p>
+
+Atlas Cloud is a full-modal AI inference platform that gives developers a single AI API to access video generation, image generation, and LLM APIs. Instead of managing multiple vendor integrations, you connect once and get unified access to 300+ curated models across all modalities.
+
+Check out Atlas Cloud's new coding plan promotion for more budget-friendly API access:
+[https://www.atlascloud.ai/console/coding-plan](https://www.atlascloud.ai/console/coding-plan)
 
 ---
 
@@ -158,12 +169,18 @@ PaperBanana supports multiple VLM and image generation providers:
 |-----------|----------|-------|-------|
 | VLM (planning, critique) | OpenAI | `gpt-5.2` | Default |
 | Image Generation | OpenAI | `gpt-image-1.5` | Default |
+| VLM | Atlas Cloud | `deepseek-ai/DeepSeek-V3-0324` | OpenAI-compatible chat endpoint |
+| Image Generation | Atlas Cloud | `openai/gpt-image-2/text-to-image` | Async prediction API |
 | VLM | Google Gemini | `gemini-2.0-flash` | Free tier |
 | Image Generation | Google Gemini | `gemini-3-pro-image-preview` | Free tier |
 | VLM / Image | OpenRouter | Any supported model | Flexible routing |
 
 Azure OpenAI / Foundry endpoints are auto-detected — set `OPENAI_BASE_URL` to your endpoint.
 Gemini-compatible gateways are also supported — set `GOOGLE_BASE_URL` when needed.
+Atlas Cloud uses `ATLASCLOUD_BASE_URL=https://api.atlascloud.ai/v1` for chat and `ATLASCLOUD_IMAGE_BASE_URL=https://api.atlascloud.ai/api/v1` for image generation.
+
+Atlas Cloud official site:
+[https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=paperbanana](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=paperbanana)
 
 ---
 
@@ -563,11 +580,11 @@ Key settings:
 
 ```yaml
 vlm:
-  provider: openai           # openai, gemini, or openrouter
+  provider: openai           # openai, atlas, gemini, or openrouter
   model: gpt-5.2
 
 image:
-  provider: openai_imagen    # openai_imagen, google_imagen, or openrouter_imagen
+  provider: openai_imagen    # openai_imagen, atlas_image, google_imagen, or openrouter_imagen
   model: gpt-image-1.5
 
 pipeline:
@@ -596,6 +613,13 @@ OPENAI_BASE_URL=https://api.openai.com/v1    # or Azure endpoint
 OPENAI_VLM_MODEL=gpt-5.2                      # override model
 OPENAI_IMAGE_MODEL=gpt-image-1.5              # override model
 
+# Atlas Cloud
+ATLASCLOUD_API_KEY=your-key
+ATLASCLOUD_BASE_URL=https://api.atlascloud.ai/v1
+ATLASCLOUD_VLM_MODEL=deepseek-ai/DeepSeek-V3-0324
+ATLASCLOUD_IMAGE_BASE_URL=https://api.atlascloud.ai/api/v1
+ATLASCLOUD_IMAGE_MODEL=openai/gpt-image-2/text-to-image
+
 # Google Gemini (alternative, free)
 GOOGLE_API_KEY=your-key
 GOOGLE_BASE_URL=                            # optional custom Gemini-compatible endpoint
@@ -613,8 +637,8 @@ paperbanana/
 │   ├── core/          # Pipeline orchestration, types, config, resume, utilities
 │   ├── agents/        # Optimizer, Retriever, Planner, Stylist, Visualizer, Critic
 │   ├── providers/     # VLM and image gen provider implementations
-│   │   ├── vlm/       # OpenAI, Gemini, OpenRouter VLM providers
-│   │   └── image_gen/ # OpenAI, Gemini, OpenRouter image gen providers
+│   │   ├── vlm/       # OpenAI, Atlas Cloud, Gemini, OpenRouter VLM providers
+│   │   └── image_gen/ # OpenAI, Atlas Cloud, Gemini, OpenRouter image gen providers
 │   ├── reference/     # Reference set management (13 curated examples)
 │   ├── guidelines/    # Style guidelines loader
 │   └── evaluation/    # VLM-as-Judge evaluation system
