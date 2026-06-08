@@ -106,17 +106,17 @@ def test_create_atlas_vlm():
     assert getattr(vlm, "_base_url") == "https://api.atlascloud.ai/v1"
 
 
-def test_create_atlas_image_gen():
+def test_create_atlas_imagen_gen():
     """Atlas image provider uses Atlas-specific image settings."""
     settings = Settings(
-        image_provider="atlas_image",
+        image_provider="atlas_imagen",
         image_model="openai/gpt-image-2/text-to-image",
         atlascloud_image_model="google/imagen4-fast",
         atlascloud_image_base_url="https://api.atlascloud.ai/api/v1",
         atlascloud_api_key="test-key",
     )
     gen = ProviderRegistry.create_image_gen(settings)
-    assert gen.name == "atlas_image"
+    assert gen.name == "atlas_imagen"
     assert gen.model_name == "google/imagen4-fast"
     assert getattr(gen, "_base_url") == "https://api.atlascloud.ai/api/v1"
 

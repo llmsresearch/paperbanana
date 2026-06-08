@@ -155,9 +155,9 @@ def test_effective_image_model_gemini_override():
 
 
 def test_effective_image_model_atlas_override():
-    """Atlas image model override is used when provider is atlas_image."""
+    """Atlas image model override is used when provider is atlas_imagen."""
     settings = Settings(
-        image_provider="atlas_image",
+        image_provider="atlas_imagen",
         image_model="openai/gpt-image-2/text-to-image",
         atlascloud_image_model="google/imagen4-fast",
     )

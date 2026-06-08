@@ -174,7 +174,7 @@ class Settings(BaseSettings):
             return self.google_image_model
         if self.image_provider == "openai_imagen" and self.openai_image_model:
             return self.openai_image_model
-        if self.image_provider == "atlas_image" and self.atlascloud_image_model:
+        if self.image_provider == "atlas_imagen" and self.atlascloud_image_model:
             return self.atlascloud_image_model
         if self.image_provider == "bedrock_imagen" and self.bedrock_image_model:
             return self.bedrock_image_model

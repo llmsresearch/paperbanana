@@ -49,7 +49,7 @@ VLM_PROVIDER_CHOICES = ["gemini", "openai", "atlas", "openrouter", "bedrock", "a
 IMAGE_PROVIDER_CHOICES = [
     "google_imagen",
     "openai_imagen",
-    "atlas_image",
+    "atlas_imagen",
     "openrouter_imagen",
     "bedrock_imagen",
 ]

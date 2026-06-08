@@ -52,7 +52,7 @@ An agentic framework for generating publication-quality academic diagrams and st
 ## Atlas Cloud
 
 <p align="center">
-  <img src="assets/img/atlas_cloud_logo.png" alt="Atlas Cloud Logo" width="180"/>
+  <img src="assets/sponsors/atlas_cloud_logo.png" alt="Atlas Cloud Logo" width="180"/>
 </p>
 
 Atlas Cloud is a full-modal AI inference platform that gives developers a single AI API to access video generation, image generation, and LLM APIs. Instead of managing multiple vendor integrations, you connect once and get unified access to 300+ curated models across all modalities.
@@ -601,7 +601,7 @@ vlm:
   model: gpt-5.2
 
 image:
-  provider: openai_imagen    # openai_imagen, atlas_image, google_imagen, or openrouter_imagen
+  provider: openai_imagen    # openai_imagen, atlas_imagen, google_imagen, or openrouter_imagen
   model: gpt-image-1.5
 
 pipeline:

@@ -781,13 +781,13 @@ def test_openai_imagen_provider_creation():
     assert gen.is_available() is True
 
 
-def test_atlas_image_provider_creation():
+def test_atlas_imagen_provider_creation():
     """Registry creates AtlasImageGen with Atlas-specific image settings."""
-    from paperbanana.providers.image_gen.atlas_image import AtlasImageGen
+    from paperbanana.providers.image_gen.atlas_imagen import AtlasImageGen
     from paperbanana.providers.registry import ProviderRegistry
 
     settings = Settings(
-        image_provider="atlas_image",
+        image_provider="atlas_imagen",
         atlascloud_api_key="test-atlas-key",
         atlascloud_image_model="openai/gpt-image-2/text-to-image",
         atlascloud_image_base_url="https://api.atlascloud.ai/api/v1",
@@ -795,7 +795,7 @@ def test_atlas_image_provider_creation():
     gen = ProviderRegistry.create_image_gen(settings)
 
     assert isinstance(gen, AtlasImageGen)
-    assert gen.name == "atlas_image"
+    assert gen.name == "atlas_imagen"
     assert gen.model_name == "openai/gpt-image-2/text-to-image"
     assert gen._base_url == "https://api.atlascloud.ai/api/v1"
     assert gen.is_available() is True
@@ -1049,11 +1049,11 @@ async def test_openai_imagen_appends_negative_prompt():
 
 
 @pytest.mark.asyncio
-async def test_atlas_image_generate_polls_and_downloads_image():
+async def test_atlas_imagen_generate_polls_and_downloads_image():
     """AtlasImageGen polls async predictions and downloads the final image."""
     from io import BytesIO
 
-    from paperbanana.providers.image_gen.atlas_image import AtlasImageGen
+    from paperbanana.providers.image_gen.atlas_imagen import AtlasImageGen
 
     img = Image.new("RGB", (64, 64), color=(12, 34, 56))
     buf = BytesIO()

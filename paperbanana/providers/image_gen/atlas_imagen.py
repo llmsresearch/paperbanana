@@ -35,7 +35,7 @@ class AtlasImageGen(ImageGenProvider):
 
     @property
     def name(self) -> str:
-        return "atlas_image"
+        return "atlas_imagen"
 
     @property
     def model_name(self) -> str:

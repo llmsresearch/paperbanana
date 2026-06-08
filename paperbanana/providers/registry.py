@@ -227,9 +227,9 @@ class ProviderRegistry:
                 model=settings.openai_image_model or settings.image_model,
                 base_url=settings.openai_base_url,
             )
-        elif provider == "atlas_image":
+        elif provider == "atlas_imagen":
             _validate_api_key(settings.atlascloud_api_key, "ATLASCLOUD_API_KEY")
-            from paperbanana.providers.image_gen.atlas_image import AtlasImageGen
+            from paperbanana.providers.image_gen.atlas_imagen import AtlasImageGen
 
             return AtlasImageGen(
                 api_key=settings.atlascloud_api_key,
@@ -249,5 +249,5 @@ class ProviderRegistry:
             raise ValueError(
                 f"Unknown image provider: {provider}. "
                 "Available: google_imagen, openrouter_imagen, "
-                "openai_imagen, atlas_image, bedrock_imagen"
+                "openai_imagen, atlas_imagen, bedrock_imagen"
             )
