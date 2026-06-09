@@ -182,13 +182,15 @@ Atlas Cloud uses `ATLASCLOUD_BASE_URL=https://api.atlascloud.ai/v1` for chat and
 Atlas Cloud official site:
 [https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=paperbanana](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=paperbanana)
 
-Validated Atlas LLM pool for `ATLASCLOUD_VLM_MODEL`:
+Recommended Atlas LLM models for `ATLASCLOUD_VLM_MODEL`:
 
-- `deepseek-ai/DeepSeek-V3-0324`, `deepseek-ai/deepseek-r1-0528`, `moonshotai/Kimi-K2-Instruct`, `Qwen/Qwen3-Coder`, `Qwen/Qwen3-235B-A22B-Instruct-2507`, `deepseek-ai/DeepSeek-V3.1`, `moonshotai/Kimi-K2-Instruct-0905`, `Qwen/Qwen3-Next-80B-A3B-Instruct`, `Qwen/Qwen3-Next-80B-A3B-Thinking`, `Qwen/Qwen3-30B-A3B-Instruct-2507`
-- `deepseek-ai/DeepSeek-V3.1-Terminus`, `deepseek-ai/DeepSeek-V3.2-Exp`, `zai-org/GLM-4.6`, `MiniMaxAI/MiniMax-M2`, `Qwen/Qwen3-VL-235B-A22B-Instruct`, `moonshotai/Kimi-K2-Thinking`, `google/gemini-2.5-flash`, `google/gemini-2.5-flash-lite`, `openai/gpt-5.1`, `openai/gpt-5.1-chat`
-- `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/gpt-4.1`, `openai/gpt-4.1-mini`, `openai/gpt-4.1-nano`, `openai/o1`, `openai/o3`, `openai/o3-mini`, `openai/o4-mini`, `anthropic/claude-sonnet-4.5-20250929`
-- `deepseek-ai/deepseek-v3.2`, `openai/gpt-5`, `openai/gpt-5-chat`, `openai/gpt-5-mini`, `openai/gpt-5-nano`, `openai/gpt-5.2`, `openai/gpt-5.2-chat`, `google/gemini-2.5-pro`, `anthropic/claude-opus-4.5-20251101`, `google/gemini-3-flash-preview`
-- `zai-org/glm-4.7`, `minimaxai/minimax-m2.1`, `google/gemini-2.0-flash`, `qwen/qwen3-8b`, `qwen/qwen3-235b-a22b-thinking-2507`, `qwen/qwen3-vl-235b-a22b-thinking`, `qwen/qwen3-30b-a3b`, `qwen/qwen3-30b-a3b-thinking-2507`, `deepseek-ai/deepseek-ocr`, `xai/grok-4-0709`
+- `deepseek-ai/DeepSeek-V3-0324` (default)
+- `openai/gpt-4o`
+- `openai/gpt-4.1`
+- `google/gemini-2.5-flash`
+- `anthropic/claude-sonnet-4.5-20250929`
+
+These are stable, generally available models verified against the Atlas Cloud API. The full, always-current model pool (300+ models) is documented on Atlas Cloud's own docs — see [https://www.atlascloud.ai/models](https://www.atlascloud.ai/models) — and any model id listed there can be passed via `ATLASCLOUD_VLM_MODEL`.
 
 Recommended Atlas image models for `ATLASCLOUD_IMAGE_MODEL`:
 

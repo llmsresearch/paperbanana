@@ -73,8 +73,16 @@ class AtlasImageGen(ImageGenProvider):
             return "portrait format (2:3)"
         return "square format (1:1)"
 
-    def _size_string(self, width: int, height: int) -> str:
+    def _size_string(
+        self, width: int, height: int, aspect_ratio: Optional[str] = None
+    ) -> str:
         ratio = width / height
+        if aspect_ratio and ":" in aspect_ratio:
+            try:
+                w_part, h_part = aspect_ratio.split(":", 1)
+                ratio = float(w_part) / float(h_part)
+            except (ValueError, ZeroDivisionError):
+                ratio = width / height
         if 0.85 <= ratio <= 1.15:
             return "1024x1024"
         if ratio > 1.0:
@@ -136,7 +144,7 @@ class AtlasImageGen(ImageGenProvider):
             "prompt": self._build_prompt(prompt, negative_prompt, width, height, aspect_ratio),
             "enable_base64_output": False,
             "enable_sync_mode": False,
-            "size": self._size_string(width, height),
+            "size": self._size_string(width, height, aspect_ratio),
         }
         if seed is not None:
             payload["seed"] = seed
