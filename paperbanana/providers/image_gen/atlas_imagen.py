@@ -73,9 +73,7 @@ class AtlasImageGen(ImageGenProvider):
             return "portrait format (2:3)"
         return "square format (1:1)"
 
-    def _size_string(
-        self, width: int, height: int, aspect_ratio: Optional[str] = None
-    ) -> str:
+    def _size_string(self, width: int, height: int, aspect_ratio: Optional[str] = None) -> str:
         ratio = width / height
         if aspect_ratio and ":" in aspect_ratio:
             try:
@@ -98,9 +96,7 @@ class AtlasImageGen(ImageGenProvider):
         aspect_ratio: Optional[str],
     ) -> str:
         aspect_hint = (
-            f"{aspect_ratio} format"
-            if aspect_ratio
-            else self._aspect_ratio_hint(width, height)
+            f"{aspect_ratio} format" if aspect_ratio else self._aspect_ratio_hint(width, height)
         )
         parts = [prompt, f"Generate this as a {aspect_hint} image."]
         if negative_prompt:
