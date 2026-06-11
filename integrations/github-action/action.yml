@@ -1,0 +1,224 @@
+name: "PaperBanana Figure"
+description: >-
+  Generate a publication-quality methodology diagram from your paper's LaTeX
+  source and commit it back to the repo. Pairs with Overleaf's GitHub sync:
+  push, generate, pull — the figure appears in your Overleaf project.
+author: "LLMs Research Inc."
+branding:
+  icon: "image"
+  color: "yellow"
+
+inputs:
+  tex-file:
+    description: "Path to the .tex file containing the methodology section"
+    required: true
+  section:
+    description: "Section title to extract (case-insensitive substring match)"
+    required: false
+    default: "Method"
+  caption:
+    description: "Figure caption / communicative intent (also used in the LaTeX snippet)"
+    required: true
+  output-path:
+    description: "Repo-relative path for the generated image (.png or .jpg)"
+    required: false
+    default: "figures/method_overview.png"
+  snippet-path:
+    description: "Repo-relative path for the generated \\begin{figure} snippet (default: output-path with .tex extension)"
+    required: false
+    default: ""
+  figure-label:
+    description: "LaTeX \\label for the figure"
+    required: false
+    default: "fig:method-overview"
+  figure-width:
+    description: "Width argument for \\includegraphics"
+    required: false
+    default: '\columnwidth'
+  vlm-provider:
+    description: "VLM provider (openai, gemini, atlas, openrouter, anthropic, bedrock, ollama, litellm)"
+    required: false
+    default: ""
+  vlm-model:
+    description: "VLM model override"
+    required: false
+    default: ""
+  image-provider:
+    description: "Image generation provider (openai_imagen, google_imagen, atlas_imagen, openrouter_imagen, bedrock_imagen)"
+    required: false
+    default: ""
+  image-model:
+    description: "Image generation model override"
+    required: false
+    default: ""
+  iterations:
+    description: "Refinement iterations (Visualizer/Critic loop)"
+    required: false
+    default: ""
+  optimize:
+    description: "Preprocess inputs for better generation (true/false)"
+    required: false
+    default: "false"
+  budget:
+    description: "Budget cap in USD; the pipeline aborts gracefully when exceeded"
+    required: false
+    default: ""
+  seed:
+    description: "Random seed for reproducible generation"
+    required: false
+    default: ""
+  paperbanana-version:
+    description: "PyPI version to install (empty = latest from the GitHub main branch; releases <=0.1.2 predate the budget/seed flags)"
+    required: false
+    default: ""
+  commit:
+    description: "Commit and push the generated files (true/false)"
+    required: false
+    default: "true"
+  commit-message:
+    description: "Commit message ([skip ci] prevents retrigger loops)"
+    required: false
+    default: "chore: update methodology figure via PaperBanana [skip ci]"
+
+outputs:
+  image-path:
+    description: "Repo-relative path of the generated image"
+    value: ${{ steps.generate.outputs.image-path }}
+  snippet-path:
+    description: "Repo-relative path of the generated LaTeX snippet"
+    value: ${{ steps.snippet.outputs.snippet-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install PaperBanana
+      shell: bash
+      env:
+        PB_VERSION: ${{ inputs.paperbanana-version }}
+      run: |
+        if [ -n "$PB_VERSION" ]; then
+          python -m pip install --quiet "paperbanana==${PB_VERSION}"
+        else
+          python -m pip install --quiet "paperbanana @ git+https://github.com/llmsresearch/paperbanana.git@main"
+        fi
+
+    - name: Extract methodology section
+      shell: bash
+      env:
+        TEX_FILE: ${{ inputs.tex-file }}
+        SECTION: ${{ inputs.section }}
+      run: |
+        python "${{ github.action_path }}/extract_section.py" \
+          --tex "$TEX_FILE" \
+          --section "$SECTION" \
+          --out "$RUNNER_TEMP/pb_methodology.txt"
+
+    - name: Generate figure
+      id: generate
+      shell: bash
+      env:
+        CAPTION: ${{ inputs.caption }}
+        OUTPUT_PATH: ${{ inputs.output-path }}
+        VLM_PROVIDER: ${{ inputs.vlm-provider }}
+        VLM_MODEL: ${{ inputs.vlm-model }}
+        IMAGE_PROVIDER: ${{ inputs.image-provider }}
+        IMAGE_MODEL: ${{ inputs.image-model }}
+        ITERATIONS: ${{ inputs.iterations }}
+        OPTIMIZE: ${{ inputs.optimize }}
+        BUDGET: ${{ inputs.budget }}
+        SEED: ${{ inputs.seed }}
+      run: |
+        set -euo pipefail
+
+        case "${OUTPUT_PATH##*.}" in
+          png) FORMAT="png" ;;
+          jpg|jpeg) FORMAT="jpeg" ;;
+          *) echo "error: output-path must end in .png, .jpg, or .jpeg (LaTeX-compatible)"; exit 1 ;;
+        esac
+
+        ARGS=(
+          --input "$RUNNER_TEMP/pb_methodology.txt"
+          --caption "$CAPTION"
+          --output "$RUNNER_TEMP/pb_out/figure.$FORMAT"
+          --format "$FORMAT"
+        )
+        [ -n "$VLM_PROVIDER" ]   && ARGS+=(--vlm-provider "$VLM_PROVIDER")
+        [ -n "$VLM_MODEL" ]      && ARGS+=(--vlm-model "$VLM_MODEL")
+        [ -n "$IMAGE_PROVIDER" ] && ARGS+=(--image-provider "$IMAGE_PROVIDER")
+        [ -n "$IMAGE_MODEL" ]    && ARGS+=(--image-model "$IMAGE_MODEL")
+        [ -n "$ITERATIONS" ]     && ARGS+=(--iterations "$ITERATIONS")
+        [ "$OPTIMIZE" = "true" ] && ARGS+=(--optimize)
+        [ -n "$BUDGET" ]         && ARGS+=(--budget "$BUDGET")
+        [ -n "$SEED" ]           && ARGS+=(--seed "$SEED")
+
+        paperbanana generate "${ARGS[@]}"
+
+        # The pipeline writes <output-dir>/<run_id>/final_output.<ext>
+        IMG=$(ls -t "$RUNNER_TEMP"/pb_out/*/final_output.* | head -1)
+        if [ -z "$IMG" ]; then
+          echo "error: no final_output image produced"; exit 1
+        fi
+        mkdir -p "$(dirname "$OUTPUT_PATH")"
+        cp "$IMG" "$OUTPUT_PATH"
+        echo "image-path=$OUTPUT_PATH" >> "$GITHUB_OUTPUT"
+
+    - name: Write LaTeX snippet
+      id: snippet
+      shell: bash
+      env:
+        CAPTION: ${{ inputs.caption }}
+        OUTPUT_PATH: ${{ inputs.output-path }}
+        SNIPPET_PATH: ${{ inputs.snippet-path }}
+        FIGURE_LABEL: ${{ inputs.figure-label }}
+        FIGURE_WIDTH: ${{ inputs.figure-width }}
+      run: |
+        python - <<'PYEOF'
+        import os
+        from pathlib import Path
+
+        output_path = os.environ["OUTPUT_PATH"]
+        snippet_path = os.environ["SNIPPET_PATH"] or str(Path(output_path).with_suffix(".tex"))
+
+        snippet = "\n".join(
+            [
+                "% Generated by PaperBanana (https://github.com/llmsresearch/paperbanana)",
+                f"% Usage: \\input{{{Path(snippet_path).with_suffix('')}}}",
+                "\\begin{figure}[t]",
+                "  \\centering",
+                f"  \\includegraphics[width={os.environ['FIGURE_WIDTH']}]{{{output_path}}}",
+                f"  \\caption{{{os.environ['CAPTION']}}}",
+                f"  \\label{{{os.environ['FIGURE_LABEL']}}}",
+                "\\end{figure}",
+                "",
+            ]
+        )
+        Path(snippet_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(snippet_path).write_text(snippet, encoding="utf-8")
+
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+            fh.write(f"snippet-path={snippet_path}\n")
+        PYEOF
+
+    - name: Commit and push
+      if: ${{ inputs.commit == 'true' }}
+      shell: bash
+      env:
+        IMAGE_PATH: ${{ steps.generate.outputs.image-path }}
+        SNIPPET_PATH: ${{ steps.snippet.outputs.snippet-path }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add "$IMAGE_PATH" "$SNIPPET_PATH"
+        if git diff --cached --quiet; then
+          echo "Figure unchanged — nothing to commit."
+        else
+          git commit -m "$COMMIT_MESSAGE"
+          git push
+        fi

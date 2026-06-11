@@ -41,6 +41,8 @@ class PipelineProgressStage(str, Enum):
     CRITIC_END = "critic_end"
     CAPTION_START = "caption_start"
     CAPTION_END = "caption_end"
+    TIKZ_EXPORTER_START = "tikz_exporter_start"
+    TIKZ_EXPORTER_END = "tikz_exporter_end"
 
 
 class PipelineProgressEvent(BaseModel):
@@ -157,6 +159,9 @@ class GenerationOutput(BaseModel):
             "Auto-generated publication-ready figure caption. "
             "Only present when generate_caption=True was passed to the pipeline."
         ),
+    )
+    tikz_path: Optional[str] = Field(
+        default=None, description="Path to the exported LaTeX/TikZ source file, if generated"
     )
     vector_svg_path: Optional[str] = Field(
         default=None, description="Path to exported SVG (methodology + vector export)"

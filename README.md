@@ -588,6 +588,24 @@ See [`mcp_server/README.md`](mcp_server/README.md) for full setup details (Claud
 
 ---
 
+## Overleaf Integration (GitHub Action)
+
+Keep your paper's methodology figure in sync with the text — automatically. PaperBanana ships a GitHub Action that pairs with Overleaf's built-in GitHub sync: push your `.tex` changes, the action extracts the methodology section, generates the figure, and commits back the image plus a ready-to-`\input` LaTeX snippet. Pull in Overleaf and it's in your file tree.
+
+```yaml
+- uses: actions/checkout@v4
+- uses: llmsresearch/paperbanana/integrations/github-action@main
+  with:
+    tex-file: sections/method.tex
+    caption: "Overview of our proposed framework"
+  env:
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+```
+
+See [`integrations/github-action/README.md`](integrations/github-action/README.md) for the full workflow, all inputs, and cost-control options.
+
+---
+
 ## Configuration
 
 Default settings are in `configs/config.yaml`. Override via CLI flags or a custom YAML:
