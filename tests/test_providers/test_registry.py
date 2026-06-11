@@ -168,3 +168,31 @@ def test_unknown_image_provider_raises():
     settings = Settings(image_provider="nonexistent")
     with pytest.raises(ValueError, match="Unknown image provider"):
         ProviderRegistry.create_image_gen(settings)
+
+
+def test_none_image_provider_returns_dummy():
+    """image_provider='none' resolves to DummyImageGen without any credentials."""
+    from paperbanana.providers.image_gen.dummy import DummyImageGen
+
+    settings = Settings(image_provider="none")
+    provider = ProviderRegistry.create_image_gen(settings)
+    assert isinstance(provider, DummyImageGen)
+    assert provider.name == "none"
+
+
+async def test_dummy_image_gen_raises_if_called():
+    """DummyImageGen must never actually be asked to generate an image."""
+    from paperbanana.providers.image_gen.dummy import DummyImageGen
+
+    with pytest.raises(RuntimeError, match="should never be called"):
+        await DummyImageGen().generate(prompt="anything")
+
+
+def test_plot_hardcodes_none_image_provider():
+    """The plot command must not require image-gen credentials (issue #201)."""
+    import inspect
+
+    from paperbanana import cli
+
+    src = inspect.getsource(cli.plot)
+    assert 'overrides["image_provider"] = "none"' in src

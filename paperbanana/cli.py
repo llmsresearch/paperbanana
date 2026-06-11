@@ -2159,7 +2159,9 @@ def plot(
     data: str = typer.Option(..., "--data", "-d", help="Path to data file (CSV or JSON)"),
     intent: str = typer.Option(..., "--intent", help="Communicative intent for the plot"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output image path"),
-    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="VLM provider (gemini, openai)"),
+    vlm_provider: Optional[str] = typer.Option(
+        None, "--vlm-provider", help="VLM provider (gemini, openai)"
+    ),
     vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
     iterations: Optional[int] = typer.Option(
         None, "--iterations", "-n", help="Number of refinement iterations"
@@ -2245,6 +2247,9 @@ def plot(
         raise typer.Exit(1)
 
     overrides = {}
+    # Plots are rendered via VLM-generated matplotlib code; the image-gen
+    # provider is never invoked, so "none" avoids demanding credentials
+    # the workflow doesn't use (see DummyImageGen).
     overrides["image_provider"] = "none"
     if vlm_provider:
         overrides["vlm_provider"] = vlm_provider

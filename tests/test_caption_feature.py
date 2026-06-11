@@ -597,8 +597,8 @@ def test_generate_caption_flag_sets_settings_override():
 
 
 def test_plot_settings_includes_generate_caption():
-    """The plot command passes generate_caption into Settings."""
+    """The plot command passes generate_caption into Settings via overrides."""
     from paperbanana import cli
 
     src = inspect.getsource(cli.plot)
-    assert "generate_caption=generate_caption" in src
+    assert 'overrides["generate_caption"] = True' in src
