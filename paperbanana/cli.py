@@ -21,7 +21,9 @@ from paperbanana.analytics import (
 )
 from paperbanana.core.config import Settings
 from paperbanana.core.logging import configure_logging
+from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.types import (
+    DiagramIR,
     DiagramType,
     GenerationInput,
     PipelineProgressEvent,
@@ -350,6 +352,16 @@ def generate(
         "--generate-caption",
         help="Auto-generate a publication-ready figure caption (one extra VLM call)",
     ),
+    reference_category: Optional[str] = typer.Option(
+        None,
+        "--reference-category",
+        help=(
+            "Filter reference examples by category (comma-separated). "
+            "Valid: agent_reasoning, generative_learning, healthcare_medical, "
+            "multimodal_fusion, nlp_language, optimization_theory, robotics_control, "
+            "science_applications, systems_networking, vision_perception"
+        ),
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed agent progress and timing"
     ),
@@ -380,6 +392,29 @@ def generate(
             "[red]Error: --pdf-pages cannot be used with --continue or --continue-run[/red]"
         )
         raise typer.Exit(1)
+
+    _valid_categories = {
+        "agent_reasoning",
+        "generative_learning",
+        "healthcare_medical",
+        "multimodal_fusion",
+        "nlp_language",
+        "optimization_theory",
+        "robotics_control",
+        "science_applications",
+        "systems_networking",
+        "vision_perception",
+    }
+    parsed_categories: Optional[list[str]] = None
+    if reference_category:
+        parsed_categories = [c.strip() for c in reference_category.split(",") if c.strip()]
+        unknown = [c for c in parsed_categories if c not in _valid_categories]
+        if unknown:
+            console.print(
+                f"[red]Error: Unknown reference category: {', '.join(unknown)}.\n"
+                f"Valid categories: {', '.join(sorted(_valid_categories))}[/red]"
+            )
+            raise typer.Exit(1)
 
     configure_logging(verbose=verbose)
 
@@ -432,6 +467,8 @@ def generate(
         overrides["prompt_dir"] = prompt_dir
     if generate_caption:
         overrides["generate_caption"] = True
+    if parsed_categories:
+        overrides["reference_category"] = parsed_categories
 
     if config:
         settings = Settings.from_yaml(config, **overrides)
@@ -837,8 +874,13 @@ def generate(
             )
 
 
-@app.command()
-def sweep(
+@app.command("regenerate")
+def regenerate_from_ir(
+    diagram_ir: str = typer.Option(
+        ...,
+        "--diagram-ir",
+        help="Path to edited diagram_ir.json",
+    ),
     input: str = typer.Option(
         ...,
         "--input",
@@ -850,6 +892,203 @@ def sweep(
         "--caption",
         "-c",
         help="Figure caption / communicative intent",
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
+    image_provider: Optional[str] = typer.Option(
+        None,
+        "--image-provider",
+        help="Image gen provider",
+    ),
+    image_model: Optional[str] = typer.Option(None, "--image-model", help="Image gen model name"),
+    iterations: Optional[int] = typer.Option(
+        None,
+        "--iterations",
+        "-n",
+        help="Refinement iterations",
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Loop until critic is satisfied (with safety cap)"
+    ),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", help="Safety cap for --auto mode (default: 30)"
+    ),
+    aspect_ratio: Optional[str] = typer.Option(
+        None,
+        "--aspect-ratio",
+        "-ar",
+        help="Target aspect ratio: 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9",
+    ),
+    format: str = typer.Option(
+        "png",
+        "--format",
+        "-f",
+        help="Output image format (png, jpeg, or webp)",
+    ),
+    save_prompts: Optional[bool] = typer.Option(
+        None,
+        "--save-prompts/--no-save-prompts",
+        help="Save formatted prompts into the run directory (for debugging)",
+    ),
+    seed: Optional[int] = typer.Option(
+        None,
+        "--seed",
+        help="Random seed for reproducible image generation",
+    ),
+    progress_json: bool = typer.Option(
+        False,
+        "--progress-json",
+        help="Emit machine-readable JSON progress events to stdout during generation",
+    ),
+    pdf_pages: Optional[str] = typer.Option(
+        None,
+        "--pdf-pages",
+        help=("PDF input only: 1-based pages (e.g. '1-5', '3', '1-3,7,10-12'); default: all pages"),
+    ),
+    generate_caption: bool = typer.Option(
+        False,
+        "--generate-caption",
+        help="Auto-generate a publication-ready figure caption (one extra VLM call)",
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed agent progress and timing"
+    ),
+):
+    """Regenerate from an edited DiagramIR, preserving locked elements."""
+    if format not in ("png", "jpeg", "webp", "svg"):
+        console.print(f"[red]Error: Format must be png, jpeg, webp, or svg. Got: {format}[/red]")
+        raise typer.Exit(1)
+
+    configure_logging(verbose=verbose)
+    overrides = {"output_format": format, "auto_refine": auto, "generate_caption": generate_caption}
+    if iterations is not None:
+        overrides["refinement_iterations"] = iterations
+    if max_iterations is not None:
+        overrides["max_iterations"] = max_iterations
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if image_provider:
+        overrides["image_provider"] = image_provider
+    if image_model:
+        overrides["image_model"] = image_model
+    if seed is not None:
+        overrides["seed"] = seed
+    if save_prompts is not None:
+        overrides["save_prompts"] = save_prompts
+
+    settings = Settings.from_yaml(config, **overrides) if config else Settings(**overrides)
+
+    input_path = Path(input)
+    if not input_path.exists():
+        console.print(f"[red]Error: Input file not found: {input}[/red]")
+        raise typer.Exit(1)
+    _check_pdf_dep(input_path)
+    from paperbanana.core.source_loader import load_methodology_source
+
+    try:
+        source_context = load_methodology_source(input_path, pdf_pages=pdf_pages)
+    except (ImportError, ValueError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    ir_path = Path(diagram_ir)
+    if not ir_path.exists():
+        console.print(f"[red]Error: Diagram IR not found: {diagram_ir}[/red]")
+        raise typer.Exit(1)
+    try:
+        diagram_ir_model = DiagramIR.model_validate_json(ir_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        console.print(f"[red]Error: Invalid diagram IR JSON: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not progress_json:
+        lock_counts = (
+            len(diagram_ir_model.locks.locked_node_ids),
+            len(diagram_ir_model.locks.locked_edge_refs),
+            len(diagram_ir_model.locks.locked_group_ids),
+        )
+        console.print(
+            Panel.fit(
+                f"[bold]PaperBanana[/bold] - Lock-aware IR Regeneration\n\n"
+                f"VLM: {settings.vlm_provider} / {settings.effective_vlm_model}\n"
+                f"Image: {settings.image_provider} / {settings.effective_image_model}\n"
+                f"Locked nodes/edges/groups: {lock_counts[0]}/{lock_counts[1]}/{lock_counts[2]}",
+                border_style="magenta",
+            )
+        )
+
+    total_start = time.perf_counter()
+
+    async def _run_with_progress():
+        def _on_progress(event: str, payload: dict) -> None:
+            if progress_json:
+                console.print(json_mod.dumps({"event": event, **payload}), highlight=False)
+
+        pipeline = PaperBananaPipeline(
+            settings=settings,
+            progress_callback=_on_progress if progress_json else None,
+        )
+
+        def on_progress(event: PipelineProgressEvent) -> None:
+            if event.stage == PipelineProgressStage.VISUALIZER_START:
+                it = event.iteration or "?"
+                total = (event.extra or {}).get("total_iterations", "?")
+                console.print(f"  [dim]●[/dim] Generating image [{it}/{total}]...", end="")
+            elif event.stage == PipelineProgressStage.VISUALIZER_END:
+                console.print(
+                    f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                    if event.seconds is not None
+                    else " [green]✓[/green]"
+                )
+            elif event.stage == PipelineProgressStage.CRITIC_START:
+                console.print("  [dim]●[/dim] Critic reviewing...", end="")
+            elif event.stage == PipelineProgressStage.CRITIC_END:
+                console.print(
+                    f" [green]✓[/green] [dim]{event.seconds:.1f}s[/dim]"
+                    if event.seconds is not None
+                    else " [green]✓[/green]"
+                )
+
+        return await pipeline.regenerate_from_ir(
+            diagram_ir=diagram_ir_model,
+            source_context=source_context,
+            caption=caption,
+            aspect_ratio=aspect_ratio,
+            progress_callback=on_progress if not progress_json else None,
+        )
+
+    result = asyncio.run(_run_with_progress())
+    total_elapsed = time.perf_counter() - total_start
+    console.print(
+        f"\n[green]✓ Done![/green] [dim]{total_elapsed:.1f}s total"
+        f" · {len(result.iterations)} iterations[/dim]\n"
+    )
+    console.print(f"  Output: [bold]{result.image_path}[/bold]")
+    console.print(f"  Run ID: [dim]{result.metadata.get('run_id', 'unknown')}[/dim]")
+
+
+@app.command()
+def sweep(
+    input: Optional[str] = typer.Option(
+        None,
+        "--input",
+        "-i",
+        help="Path to methodology text file or PDF (.pdf requires: pip install 'paperbanana[pdf]')",
+    ),
+    caption: Optional[str] = typer.Option(
+        None,
+        "--caption",
+        "-c",
+        help="Figure caption / communicative intent",
+    ),
+    manifest: Optional[str] = typer.Option(
+        None,
+        "--manifest",
+        "-m",
+        help="Path to sweep manifest (YAML or JSON). Mutually exclusive with axis flags.",
     ),
     pdf_pages: Optional[str] = typer.Option(
         None,
@@ -934,7 +1173,55 @@ def sweep(
         console.print("[red]Error: --max-variants must be >= 1[/red]")
         raise typer.Exit(1)
 
+    axis_flag_values = (
+        vlm_providers,
+        vlm_models,
+        image_providers,
+        image_models,
+        iterations,
+        optimize_modes,
+        auto_modes,
+    )
+    if manifest is not None and any(v is not None for v in axis_flag_values):
+        console.print(
+            "[red]Error: --manifest is mutually exclusive with axis flags "
+            "(--vlm-providers, --vlm-models, --image-providers, --image-models, "
+            "--iterations, --optimize-modes, --auto-modes)[/red]"
+        )
+        raise typer.Exit(1)
+    if manifest is None and (not input or not caption):
+        console.print(
+            "[red]Error: --input and --caption are required unless --manifest is set[/red]"
+        )
+        raise typer.Exit(1)
+
     configure_logging(verbose=verbose)
+
+    from paperbanana.core.sweep import (
+        build_sweep_variants,
+        load_sweep_manifest,
+        parse_csv_bools,
+        parse_csv_ints,
+        parse_csv_values,
+        quality_proxy_score,
+        rank_sweep_results,
+        summarize_sweep,
+    )
+
+    axes_from_manifest: dict[str, list] | None = None
+    if manifest is not None:
+        try:
+            parsed = load_sweep_manifest(Path(manifest))
+        except (FileNotFoundError, ValueError, RuntimeError) as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
+        input = parsed["input"]
+        caption = parsed["caption"]
+        if parsed["pdf_pages"] is not None:
+            pdf_pages = parsed["pdf_pages"]
+        if parsed["max_variants"] is not None:
+            max_variants = parsed["max_variants"]
+        axes_from_manifest = parsed["axes"]
 
     input_path = Path(input)
     if not input_path.exists():
@@ -947,27 +1234,30 @@ def sweep(
     load_dotenv()
 
     from paperbanana.core.source_loader import load_methodology_source
-    from paperbanana.core.sweep import (
-        build_sweep_variants,
-        parse_csv_bools,
-        parse_csv_ints,
-        parse_csv_values,
-        quality_proxy_score,
-        rank_sweep_results,
-        summarize_sweep,
-    )
 
     try:
-        variant_list = build_sweep_variants(
-            vlm_providers=parse_csv_values(vlm_providers),
-            vlm_models=parse_csv_values(vlm_models),
-            image_providers=parse_csv_values(image_providers),
-            image_models=parse_csv_values(image_models),
-            refinement_iterations=parse_csv_ints(iterations, field_name="--iterations"),
-            optimize_inputs=parse_csv_bools(optimize_modes, field_name="--optimize-modes"),
-            auto_refine=parse_csv_bools(auto_modes, field_name="--auto-modes"),
-            max_variants=max_variants,
-        )
+        if axes_from_manifest is not None:
+            variant_list = build_sweep_variants(
+                vlm_providers=[str(x) for x in axes_from_manifest["vlm_providers"]],
+                vlm_models=[str(x) for x in axes_from_manifest["vlm_models"]],
+                image_providers=[str(x) for x in axes_from_manifest["image_providers"]],
+                image_models=[str(x) for x in axes_from_manifest["image_models"]],
+                refinement_iterations=[int(x) for x in axes_from_manifest["refinement_iterations"]],
+                optimize_inputs=[bool(x) for x in axes_from_manifest["optimize_inputs"]],
+                auto_refine=[bool(x) for x in axes_from_manifest["auto_refine"]],
+                max_variants=max_variants,
+            )
+        else:
+            variant_list = build_sweep_variants(
+                vlm_providers=parse_csv_values(vlm_providers),
+                vlm_models=parse_csv_values(vlm_models),
+                image_providers=parse_csv_values(image_providers),
+                image_models=parse_csv_values(image_models),
+                refinement_iterations=parse_csv_ints(iterations, field_name="--iterations"),
+                optimize_inputs=parse_csv_bools(optimize_modes, field_name="--optimize-modes"),
+                auto_refine=parse_csv_bools(auto_modes, field_name="--auto-modes"),
+                max_variants=max_variants,
+            )
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)

@@ -33,6 +33,13 @@ _API_KEY_HINTS = {
         "  2. Set the environment variable:\n\n"
         "  export OPENAI_API_KEY=your-key-here"
     ),
+    "ATLASCLOUD_API_KEY": (
+        "ATLASCLOUD_API_KEY not found.\n\n"
+        "To fix this:\n"
+        "  1. Get an API key at: https://www.atlascloud.ai/console/api-keys\n"
+        "  2. Set the environment variable:\n\n"
+        "  export ATLASCLOUD_API_KEY=your-key-here"
+    ),
     "ANTHROPIC_API_KEY": (
         "ANTHROPIC_API_KEY not found.\n\n"
         "To fix this:\n"
@@ -110,6 +117,15 @@ class ProviderRegistry:
                 model=settings.openai_vlm_model or settings.vlm_model,
                 base_url=settings.openai_base_url,
             )
+        elif provider == "atlas":
+            _validate_api_key(settings.atlascloud_api_key, "ATLASCLOUD_API_KEY")
+            from paperbanana.providers.vlm.atlas import AtlasVLM
+
+            return AtlasVLM(
+                api_key=settings.atlascloud_api_key,
+                model=settings.atlascloud_vlm_model or settings.vlm_model,
+                base_url=settings.atlascloud_base_url,
+            )
         elif provider == "bedrock":
             _validate_bedrock_auth(settings.aws_region, settings.aws_profile)
             from paperbanana.providers.vlm.bedrock import BedrockVLM
@@ -156,11 +172,25 @@ class ProviderRegistry:
                     " ensure `claude` is available on PATH."
                 )
             return vlm
+        elif provider == "litellm":
+            from paperbanana.providers.vlm.litellm import LiteLLMVLM
+
+            vlm = LiteLLMVLM(
+                model=settings.litellm_model or settings.vlm_model,
+                api_key=settings.litellm_api_key,
+                api_base=settings.litellm_api_base,
+            )
+            if not vlm.is_available():
+                raise ImportError(
+                    "litellm is required for the LiteLLM provider. "
+                    "Install with: pip install 'paperbanana[litellm]'"
+                )
+            return vlm
         else:
             raise ValueError(
                 "Unknown VLM provider: "
-                f"{provider}. Available: gemini, openrouter, openai, openai_local, "
-                f"bedrock, anthropic, ollama, claude_code"
+                f"{provider}. Available: gemini, openrouter, openai, atlas, openai_local, "
+                f"bedrock, anthropic, ollama, claude_code, litellm"
             )
 
     @staticmethod
@@ -201,6 +231,15 @@ class ProviderRegistry:
                 model=settings.openai_image_model or settings.image_model,
                 base_url=settings.openai_base_url,
             )
+        elif provider == "atlas_imagen":
+            _validate_api_key(settings.atlascloud_api_key, "ATLASCLOUD_API_KEY")
+            from paperbanana.providers.image_gen.atlas_imagen import AtlasImageGen
+
+            return AtlasImageGen(
+                api_key=settings.atlascloud_api_key,
+                model=settings.atlascloud_image_model or settings.image_model,
+                base_url=settings.atlascloud_image_base_url,
+            )
         elif provider == "bedrock_imagen":
             _validate_bedrock_auth(settings.aws_region, settings.aws_profile)
             from paperbanana.providers.image_gen.bedrock_imagen import BedrockImageGen
@@ -213,5 +252,6 @@ class ProviderRegistry:
         else:
             raise ValueError(
                 f"Unknown image provider: {provider}. "
-                f"Available: none, google_imagen, openrouter_imagen, openai_imagen, bedrock_imagen"
+                "Available: none, google_imagen, openrouter_imagen, "
+                "openai_imagen, atlas_imagen, bedrock_imagen"
             )

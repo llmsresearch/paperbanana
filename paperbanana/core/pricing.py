@@ -1,7 +1,7 @@
 """Pricing tables for VLM and image generation providers.
 
 Prices are in USD. VLM prices are per 1K tokens. Image prices are per image.
-Last updated: 2026-03-18.
+Last updated: 2026-05-01.
 """
 
 from __future__ import annotations
@@ -23,10 +23,13 @@ VLM_PRICING: dict[tuple[str, str], dict[str, float]] = {
     ("gemini", "gemini-2.5-pro"): {"input_per_1k": 0.00125, "output_per_1k": 0.01},
     ("gemini", "gemini-3-pro"): {"input_per_1k": 0.00125, "output_per_1k": 0.005},
     # OpenAI
+    ("openai", "gpt-5.5"): {"input_per_1k": 0.005, "output_per_1k": 0.03},
     ("openai", "gpt-5.2"): {"input_per_1k": 0.0025, "output_per_1k": 0.01},
     ("openai", "gpt-5.1"): {"input_per_1k": 0.002, "output_per_1k": 0.008},
     ("openai", "gpt-4o"): {"input_per_1k": 0.0025, "output_per_1k": 0.01},
     ("openai", "gpt-4o-mini"): {"input_per_1k": 0.00015, "output_per_1k": 0.0006},
+    # Atlas Cloud
+    ("atlas", "deepseek-ai/DeepSeek-V3-0324"): {"input_per_1k": 0.00027, "output_per_1k": 0.0011},
     # Anthropic
     ("anthropic", "claude-sonnet-4"): {"input_per_1k": 0.003, "output_per_1k": 0.015},
     ("anthropic", "claude-3-5-sonnet"): {"input_per_1k": 0.003, "output_per_1k": 0.015},
@@ -48,9 +51,13 @@ IMAGE_GEN_PRICING: dict[tuple[str, str], float] = {
     # Google Imagen — free tier
     ("google_imagen", "gemini-3-pro-image-preview"): 0.0,
     # OpenAI
+    # gpt-image-2 is token-priced; this is a high-quality square-image estimate.
     ("openai_imagen", "gpt-image-1.5"): 0.02,
+    ("openai_imagen", "gpt-image-2"): 0.211,
     ("openai_imagen", "gpt-image-1"): 0.04,
     ("openai_imagen", "dall-e-3"): 0.04,
+    # Atlas Cloud
+    ("atlas_imagen", "openai/gpt-image-2/text-to-image"): 0.03,
     # Bedrock Nova Canvas
     ("bedrock_imagen", "amazon.nova-canvas"): 0.04,
     # OpenRouter — depends on underlying model

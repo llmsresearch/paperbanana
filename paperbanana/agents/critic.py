@@ -104,8 +104,11 @@ class CriticAgent(BaseAgent):
         m = re.search(r"(?:diagram|plot)_iter_(\d+)\.", image_path)
         return f"critic_iter_{m.group(1)}" if m else None
 
-    def _parse_response(self, response: str) -> CritiqueResult:
+    def _parse_response(self, response: str | None) -> CritiqueResult:
         """Parse VLM response into a CritiqueResult."""
+        if response is None:
+            logger.warning("Critic received None response from VLM")
+            return CritiqueResult(critic_suggestions=[], revised_description=None)
         data = extract_json(response)
         if isinstance(data, dict):
             try:

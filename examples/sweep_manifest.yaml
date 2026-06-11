@@ -1,0 +1,26 @@
+# Example sweep manifest — one input, cartesian product over the axes below.
+# Invoke with:
+#   paperbanana sweep --manifest examples/sweep_manifest.yaml
+#
+# --manifest is mutually exclusive with the axis CLI flags
+# (--vlm-providers, --vlm-models, --image-providers, --image-models,
+# --iterations, --optimize-modes, --auto-modes).
+#
+# --output-dir, --config, --format, --dry-run, --verbose, --auto-download-data
+# remain CLI-only (they are invocation concerns, not sweep-plan concerns).
+
+input: sample_inputs/transformer_method.txt
+caption: "Overview of our encoder-decoder architecture with sparse routing"
+
+# Optional top-level keys:
+# pdf_pages: "1-5"        # PDF inputs only
+# max_variants: 20        # cap the total cartesian product
+
+axes:
+  vlm_providers: [gemini, openai]
+  vlm_models: []
+  image_providers: [google_imagen, openai_imagen]
+  image_models: []
+  refinement_iterations: [2, 3]
+  optimize_inputs: [false, true]
+  auto_refine: [false]

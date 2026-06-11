@@ -103,6 +103,7 @@ class GoogleImagenGen(ImageGenProvider):
         height: int = 1024,
         seed: Optional[int] = None,
         aspect_ratio: Optional[str] = None,
+        quality: Optional[str] = None,
     ) -> Image.Image:
         from google.genai import types
 

@@ -9,6 +9,7 @@ vlm:
 image:
   provider: google_imagen
   model: gemini-3-pro-image-preview
+  quality: auto
 
 # Pipeline settings
 pipeline:

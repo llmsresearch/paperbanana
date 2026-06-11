@@ -1,4 +1,4 @@
-"""OpenAI VLM provider — works with both OpenAI and Azure OpenAI endpoints."""
+"""LiteLLM VLM provider — unified access to 100+ LLM providers."""
 
 from __future__ import annotations
 
@@ -14,63 +14,39 @@ from paperbanana.providers.base import VLMProvider
 logger = structlog.get_logger()
 
 
-def _uses_fixed_temperature(model: str) -> bool:
-    """Return true when the model only accepts the API default temperature."""
-    return model.lower().startswith("gpt-5")
+class LiteLLMVLM(VLMProvider):
+    """VLM provider using the LiteLLM SDK (async).
 
-
-class OpenAIVLM(VLMProvider):
-    """VLM provider using the OpenAI Python SDK (async).
-
-    Works with GPT-5.2, GPT-5.1, GPT-4o, and other OpenAI chat models.
-    Compatible with both OpenAI and Azure OpenAI / Foundry endpoints.
+    Supports any LiteLLM model string, e.g. ``openai/gpt-4o``,
+    ``anthropic/claude-sonnet-4-6``, ``groq/llama-3.3-70b-versatile``.
+    Provider API keys are read from environment variables automatically.
     """
 
     def __init__(
         self,
+        model: str = "openai/gpt-4o-mini",
         api_key: Optional[str] = None,
-        model: str = "gpt-5.2",
-        base_url: str = "https://api.openai.com/v1",
-        json_mode: bool = True,
-        provider_name: str = "openai",
+        api_base: Optional[str] = None,
     ):
-        self._api_key = api_key
         self._model = model
-        self._base_url = base_url
-        self._json_mode = json_mode
-        self._provider_name = provider_name
-        self._client = None
+        self._api_key = api_key
+        self._api_base = api_base
 
     @property
     def name(self) -> str:
-        return self._provider_name
+        return "litellm"
 
     @property
     def model_name(self) -> str:
         return self._model
 
-    def _get_client(self):
-        if self._client is None:
-            try:
-                from openai import AsyncOpenAI
-
-                self._client = AsyncOpenAI(
-                    api_key=self._api_key,
-                    base_url=self._base_url,
-                )
-            except ImportError:
-                raise ImportError(
-                    "openai is required for the OpenAI provider. "
-                    "Install with: pip install 'paperbanana[openai]'"
-                )
-        return self._client
-
-    @property
-    def supports_json_mode(self) -> bool:
-        return self._json_mode
-
     def is_available(self) -> bool:
-        return self._api_key is not None
+        try:
+            import litellm  # noqa: F401
+
+            return True
+        except ImportError:
+            return False
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=30))
     async def generate(
@@ -82,7 +58,7 @@ class OpenAIVLM(VLMProvider):
         max_tokens: int = 4096,
         response_format: Optional[str] = None,
     ) -> str:
-        client = self._get_client()
+        import litellm
 
         messages = []
         if system_prompt:
@@ -104,18 +80,24 @@ class OpenAIVLM(VLMProvider):
         kwargs = {
             "model": self._model,
             "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "drop_params": True,
         }
-        if not _uses_fixed_temperature(self._model):
-            kwargs["temperature"] = temperature
 
-        if response_format == "json" and self._json_mode:
+        if self._api_key:
+            kwargs["api_key"] = self._api_key
+        if self._api_base:
+            kwargs["api_base"] = self._api_base
+
+        if response_format == "json":
             kwargs["response_format"] = {"type": "json_object"}
 
-        response = await client.chat.completions.create(**kwargs)
+        response = await litellm.acompletion(**kwargs)
         text = response.choices[0].message.content
 
         usage = getattr(response, "usage", None)
-        logger.debug("OpenAI response", model=self._model, usage=usage)
+        logger.debug("LiteLLM response", model=self._model, usage=usage)
 
         if self.cost_tracker is not None and usage is not None:
             self.cost_tracker.record_vlm_call(

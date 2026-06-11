@@ -68,6 +68,32 @@ def test_output_format_from_yaml_invalid():
         Path(path).unlink(missing_ok=True)
 
 
+def test_image_generation_options_from_yaml():
+    """Image resolution and quality load from YAML config."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.safe_dump({"pipeline": {"output_resolution": "4k"}, "image": {"quality": "high"}}, f)
+        path = f.name
+
+    try:
+        settings = Settings.from_yaml(path)
+        assert settings.output_resolution == "4k"
+        assert settings.image_quality == "high"
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_output_resolution_invalid_rejected():
+    """Invalid output_resolution is rejected with clear error."""
+    with pytest.raises(ValidationError, match="output_resolution must be 1k, 2k, or 4k"):
+        Settings(output_resolution="8k")
+
+
+def test_image_quality_invalid_rejected():
+    """Invalid image_quality is rejected with clear error."""
+    with pytest.raises(ValidationError, match="image_quality must be low, medium, high, or auto"):
+        Settings(image_quality="ultra")
+
+
 def test_exemplar_retrieval_top_k_must_be_positive():
     """exemplar_retrieval_top_k must be >= 1."""
     with pytest.raises(ValidationError, match="exemplar_retrieval_top_k must be >= 1"):
@@ -108,6 +134,16 @@ def test_effective_vlm_model_gemini_override():
     assert settings.effective_vlm_model == "gemini-2.5-flash"
 
 
+def test_effective_vlm_model_atlas_override():
+    """Atlas VLM model override is used when provider is atlas."""
+    settings = Settings(
+        vlm_provider="atlas",
+        vlm_model="deepseek-ai/DeepSeek-V3-0324",
+        atlascloud_vlm_model="qwen-turbo",
+    )
+    assert settings.effective_vlm_model == "qwen-turbo"
+
+
 def test_effective_image_model_gemini_override():
     """Gemini image model override is used when provider is google_imagen."""
     settings = Settings(
@@ -116,3 +152,13 @@ def test_effective_image_model_gemini_override():
         google_image_model="gemini-2.5-flash-image-preview",
     )
     assert settings.effective_image_model == "gemini-2.5-flash-image-preview"
+
+
+def test_effective_image_model_atlas_override():
+    """Atlas image model override is used when provider is atlas_imagen."""
+    settings = Settings(
+        image_provider="atlas_imagen",
+        image_model="openai/gpt-image-2/text-to-image",
+        atlascloud_image_model="google/imagen4-fast",
+    )
+    assert settings.effective_image_model == "google/imagen4-fast"

@@ -106,6 +106,97 @@ def parse_csv_bools(raw: str | None, *, field_name: str) -> list[bool]:
     return parsed
 
 
+SWEEP_MANIFEST_REQUIRED_KEYS = ("input", "caption")
+SWEEP_MANIFEST_AXIS_KEYS = (
+    "vlm_providers",
+    "vlm_models",
+    "image_providers",
+    "image_models",
+    "refinement_iterations",
+    "optimize_inputs",
+    "auto_refine",
+)
+
+
+def load_sweep_manifest(manifest_path: Path) -> dict[str, Any]:
+    """Load a sweep manifest (YAML or JSON) and return a normalized dict.
+
+    Required top-level keys: ``input`` (file path) and ``caption`` (string).
+    Optional top-level keys: ``pdf_pages`` (str), ``max_variants`` (int), and
+    ``axes`` (object mapping the seven axis keys — see ``SWEEP_MANIFEST_AXIS_KEYS``
+    — to lists).
+
+    The ``input`` path is resolved relative to the manifest's parent directory
+    when not absolute (matching ``load_batch_manifest``).
+    """
+    manifest_path = Path(manifest_path).resolve()
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Sweep manifest not found: {manifest_path}")
+    raw = manifest_path.read_text(encoding="utf-8")
+    suffix = manifest_path.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        try:
+            import yaml
+
+            data = yaml.safe_load(raw)
+        except ImportError as exc:
+            raise RuntimeError(
+                "PyYAML is required for YAML manifests. Install with: pip install pyyaml"
+            ) from exc
+    elif suffix == ".json":
+        data = json.loads(raw)
+    else:
+        raise ValueError(f"Manifest must be .yaml, .yml, or .json. Got: {manifest_path.suffix}")
+
+    if not isinstance(data, dict):
+        raise ValueError("Sweep manifest must be a mapping at the top level")
+    for key in SWEEP_MANIFEST_REQUIRED_KEYS:
+        if not data.get(key):
+            raise ValueError(f"Sweep manifest is missing required key: '{key}'")
+    if not isinstance(data["caption"], str):
+        raise ValueError("Sweep manifest 'caption' must be a string")
+    pdf_pages = data.get("pdf_pages")
+    if pdf_pages is not None and not isinstance(pdf_pages, str):
+        raise ValueError("Sweep manifest 'pdf_pages' must be a string when set")
+    max_variants = data.get("max_variants")
+    if max_variants is not None:
+        if not isinstance(max_variants, int) or isinstance(max_variants, bool):
+            raise ValueError("Sweep manifest 'max_variants' must be an integer when set")
+        if max_variants < 1:
+            raise ValueError("Sweep manifest 'max_variants' must be >= 1")
+
+    axes_raw = data.get("axes") or {}
+    if not isinstance(axes_raw, dict):
+        raise ValueError("Sweep manifest 'axes' must be a mapping when set")
+    unknown = set(axes_raw) - set(SWEEP_MANIFEST_AXIS_KEYS)
+    if unknown:
+        raise ValueError(
+            f"Sweep manifest 'axes' has unknown keys: {sorted(unknown)}. "
+            f"Allowed: {list(SWEEP_MANIFEST_AXIS_KEYS)}"
+        )
+    axes: dict[str, list[Any]] = {}
+    for key in SWEEP_MANIFEST_AXIS_KEYS:
+        value = axes_raw.get(key)
+        if value is None:
+            axes[key] = []
+            continue
+        if not isinstance(value, list):
+            raise ValueError(f"Sweep manifest axis '{key}' must be a list")
+        axes[key] = value
+
+    input_path = Path(data["input"])
+    if not input_path.is_absolute():
+        input_path = (manifest_path.parent / input_path).resolve()
+
+    return {
+        "input": str(input_path),
+        "caption": data["caption"],
+        "pdf_pages": pdf_pages,
+        "max_variants": max_variants,
+        "axes": axes,
+    }
+
+
 def build_sweep_variants(
     *,
     vlm_providers: list[str],

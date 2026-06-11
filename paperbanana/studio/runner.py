@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import traceback
 from pathlib import Path
@@ -24,20 +25,31 @@ from paperbanana.core.logging import configure_logging
 from paperbanana.core.pipeline import PaperBananaPipeline
 from paperbanana.core.plot_data import load_statistical_plot_payload
 from paperbanana.core.resume import load_resume_state
+from paperbanana.core.source_loader import load_methodology_source
+from paperbanana.core.sweep import (
+    build_sweep_variants,
+    parse_csv_bools,
+    parse_csv_ints,
+    parse_csv_values,
+    quality_proxy_score,
+    rank_sweep_results,
+    summarize_sweep,
+)
 from paperbanana.core.types import (
     DiagramType,
     GenerationInput,
     PipelineProgressEvent,
     PipelineProgressStage,
 )
-from paperbanana.core.utils import ensure_dir, find_prompt_dir
+from paperbanana.core.utils import ensure_dir, find_prompt_dir, generate_run_id, save_json
 from paperbanana.evaluation.judge import VLMJudge
 from paperbanana.providers.registry import ProviderRegistry
 
-VLM_PROVIDER_CHOICES = ["gemini", "openai", "openrouter", "bedrock", "anthropic"]
+VLM_PROVIDER_CHOICES = ["gemini", "openai", "atlas", "openrouter", "bedrock", "anthropic"]
 IMAGE_PROVIDER_CHOICES = [
     "google_imagen",
     "openai_imagen",
+    "atlas_imagen",
     "openrouter_imagen",
     "bedrock_imagen",
 ]
@@ -51,6 +63,19 @@ ASPECT_RATIO_CHOICES = [
     "9:16",
     "16:9",
     "21:9",
+]
+REFERENCE_CATEGORY_CHOICES = [
+    "",
+    "agent_reasoning",
+    "generative_learning",
+    "healthcare_medical",
+    "multimodal_fusion",
+    "nlp_language",
+    "optimization_theory",
+    "robotics_control",
+    "science_applications",
+    "systems_networking",
+    "vision_perception",
 ]
 
 
@@ -90,6 +115,7 @@ def build_settings(
     optimize_inputs: bool,
     save_prompts: bool,
     seed: Optional[int] = None,
+    reference_category: Optional[list[str]] = None,
 ) -> Settings:
     """Merge YAML config (optional), environment, and Studio overrides."""
     base_defaults = Settings()
@@ -111,6 +137,8 @@ def build_settings(
             overrides["seed"] = int(seed)
         except ValueError:
             pass
+    if reference_category:
+        overrides["reference_category"] = reference_category
 
     if config_path and str(config_path).strip():
         return Settings.from_yaml(Path(config_path).expanduser(), **overrides)
@@ -683,6 +711,322 @@ def run_plot_batch(
     lines.append(f"Succeeded: {ok}/{len(items)}")
     lines.append(f"Total time: {report['total_seconds']}s")
     return "\n".join(lines), str(batch_dir.resolve())
+
+
+def _preview_json_file(path: Path, *, max_chars: int = 10_000) -> str:
+    """Load JSON (or raw text) from disk for Studio previews."""
+    if not path.is_file():
+        return ""
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        data = json.loads(raw)
+        text = json.dumps(data, indent=2, ensure_ascii=False)
+    except (OSError, json.JSONDecodeError):
+        text = path.read_text(encoding="utf-8", errors="replace")
+    if len(text) > max_chars:
+        return text[:max_chars] + "\n\n… [truncated]"
+    return text
+
+
+def run_orchestration(
+    settings: Settings,
+    paper_file_path: str | None,
+    resume_orchestrate: str | None,
+    data_dir: str | None,
+    max_method_figures: int,
+    max_plot_figures: int,
+    pdf_pages: str | None,
+    dry_run: bool,
+    venue: str,
+    retry_failed: bool,
+    max_retries: int,
+    concurrency: int,
+    config_path: str | None,
+    verbose_logging: bool = False,
+) -> tuple[str, str, str, str]:
+    """Run figure-package orchestration (CLI parity).
+
+    Returns (log, orch_dir, plan_preview, package_preview).
+    """
+    from paperbanana.core.workflow_runner import run_orchestration_package
+
+    configure_logging(verbose=verbose_logging)
+    lines: list[str] = ["Starting figure-package orchestration…", ""]
+
+    def emit(msg: str) -> None:
+        lines.append(msg)
+
+    resume = (resume_orchestrate or "").strip() or None
+    paper_upload = (paper_file_path or "").strip() or None
+    if paper_upload and not Path(paper_upload).is_file():
+        paper_upload = None
+
+    if resume and paper_upload:
+        msg = "Error: clear the paper upload when using resume (provide only resume ID or path)."
+        lines.append(msg)
+        return "\n".join(lines), "", "", ""
+
+    if not resume and (not paper_upload or not Path(paper_upload).is_file()):
+        msg = "Error: upload a paper file (.txt, .md, or .pdf), or enter a resume ID / path."
+        lines.append(msg)
+        return "\n".join(lines), "", "", ""
+
+    if not resume:
+        paper_arg: str | None = paper_upload
+    else:
+        paper_arg = None
+
+    data_arg = (data_dir or "").strip() or None
+    pages_arg = (pdf_pages or "").strip() or None
+    if resume:
+        data_arg = None
+        pages_arg = None
+
+    cfg = (config_path or "").strip() or None
+    venue_s = (venue or "neurips").strip().lower()
+    if venue_s not in ("neurips", "icml", "acl", "ieee", "custom"):
+        venue_s = "neurips"
+
+    max_m = max(1, int(max_method_figures or 1))
+    max_p = max(0, int(max_plot_figures or 0))
+    mret = max(0, int(max_retries or 0))
+    conc = max(1, int(concurrency or 1))
+
+    out_root = Path((settings.output_dir or "outputs").strip() or "outputs")
+
+    out_fmt = str(settings.output_format)
+    if out_fmt not in ("png", "jpeg", "webp"):
+        lines.append(
+            f"Note: orchestration supports png/jpeg/webp only; using png (format was {out_fmt!r})."
+        )
+        lines.append("")
+        out_fmt = "png"
+
+    try:
+        result = run_orchestration_package(
+            paper=paper_arg,
+            resume_orchestrate=resume,
+            output_dir=out_root,
+            data_dir=data_arg,
+            max_method_figures=max_m,
+            max_plot_figures=max_p,
+            pdf_pages=pages_arg,
+            dry_run=bool(dry_run),
+            config=cfg,
+            vlm_provider=settings.vlm_provider,
+            vlm_model=settings.vlm_model,
+            image_provider=settings.image_provider,
+            image_model=settings.image_model,
+            iterations=settings.refinement_iterations,
+            auto=settings.auto_refine,
+            max_iterations=settings.max_iterations,
+            optimize=settings.optimize_inputs,
+            format=out_fmt,
+            save_prompts=settings.save_prompts,
+            venue=venue_s,
+            retry_failed=bool(retry_failed),
+            max_retries=mret,
+            concurrency=conc,
+            progress_callback=emit,
+            after_plan_callback=None,
+        )
+    except (FileNotFoundError, ValueError, ImportError, RuntimeError) as e:
+        lines.append(f"FAILED: {type(e).__name__}: {e}")
+        return "\n".join(lines), "", "", ""
+    except Exception as e:
+        lines.append(f"FAILED: {type(e).__name__}: {e}")
+        lines.append(traceback.format_exc())
+        return "\n".join(lines), "", "", ""
+
+    orch_dir = str(result.get("orchestrate_dir") or "")
+    plan_path = Path(str(result.get("orchestration_plan_path") or ""))
+
+    lines.append("")
+    if result.get("dry_run"):
+        lines.append("Dry run complete (plan only).")
+        plan_preview = _preview_json_file(plan_path)
+        pkg_preview = "(dry run — no figure_package.json; use run without dry run to generate.)"
+        return "\n".join(lines), orch_dir, plan_preview, pkg_preview
+
+    gen_n = result.get("generated_count", 0)
+    fail_n = result.get("failed_count", 0)
+    ok = result.get("strict_success")
+    lines.append(f"Done. generated={gen_n} failed={fail_n} strict_success={ok}")
+    if result.get("figure_package_path"):
+        lines.append(f"Package: {result['figure_package_path']}")
+    if result.get("figures_tex_path"):
+        lines.append(f"LaTeX: {result['figures_tex_path']}")
+    if result.get("captions_md_path"):
+        lines.append(f"Captions: {result['captions_md_path']}")
+
+    plan_preview = _preview_json_file(plan_path)
+    pkg_path = Path(str(result.get("figure_package_path") or ""))
+    pkg_preview = _preview_json_file(pkg_path) if pkg_path.is_file() else ""
+    if not pkg_preview and result.get("figure_package_path"):
+        pkg_preview = f"(not readable yet: {pkg_path})"
+
+    return "\n".join(lines), orch_dir, plan_preview, pkg_preview
+
+
+def run_sweep(
+    settings: Settings,
+    *,
+    input_path: str,
+    caption: str,
+    pdf_pages: Optional[str] = None,
+    vlm_providers: str = "",
+    vlm_models: str = "",
+    image_providers: str = "",
+    image_models: str = "",
+    iterations: str = "",
+    optimize_modes: str = "",
+    auto_modes: str = "",
+    max_variants: Optional[int] = None,
+    dry_run: bool = False,
+    verbose_logging: bool = False,
+) -> tuple[str, str, str]:
+    """Run sweep using core sweep utilities. Returns (log, sweep_dir, report_path)."""
+    configure_logging(verbose=verbose_logging)
+    lines: list[str] = ["Starting parameter sweep..."]
+    input_file = Path(input_path)
+    if not input_file.is_file():
+        msg = f"Input file not found: {input_path}"
+        lines.append(msg)
+        return "\n".join(lines), "", ""
+    if not caption.strip():
+        msg = "Caption is required."
+        lines.append(msg)
+        return "\n".join(lines), "", ""
+    if max_variants is not None and max_variants < 1:
+        msg = "max_variants must be >= 1"
+        lines.append(msg)
+        return "\n".join(lines), "", ""
+
+    try:
+        variants = build_sweep_variants(
+            vlm_providers=parse_csv_values(vlm_providers),
+            vlm_models=parse_csv_values(vlm_models),
+            image_providers=parse_csv_values(image_providers),
+            image_models=parse_csv_values(image_models),
+            refinement_iterations=parse_csv_ints(iterations, field_name="iterations"),
+            optimize_inputs=parse_csv_bools(optimize_modes, field_name="optimize_modes"),
+            auto_refine=parse_csv_bools(auto_modes, field_name="auto_modes"),
+            max_variants=max_variants,
+        )
+    except ValueError as e:
+        lines.append(str(e))
+        return "\n".join(lines), "", ""
+    if not variants:
+        lines.append("Sweep generated zero variants.")
+        return "\n".join(lines), "", ""
+
+    try:
+        source_context = load_methodology_source(input_file, pdf_pages=pdf_pages)
+    except Exception as e:
+        lines.append(f"{type(e).__name__}: {e}")
+        return "\n".join(lines), "", ""
+
+    sweep_id = f"sweep_{generate_run_id()}"
+    sweep_dir = ensure_dir(Path(settings.output_dir) / sweep_id)
+    report_path = sweep_dir / "sweep_report.json"
+    lines.append(f"Sweep ID: {sweep_id}")
+    lines.append(f"Variants: {len(variants)}")
+    lines.append(f"Output: {sweep_dir}")
+
+    if dry_run:
+        preview = [variant.as_dict() for variant in variants[: min(10, len(variants))]]
+        report = {
+            "sweep_id": sweep_id,
+            "status": "dry_run",
+            "input": str(input_file.resolve()),
+            "caption": caption,
+            "total_variants": len(variants),
+            "preview": preview,
+        }
+        save_json(report, report_path)
+        lines.append("Dry run complete.")
+        lines.append(f"Report written: {report_path}")
+        return "\n".join(lines), str(sweep_dir), str(report_path)
+
+    all_results: list[dict[str, Any]] = []
+    total_start = time.perf_counter()
+    gen_input = GenerationInput(
+        source_context=source_context,
+        communicative_intent=caption.strip(),
+        diagram_type=DiagramType.METHODOLOGY,
+    )
+
+    for idx, variant in enumerate(variants, start=1):
+        lines.append(f"Variant {idx}/{len(variants)} — {variant.variant_id}")
+        variant_dir = ensure_dir(sweep_dir / variant.variant_id)
+        overrides: dict[str, Any] = {
+            "output_dir": str(variant_dir),
+            "output_format": settings.output_format,
+            "vlm_provider": variant.vlm_provider,
+            "image_provider": variant.image_provider,
+            "refinement_iterations": variant.refinement_iterations,
+            "optimize_inputs": variant.optimize_inputs,
+            "auto_refine": variant.auto_refine,
+        }
+        if variant.vlm_model:
+            overrides["vlm_model"] = variant.vlm_model
+        if variant.image_model:
+            overrides["image_model"] = variant.image_model
+        variant_settings = settings.model_copy(update=overrides)
+        try:
+            variant_start = time.perf_counter()
+            result = asyncio.run(PaperBananaPipeline(settings=variant_settings).generate(gen_input))
+            variant_seconds = time.perf_counter() - variant_start
+            final_critique = result.iterations[-1].critique if result.iterations else None
+            suggestion_count = len(final_critique.critic_suggestions) if final_critique else 0
+            score = quality_proxy_score(suggestion_count)
+            all_results.append(
+                {
+                    "status": "success",
+                    **variant.as_dict(),
+                    "run_id": result.metadata.get("run_id"),
+                    "output_path": result.image_path,
+                    "iterations_used": len(result.iterations),
+                    "critic_suggestions": suggestion_count,
+                    "quality_proxy_score": round(score, 2),
+                    "total_seconds": round(variant_seconds, 2),
+                }
+            )
+            lines.append(f"  ok: score={score:.1f}, {variant_seconds:.1f}s")
+        except Exception as e:
+            all_results.append(
+                {
+                    "status": "failed",
+                    **variant.as_dict(),
+                    "error": str(e),
+                }
+            )
+            lines.append(f"  failed: {e}")
+
+    successful_results = [item for item in all_results if item["status"] == "success"]
+    ranked_results = rank_sweep_results(successful_results)
+    summary = summarize_sweep(all_results)
+    report = {
+        "sweep_id": sweep_id,
+        "status": "completed",
+        "input": str(input_file.resolve()),
+        "caption": caption,
+        "total_seconds": round(time.perf_counter() - total_start, 2),
+        "summary": summary,
+        "results": all_results,
+        "ranked_results": ranked_results,
+        "quality_proxy_note": (
+            "quality_proxy_score = max(0, 100 - 12.5 * N) where N is critic suggestion "
+            "count on the final iteration"
+        ),
+    }
+    save_json(report, report_path)
+    lines.append("")
+    lines.append(f"Completed: {summary.get('completed', 0)}")
+    lines.append(f"Failed: {summary.get('failed', 0)}")
+    lines.append(f"Best variant: {summary.get('best_variant')}")
+    lines.append(f"Report written: {report_path}")
+    return "\n".join(lines), str(sweep_dir), str(report_path)
 
 
 def _sanitize_output_filename(name: str) -> str:

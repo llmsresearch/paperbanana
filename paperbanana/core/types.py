@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 VectorExportMode = Literal["none", "svg", "pdf", "both"]
 
@@ -172,11 +172,13 @@ class DiagramIRNode(BaseModel):
     id: str
     label: str
     lane: Optional[str] = None
+    shape: Optional[str] = None
 
 
 class DiagramIREdge(BaseModel):
     """A directed edge in the diagram intermediate representation."""
 
+    id: Optional[str] = None
     source: str
     target: str
     label: Optional[str] = None
@@ -190,6 +192,14 @@ class DiagramIRGroup(BaseModel):
     node_ids: list[str] = Field(default_factory=list)
 
 
+class DiagramIRLocks(BaseModel):
+    """Optional lock constraints for lock-aware regeneration."""
+
+    locked_node_ids: list[str] = Field(default_factory=list)
+    locked_edge_refs: list[str] = Field(default_factory=list)
+    locked_group_ids: list[str] = Field(default_factory=list)
+
+
 class DiagramIR(BaseModel):
     """Lightweight intermediate representation for editable exports."""
 
@@ -197,6 +207,64 @@ class DiagramIR(BaseModel):
     nodes: list[DiagramIRNode] = Field(default_factory=list)
     edges: list[DiagramIREdge] = Field(default_factory=list)
     groups: list[DiagramIRGroup] = Field(default_factory=list)
+    layout_direction: Literal["LR", "TB", "RL", "BT"] = "LR"
+    locks: DiagramIRLocks = Field(default_factory=DiagramIRLocks)
+
+    @model_validator(mode="after")
+    def validate_references(self) -> "DiagramIR":
+        """Validate IDs, cross-references, and lock targets."""
+        node_ids = [n.id for n in self.nodes]
+        if len(node_ids) != len(set(node_ids)):
+            raise ValueError("DiagramIR nodes contain duplicate IDs")
+        node_set = set(node_ids)
+
+        group_ids = [g.id for g in self.groups]
+        if len(group_ids) != len(set(group_ids)):
+            raise ValueError("DiagramIR groups contain duplicate IDs")
+        group_set = set(group_ids)
+
+        edge_ids = [e.id for e in self.edges if e.id]
+        if len(edge_ids) != len(set(edge_ids)):
+            raise ValueError("DiagramIR edges contain duplicate IDs")
+
+        edge_refs: set[str] = set()
+        for e in self.edges:
+            if e.source not in node_set or e.target not in node_set:
+                raise ValueError(
+                    f"DiagramIR edge references unknown node(s): {e.source} -> {e.target}"
+                )
+            edge_refs.add(f"{e.source}->{e.target}")
+            if e.label:
+                edge_refs.add(f"{e.source}->{e.target}:{e.label}")
+            if e.id:
+                edge_refs.add(e.id)
+
+        for g in self.groups:
+            missing_nodes = [nid for nid in g.node_ids if nid not in node_set]
+            if missing_nodes:
+                missing = ", ".join(missing_nodes)
+                raise ValueError(f"DiagramIR group '{g.id}' references unknown nodes: {missing}")
+
+        missing_locked_nodes = [nid for nid in self.locks.locked_node_ids if nid not in node_set]
+        if missing_locked_nodes:
+            raise ValueError(
+                "DiagramIR locks reference unknown nodes: " + ", ".join(missing_locked_nodes)
+            )
+
+        missing_locked_groups = [gid for gid in self.locks.locked_group_ids if gid not in group_set]
+        if missing_locked_groups:
+            raise ValueError(
+                "DiagramIR locks reference unknown groups: " + ", ".join(missing_locked_groups)
+            )
+
+        missing_locked_edges = [
+            eref for eref in self.locks.locked_edge_refs if eref not in edge_refs
+        ]
+        if missing_locked_edges:
+            raise ValueError(
+                "DiagramIR locks reference unknown edges: " + ", ".join(missing_locked_edges)
+            )
+        return self
 
 
 VALID_WINNERS = {"Model", "Human", "Both are good", "Both are bad"}

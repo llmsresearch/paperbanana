@@ -385,6 +385,58 @@ async def test_continue_run_resumes_from_last_iteration(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_continue_run_rebinds_visualizer_output_dir_to_resumed_run(tmp_path):
+    """continue_run() must write new images into the resumed run directory."""
+    run_id = "run_resume_output_dir_test"
+    run_dir = tmp_path / "outputs" / run_id
+    run_dir.mkdir(parents=True)
+
+    (run_dir / "run_input.json").write_text(
+        json.dumps(
+            {
+                "source_context": "Encoder-decoder with attention",
+                "communicative_intent": "Architecture overview",
+                "diagram_type": "methodology",
+            }
+        )
+    )
+    iter1 = run_dir / "iter_1"
+    iter1.mkdir()
+    (iter1 / "details.json").write_text(
+        json.dumps(
+            {
+                "description": "Description from iter 1",
+                "critique": {
+                    "critic_suggestions": [],
+                    "revised_description": None,
+                },
+            }
+        )
+    )
+
+    state = load_resume_state(str(tmp_path / "outputs"), run_id)
+    vlm = _MockVLM([_critic_json([], None)])
+    image_gen = _MockImageGen()
+    settings = Settings(
+        output_dir=str(tmp_path / "outputs"),
+        reference_set_path=str(tmp_path / "refs"),
+        refinement_iterations=1,
+        save_iterations=False,
+    )
+    pipeline = PaperBananaPipeline(settings=settings, vlm_client=vlm, image_gen_fn=image_gen)
+    stale_output_dir = pipeline.visualizer.output_dir
+
+    result = await pipeline.continue_run(resume_state=state, additional_iterations=1)
+
+    resumed_iter_path = run_dir / "diagram_iter_2.png"
+    assert stale_output_dir != run_dir
+    assert pipeline.visualizer.output_dir == run_dir
+    assert result.iterations[0].image_path == str(resumed_iter_path)
+    assert resumed_iter_path.exists()
+    assert not (stale_output_dir / "diagram_iter_2.png").exists()
+
+
+@pytest.mark.asyncio
 async def test_continue_run_passes_user_feedback_to_critic(tmp_path):
     """continue_run() forwards user_feedback into the critic's prompt."""
     run_id = "run_feedback_test"
@@ -672,6 +724,26 @@ def test_openai_vlm_provider_creation():
     assert vlm.is_available() is True
 
 
+def test_atlas_vlm_provider_creation():
+    """Registry creates AtlasVLM with Atlas-specific settings."""
+    from paperbanana.providers.registry import ProviderRegistry
+    from paperbanana.providers.vlm.atlas import AtlasVLM
+
+    settings = Settings(
+        vlm_provider="atlas",
+        atlascloud_api_key="test-atlas-key",
+        atlascloud_vlm_model="deepseek-ai/DeepSeek-V3-0324",
+        atlascloud_base_url="https://api.atlascloud.ai/v1",
+    )
+    vlm = ProviderRegistry.create_vlm(settings)
+
+    assert isinstance(vlm, AtlasVLM)
+    assert vlm.name == "atlas"
+    assert vlm.model_name == "deepseek-ai/DeepSeek-V3-0324"
+    assert vlm._base_url == "https://api.atlascloud.ai/v1"
+    assert vlm.is_available() is True
+
+
 def test_openai_vlm_falls_back_to_vlm_model():
     """When openai_vlm_model is not set, OpenAI VLM uses the generic vlm_model."""
     from paperbanana.providers.registry import ProviderRegistry
@@ -709,6 +781,26 @@ def test_openai_imagen_provider_creation():
     assert gen.is_available() is True
 
 
+def test_atlas_imagen_provider_creation():
+    """Registry creates AtlasImageGen with Atlas-specific image settings."""
+    from paperbanana.providers.image_gen.atlas_imagen import AtlasImageGen
+    from paperbanana.providers.registry import ProviderRegistry
+
+    settings = Settings(
+        image_provider="atlas_imagen",
+        atlascloud_api_key="test-atlas-key",
+        atlascloud_image_model="openai/gpt-image-2/text-to-image",
+        atlascloud_image_base_url="https://api.atlascloud.ai/api/v1",
+    )
+    gen = ProviderRegistry.create_image_gen(settings)
+
+    assert isinstance(gen, AtlasImageGen)
+    assert gen.name == "atlas_imagen"
+    assert gen.model_name == "openai/gpt-image-2/text-to-image"
+    assert gen._base_url == "https://api.atlascloud.ai/api/v1"
+    assert gen.is_available() is True
+
+
 def test_openai_missing_api_key_raises_helpful_error():
     """Missing OPENAI_API_KEY raises ValueError with setup instructions."""
     from paperbanana.providers.registry import ProviderRegistry
@@ -719,6 +811,18 @@ def test_openai_missing_api_key_raises_helpful_error():
     error_msg = str(exc_info.value)
     assert "platform.openai.com" in error_msg
     assert "export OPENAI_API_KEY" in error_msg
+
+
+def test_atlas_missing_api_key_raises_helpful_error():
+    """Missing ATLASCLOUD_API_KEY raises ValueError with setup instructions."""
+    from paperbanana.providers.registry import ProviderRegistry
+
+    settings = Settings(vlm_provider="atlas", atlascloud_api_key=None)
+    with pytest.raises(ValueError, match="ATLASCLOUD_API_KEY not found") as exc_info:
+        ProviderRegistry.create_vlm(settings)
+    error_msg = str(exc_info.value)
+    assert "atlascloud.ai" in error_msg
+    assert "export ATLASCLOUD_API_KEY" in error_msg
 
 
 def test_openai_vlm_not_available_without_key():
@@ -764,6 +868,30 @@ async def test_openai_vlm_generate_builds_correct_messages():
     assert messages[0]["role"] == "system"
     assert messages[0]["content"] == "You are an expert"
     assert messages[1]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_openai_vlm_generate_omits_temperature_for_gpt5_models():
+    """GPT-5 family chat models use the API default temperature."""
+    from paperbanana.providers.vlm.openai import OpenAIVLM
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Generated analysis"
+    mock_response.usage = None
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+    vlm = OpenAIVLM(api_key="test-key", model="gpt-5.5")
+    vlm._client = mock_client
+
+    result = await vlm.generate(prompt="Analyze this diagram", temperature=0.3)
+
+    assert result == "Generated analysis"
+    call_kwargs = mock_client.chat.completions.create.call_args[1]
+    assert call_kwargs["model"] == "gpt-5.5"
+    assert "temperature" not in call_kwargs
 
 
 @pytest.mark.asyncio
@@ -851,6 +979,42 @@ def test_openai_imagen_size_mapping():
 
 
 @pytest.mark.asyncio
+async def test_openai_imagen_gpt_image_2_uses_custom_size_and_quality():
+    """gpt-image-2 supports custom valid sizes and quality settings."""
+    import base64
+    from io import BytesIO
+
+    from paperbanana.providers.image_gen.openai_imagen import OpenAIImageGen
+
+    img = Image.new("RGB", (64, 64), color=(0, 128, 255))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    b64_data = base64.b64encode(buf.getvalue()).decode()
+
+    mock_result = MagicMock()
+    mock_result.data = [MagicMock()]
+    mock_result.data[0].b64_json = b64_data
+
+    mock_client = AsyncMock()
+    mock_client.images.generate = AsyncMock(return_value=mock_result)
+
+    gen = OpenAIImageGen(api_key="test-key", model="gpt-image-2")
+    gen._client = mock_client
+
+    await gen.generate(
+        prompt="A high-resolution methodology diagram",
+        width=3840,
+        height=2160,
+        quality="high",
+    )
+
+    call_kwargs = mock_client.images.generate.call_args[1]
+    assert call_kwargs["model"] == "gpt-image-2"
+    assert call_kwargs["size"] == "3840x2160"
+    assert call_kwargs["quality"] == "high"
+
+
+@pytest.mark.asyncio
 async def test_openai_imagen_appends_negative_prompt():
     """OpenAIImageGen.generate() appends negative prompt to the main prompt."""
     import base64
@@ -882,3 +1046,53 @@ async def test_openai_imagen_appends_negative_prompt():
     sent_prompt = call_kwargs["prompt"]
     assert "A clean architecture diagram" in sent_prompt
     assert "Avoid: blurry, low quality" in sent_prompt
+
+
+@pytest.mark.asyncio
+async def test_atlas_imagen_generate_polls_and_downloads_image():
+    """AtlasImageGen polls async predictions and downloads the final image."""
+    from io import BytesIO
+
+    from paperbanana.providers.image_gen.atlas_imagen import AtlasImageGen
+
+    img = Image.new("RGB", (64, 64), color=(12, 34, 56))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    image_bytes = buf.getvalue()
+
+    create_response = MagicMock()
+    create_response.json.return_value = {"data": {"id": "pred_123"}}
+    create_response.raise_for_status = MagicMock()
+
+    poll_response = MagicMock()
+    poll_response.json.return_value = {
+        "data": {"status": "completed", "outputs": ["https://cdn.atlascloud.ai/test.png"]}
+    }
+    poll_response.raise_for_status = MagicMock()
+
+    download_response = MagicMock()
+    download_response.content = image_bytes
+    download_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=create_response)
+    mock_client.get = AsyncMock(side_effect=[poll_response, download_response])
+
+    gen = AtlasImageGen(api_key="test-key", model="openai/gpt-image-2/text-to-image")
+    gen._client = mock_client
+
+    result = await gen.generate(
+        prompt="A clean academic pipeline diagram",
+        negative_prompt="blurred labels",
+        aspect_ratio="16:9",
+    )
+
+    assert isinstance(result, Image.Image)
+    assert result.size == (64, 64)
+    create_kwargs = mock_client.post.call_args[1]
+    assert create_kwargs["json"]["model"] == "openai/gpt-image-2/text-to-image"
+    assert create_kwargs["json"]["enable_base64_output"] is False
+    assert create_kwargs["json"]["enable_sync_mode"] is False
+    assert create_kwargs["json"]["size"] == "1536x1024"
+    assert "16:9 format" in create_kwargs["json"]["prompt"]
+    assert "Avoid: blurred labels" in create_kwargs["json"]["prompt"]
