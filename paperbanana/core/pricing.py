@@ -1,7 +1,7 @@
 """Pricing tables for VLM and image generation providers.
 
 Prices are in USD. VLM prices are per 1K tokens. Image prices are per image.
-Last updated: 2026-05-01.
+Last updated: 2026-06-10.
 """
 
 from __future__ import annotations
@@ -48,8 +48,9 @@ VLM_PRICING: dict[tuple[str, str], dict[str, float]] = {
 
 # (provider, model_prefix) -> USD per image
 IMAGE_GEN_PRICING: dict[tuple[str, str], float] = {
-    # Google Imagen — free tier
-    ("google_imagen", "gemini-3-pro-image-preview"): 0.0,
+    # Google Imagen — paid; 1K-resolution per-image prices (4K is higher)
+    ("google_imagen", "gemini-3-pro-image-preview"): 0.134,
+    ("google_imagen", "gemini-3.1-flash-image-preview"): 0.067,
     # OpenAI
     # gpt-image-2 is token-priced; this is a high-quality square-image estimate.
     ("openai_imagen", "gpt-image-1.5"): 0.02,

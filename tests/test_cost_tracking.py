@@ -36,8 +36,11 @@ class TestPricingLookup:
 
     def test_exact_match_image(self):
         result = lookup_image_price("google_imagen", "gemini-3-pro-image-preview")
-        assert result is not None
-        assert result == 0.0
+        assert result == pytest.approx(0.134)
+
+    def test_gemini_flash_image_pricing(self):
+        result = lookup_image_price("google_imagen", "gemini-3.1-flash-image-preview")
+        assert result == pytest.approx(0.067)
 
     def test_openai_image_pricing(self):
         result = lookup_image_price("openai_imagen", "gpt-image-1.5")
@@ -91,7 +94,7 @@ class TestCostTracker:
         assert tracker.entries[0].call_type == "image_gen"
         assert tracker.total_cost > 0
 
-    def test_free_tier_cost_is_zero(self):
+    def test_free_tier_vlm_paid_image_cost(self):
         tracker = CostTracker()
         tracker.record_vlm_call(
             provider="gemini",
@@ -105,7 +108,8 @@ class TestCostTracker:
             model="gemini-3-pro-image-preview",
             agent="visualizer",
         )
-        assert tracker.total_cost == 0.0
+        # VLM side is free tier; the image model is paid (issue #213).
+        assert tracker.total_cost == pytest.approx(0.134)
         assert tracker.pricing_complete is True
 
     def test_set_agent_fallback(self):
@@ -255,8 +259,8 @@ class TestCostEstimator:
         assert "image_calls" in result
         assert result["vlm_calls"] >= 6  # retriever + planner + stylist + 3x critic
         assert result["image_calls"] == 3
-        # Free tier — cost should be 0
-        assert result["estimated_total_usd"] == 0.0
+        # 3 paid images at $0.134 (issue #213); VLM side is free tier.
+        assert result["estimated_total_usd"] == pytest.approx(3 * 0.134)
 
     def test_paid_provider_estimation(self):
         from paperbanana.core.config import Settings

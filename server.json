@@ -3,12 +3,12 @@
   "name": "io.github.llmsresearch/paperbanana",
   "title": "PaperBanana",
   "description": "Generate academic diagrams and statistical plots from text using multi-agent AI.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "paperbanana",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       }

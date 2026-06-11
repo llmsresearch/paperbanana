@@ -20,8 +20,35 @@ jobs:
           cache: "pip"
       - name: Install build dependencies
         run: pip install build
+      - name: Verify versions match the tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          python - "$TAG" <<'PY'
+          import json, sys, tomllib
+
+          tag = sys.argv[1]
+          pkg = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          init = next(
+              line.split('"')[1]
+              for line in open("paperbanana/__init__.py")
+              if line.startswith("__version__")
+          )
+          server = json.load(open("server.json"))["version"]
+          versions = {"tag": tag, "pyproject": pkg, "__init__": init, "server.json": server}
+          print(versions)
+          if len(set(versions.values())) != 1:
+              raise SystemExit(f"version mismatch: {versions}")
+          PY
       - name: Build package
         run: python -m build
+      - name: Verify the built wheel installs and exposes the current CLI
+        run: |
+          python -m venv /tmp/verify-venv
+          /tmp/verify-venv/bin/pip install --quiet dist/*.whl
+          OUT=$(/tmp/verify-venv/bin/paperbanana --version)
+          echo "$OUT"
+          echo "$OUT" | grep -q "paperbanana ${GITHUB_REF_NAME#v}"
+          /tmp/verify-venv/bin/paperbanana generate --help | grep -q -- "--budget"
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

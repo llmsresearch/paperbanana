@@ -38,6 +38,31 @@ app = typer.Typer(
 )
 console = Console()
 
+
+def _version_callback(value: bool) -> None:
+    if value:
+        import platform
+
+        from paperbanana import __version__
+
+        console.print(f"paperbanana {__version__} (Python {platform.python_version()})")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show paperbanana and Python versions, then exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """Generate publication-quality academic illustrations from text."""
+
+
 # ── Data subcommand group ─────────────────────────────────────────
 data_app = typer.Typer(
     name="data",

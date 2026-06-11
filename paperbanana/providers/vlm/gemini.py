@@ -37,7 +37,7 @@ class GeminiVLM(VLMProvider):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         base_url: Optional[str] = None,
     ):
         self._api_key = api_key
