@@ -1,0 +1,35 @@
+spec_version: 1
+venue: cvpr
+year: 2025
+display_name: "CVPR 2025"
+sources:
+  - "https://cvpr.thecvf.com/Conferences/2025/PosterPrintingInformation"
+dimensions:
+  # "Posters will be 84\" x 42\" = 213 cm x 107 cm (WxH, aspect ratio 2:1,
+  # landscape format)."
+  mode: exact
+  width_mm: 2133.6   # 84 in
+  height_mm: 1066.8  # 42 in
+  orientation: landscape
+text_rules:
+  min_pt: {}
+  # "A PDF file is preferred. 100 DPI or vector art at full size is recommended"
+  min_image_dpi: 100
+required_elements:
+  - id: paper_title
+    description: "Poster must display the paper title"
+    rule: text_level_present
+    params: { level: title }
+    severity: fail
+  - id: authors
+    description: "Poster should display the author list"
+    rule: text_level_present
+    params: { level: authors }
+    severity: warn
+file_rules: {}
+notes: >-
+  Printed on 8mil satin poster paper, full color, single sided. Full name and
+  paper ID go in the print-job name field at submission (not on the poster).
+  Recommended design: 3-4 columns, minimal text, large expressive figures.
+  84 in exceeds the pptx 56 in page cap: the pptx is designed at 1/2 scale
+  (print_scale=2) and printed at 200%, per standard large-format practice.

@@ -1,0 +1,15 @@
+You are tightening text on an academic conference poster panel that does not fit its box.
+
+PANEL: {panel_title}
+CURRENT TEXT BLOCKS (JSON array, one string per block; lines starting "- " are bullets):
+{text_blocks}
+
+The content needs {required_mm} mm of height but only {available_mm} mm is available — cut it down to roughly {target_ratio}% of its current length.
+
+Rules:
+- Preserve every number, result, and technical claim that carries the panel's point; cut filler, hedging, and redundancy.
+- Keep the bullet format ("- " prefixed lines inside a block).
+- Do not change facts; do not invent anything.
+- Return the SAME number of blocks (a block may become shorter or a tighter set of bullets, but never empty).
+
+Respond with ONLY a JSON array of the rewritten blocks, same order, same length.

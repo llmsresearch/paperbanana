@@ -306,6 +306,31 @@ paperbanana plot \
 
 Plots are rendered via VLM-generated matplotlib code — no image-generation provider or credentials are required.
 
+### `paperbanana poster` -- Conference Posters
+
+Turn a paper PDF into a venue-compliant conference poster: an editable `.pptx`, a press-ready PDF at the venue's physical poster size, a preview PNG, and a print-fidelity/compliance preflight report. Requires `pip install 'paperbanana[poster]'` and LibreOffice (`brew install --cask libreoffice`).
+
+```bash
+paperbanana poster \
+  --paper paper.pdf \
+  --venue neurips \
+  --qr-url https://arxiv.org/abs/XXXX.XXXXX
+```
+
+Figures are never just copied from the paper: each one is judged against print physics (effective DPI at its placement, legibility at 2 m) and either **reused**, **re-authored** for poster scale behind a strict data-faithfulness gate, or **replaced by a newly generated diagram**. Override per figure with `--figure-decision fig3=reuse`.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--paper` | `-p` | Path to the paper PDF (required) |
+| `--venue` | | Venue with a poster spec (`paperbanana venues specs`) |
+| `--year` | | Venue spec year (default: latest) |
+| `--qr-url` | | URL rendered as a QR code on the poster |
+| `--figure-decision` | | Per-figure override: `figN=reuse\|reauthor\|generate` (repeatable) |
+| `--iterations` | `-n` | Critic refinement iterations (default: 2) |
+| `--resume` | | Resume a previous poster run directory |
+
+Venue regulations live in a versioned bank (`data/venue_specs/<venue>/<year>.yaml`, with cited official sources); list with `paperbanana venues specs`, extend by dropping a YAML under `~/.config/paperbanana/venue_specs/`. See [docs/poster.md](docs/poster.md) for the full pipeline, output layout, and the print-scale rule for venues larger than PowerPoint's 56-inch page cap.
+
 ### `paperbanana venues` -- Custom Venue Style Packs
 
 `--venue` selects a *venue style pack*: a directory with `methodology_style_guide.md`, `plot_style_guide.md`, and an optional `venue.yaml`. Built-in packs (`neurips`, `icml`, `acl`, `ieee`) ship with PaperBanana; you can add your own under `~/.config/paperbanana/venues/` (override with `--venue-dir` or `PAPERBANANA_VENUE_DIR`) without touching the repo:
@@ -683,7 +708,7 @@ PaperBanana includes an MCP server for use with Claude Code, Cursor, or any MCP-
 }
 ```
 
-Eleven MCP tools are exposed: `generate_diagram`, `generate_plot`, `continue_run` (resume a prior `run_*` with optional feedback), `continue_diagram`, `continue_plot`, `evaluate_diagram`, `evaluate_plot`, `orchestrate_figures` (full-paper figure packages), `batch_diagrams`, `batch_plots`, and `download_references`.
+Twelve MCP tools are exposed: `generate_diagram`, `generate_plot`, `generate_poster` (venue-compliant conference poster from a paper PDF), `continue_run` (resume a prior `run_*` with optional feedback), `continue_diagram`, `continue_plot`, `evaluate_diagram`, `evaluate_plot`, `orchestrate_figures` (full-paper figure packages), `batch_diagrams`, `batch_plots`, and `download_references`.
 
 The repo also ships with 3 Claude Code skills:
 - `/generate-diagram <file> [caption]` - generate a methodology diagram from a text file

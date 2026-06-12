@@ -1,0 +1,15 @@
+Redraw the attached academic figure for display on a large conference poster viewed from 2 meters away.
+
+REQUIRED CHANGES:
+{edit_instructions}
+
+STYLE CONSTRAINTS:
+- Color palette: primary {primary}, secondary {secondary}, accent {accent}, on a {background} background.
+- Clean flat vector-style rendering, white or transparent margins, no decorative effects, no drop shadows.
+- All text must be crisp, horizontal where possible, and large relative to the figure (legible when the figure is {placed_width_mm} mm wide in print).
+
+ABSOLUTE FIDELITY RULES — VIOLATING ANY OF THESE MAKES THE OUTPUT UNUSABLE:
+- Do NOT change, add, remove, or re-estimate any data: every bar, line, point, trend, value, axis range, and category must match the original exactly.
+- Do NOT invent new labels, numbers, legends, or annotations that are not in the original.
+- Do NOT change the meaning of the figure; only its visual presentation (fonts, line weights, colors, layout of legend/labels, resolution) may change.
+- Keep the original text content of every label verbatim (you may resize and reposition it).

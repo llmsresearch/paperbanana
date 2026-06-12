@@ -1,0 +1,39 @@
+You are a graphic designer setting the visual identity of an academic conference poster for {venue_display}.
+
+PAPER: {title}
+ABSTRACT (for topical color inspiration): {abstract}
+
+Choose a professional, restrained design. Posters fail when they look like marketing flyers: aim for an authoritative academic look with one confident accent color.
+
+Constraints (hard):
+- Fonts: choose ONLY from: {allowed_fonts}. Venue preference: {venue_fonts}.
+- Type scale minima (pt) — never go below these: {min_pt_floor}
+- Palette must be 6 hex colors with HIGH text contrast: "text" on "panel_bg" must be clearly readable (WCAG >= 4.5:1), and "background" (used for header text) on "primary" likewise.
+- "background" is the page background — keep it white or near-white for print.
+- "panel_bg" is the panel fill — white or a very light tint of primary.
+- "primary" is a deep saturated color used for the header band and headings.
+
+Respond with ONLY a JSON object:
+{{
+  "palette": {{
+    "primary": "#1A3A6B",
+    "secondary": "#4A6FA5",
+    "accent": "#E8A33D",
+    "background": "#FFFFFF",
+    "panel_bg": "#F5F7FA",
+    "text": "#1A1A1A"
+  }},
+  "font_heading": "Helvetica",
+  "font_body": "Helvetica",
+  "type_scale_pt": {{
+    "title": 80,
+    "authors": 40,
+    "affiliation": 30,
+    "heading": 44,
+    "body": 28,
+    "caption": 20,
+    "footnote": 16
+  }}
+}}
+
+Scale the type to the poster: titles around 72-90pt, body 26-32pt. All seven levels are required.

@@ -4788,5 +4788,228 @@ def doctor(
     raise typer.Exit(run_doctor(output_json=json_output))
 
 
+@venues_app.command(name="specs")
+def venues_specs(
+    venue_spec_dir: Optional[str] = typer.Option(
+        None,
+        "--venue-spec-dir",
+        help=(
+            "User venue poster-spec directory "
+            "(default: $PAPERBANANA_VENUE_SPEC_DIR or ~/.config/paperbanana/venue_specs)"
+        ),
+    ),
+):
+    """List the venue poster regulation bank (built-in and user specs)."""
+    from paperbanana.poster.venue_spec import (
+        list_venue_specs,
+        load_venue_spec,
+        resolve_user_spec_dir,
+    )
+
+    specs = list_venue_specs(extra_dir=venue_spec_dir)
+    table = Table(title="Venue Poster Specs")
+    table.add_column("Venue", style="bold")
+    table.add_column("Years")
+    table.add_column("Latest Spec")
+    table.add_column("Dimensions")
+    table.add_column("Orientation")
+    for name, years in specs.items():
+        try:
+            spec = load_venue_spec(name, extra_dir=venue_spec_dir)
+            dims = spec.dimensions
+            gen_w, gen_h = dims.generation_size_mm()
+            dim_text = (
+                f"{dims.mode}: {dims.width_mm:.0f}x{dims.height_mm:.0f}mm "
+                f"(generate {gen_w:.0f}x{gen_h:.0f}mm)"
+            )
+            table.add_row(
+                name,
+                ", ".join(str(y) for y in years),
+                spec.display_name,
+                dim_text,
+                dims.orientation,
+            )
+        except ValueError as e:
+            table.add_row(name, ", ".join(str(y) for y in years), f"[red]{e}[/red]", "", "")
+    console.print(table)
+    console.print(
+        f"\nUser spec directory: [bold]{resolve_user_spec_dir(venue_spec_dir)}[/bold]\n"
+        "Add a venue by dropping [bold]<venue>/<year>.yaml[/bold] there "
+        "(see data/venue_specs/ for the schema)."
+    )
+
+
+@app.command()
+def poster(
+    paper: str = typer.Option(..., "--paper", "-p", help="Path to the paper PDF"),
+    venue: Optional[str] = typer.Option(
+        None,
+        "--venue",
+        help="Venue with a poster spec (see 'paperbanana venues specs'); default from config",
+    ),
+    year: Optional[int] = typer.Option(
+        None, "--year", help="Venue spec year (default: latest available)"
+    ),
+    qr_url: Optional[str] = typer.Option(
+        None, "--qr-url", help="URL rendered as a QR code on the poster"
+    ),
+    figure_decision: Optional[list[str]] = typer.Option(
+        None,
+        "--figure-decision",
+        help=("Override the curator for a figure: figN=reuse|reauthor|generate. Repeatable."),
+    ),
+    iterations: Optional[int] = typer.Option(
+        None, "--iterations", "-n", help="Critic refinement iterations (default: 2)"
+    ),
+    output_dir: Optional[str] = typer.Option(None, "--output-dir", help="Run output directory"),
+    resume: Optional[str] = typer.Option(
+        None, "--resume", help="Resume a previous poster run directory"
+    ),
+    budget: Optional[float] = typer.Option(
+        None, "--budget", help="Budget cap in USD; pipeline aborts when exceeded"
+    ),
+    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="VLM model name"),
+    image_provider: Optional[str] = typer.Option(
+        None, "--image-provider", help="Image gen provider (needs guided-edit support)"
+    ),
+    image_model: Optional[str] = typer.Option(None, "--image-model", help="Image gen model"),
+    save_prompts: Optional[bool] = typer.Option(
+        None, "--save-prompts/--no-save-prompts", help="Save formatted prompts in the run dir"
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose progress output"),
+) -> None:
+    """Generate a venue-compliant conference poster (pptx + press-ready PDF) from a paper PDF.
+
+    Figures are never just copied: each one is judged against print physics
+    and either reused, re-authored for poster legibility (with a strict
+    data-faithfulness gate), or replaced by a newly generated diagram.
+    """
+    paper_path = Path(paper).expanduser()
+    if not paper_path.is_file():
+        console.print(f"[red]Error: paper PDF not found: {paper_path}[/red]")
+        raise typer.Exit(1)
+
+    overrides_map: dict[str, str] = {}
+    for entry in figure_decision or []:
+        if "=" not in entry:
+            console.print(
+                f"[red]Error: --figure-decision expects figN=reuse|reauthor|generate, "
+                f"got '{entry}'[/red]"
+            )
+            raise typer.Exit(1)
+        fid, decision = entry.split("=", 1)
+        if decision not in ("reuse", "reauthor", "generate"):
+            console.print(f"[red]Error: unknown figure decision '{decision}'[/red]")
+            raise typer.Exit(1)
+        overrides_map[fid.strip()] = decision.strip()
+
+    overrides: dict = {}
+    if output_dir:
+        overrides["output_dir"] = output_dir
+    if budget is not None:
+        overrides["budget_usd"] = budget
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if image_provider:
+        overrides["image_provider"] = image_provider
+    if image_model:
+        overrides["image_model"] = image_model
+    if save_prompts is not None:
+        overrides["save_prompts"] = save_prompts
+    if iterations is not None:
+        overrides["poster_refinement_iterations"] = iterations
+
+    if config:
+        settings = Settings.from_yaml(config, **overrides)
+    else:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+        settings = Settings(**overrides)
+
+    from paperbanana.poster.convert import SofficeNotFoundError
+    from paperbanana.poster.figures import PosterFigureError
+    from paperbanana.poster.pipeline import PosterPipeline
+    from paperbanana.poster.renderer import TextOverflowError
+    from paperbanana.poster.venue_spec import UnknownVenueSpecError
+
+    def progress(event: str, payload: dict) -> None:
+        labels = {
+            "ingest_started": "Ingesting paper",
+            "ingest_complete": "Paper ingested",
+            "storyboard_complete": "Storyboard planned",
+            "style_complete": "Style tokens set",
+            "diagram_generation_started": "Generating new diagram",
+            "diagram_generation_complete": "Diagram generated",
+            "figures_complete": "Figures curated",
+            "panel_text_shortened": "Tightened panel text",
+            "iteration_rendered": "Iteration rendered",
+            "critique_complete": "Critique complete",
+            "poster_complete": "Poster complete",
+        }
+        label = labels.get(event, event)
+        detail = ""
+        if verbose and payload:
+            detail = "  [dim]" + ", ".join(f"{k}={v}" for k, v in payload.items()) + "[/dim]"
+        elif event == "figures_complete":
+            detail = (
+                "  [dim]"
+                + ", ".join(f"{k}: {v}" for k, v in payload.get("decisions", {}).items())
+                + "[/dim]"
+            )
+        elif event == "iteration_rendered" and not payload.get("preflight_passed", True):
+            detail = "  [yellow]" + ", ".join(payload.get("failures", [])) + "[/yellow]"
+        console.print(f"  [dim]●[/dim] {label}{detail}")
+
+    try:
+        pipeline = PosterPipeline(settings=settings, progress_callback=progress)
+        output = asyncio.run(
+            pipeline.generate(
+                paper_path,
+                venue=venue,
+                year=year,
+                qr_url=qr_url,
+                figure_overrides=overrides_map or None,
+                resume_dir=Path(resume).expanduser() if resume else None,
+            )
+        )
+    except (
+        SofficeNotFoundError,
+        UnknownVenueSpecError,
+        PosterFigureError,
+        TextOverflowError,
+    ) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
+
+    console.print()
+    console.print("[bold green]Poster generated[/bold green]")
+    console.print(f"  pptx (editable):    {output.pptx_path}")
+    console.print(f"  PDF (press-ready):  {output.pdf_path}")
+    console.print(f"  preview:            {output.preview_path}")
+    console.print(f"  preflight report:   {Path(output.run_dir) / 'preflight_report.md'}")
+    if output.metadata.get("print_scale", 1) > 1:
+        scale = output.metadata["print_scale"]
+        console.print(
+            f"  [yellow]print at {scale * 100}%[/yellow] — the file is designed at "
+            f"1/{scale} physical size (pptx page-size cap)"
+        )
+    if output.preflight.passed:
+        console.print("  [green]preflight: PASSED[/green]")
+        for check in output.preflight.warnings:
+            console.print(f"  [yellow]warn: {check.id} — {check.detail}[/yellow]")
+    else:
+        console.print("  [red]preflight: FAILED[/red]")
+        for check in output.preflight.failures:
+            console.print(
+                f"  [red]fail: {check.id} — {check.value} (required {check.threshold})[/red]"
+            )
+        raise typer.Exit(2)
+
+
 if __name__ == "__main__":
     app()

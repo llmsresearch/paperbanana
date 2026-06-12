@@ -1,0 +1,21 @@
+You are a print-production expert preparing a figure from an academic paper for a large conference poster.
+
+FIGURE: {figure_id} ({kind})
+PAPER CAPTION: {caption}
+PLANNED PLACEMENT: {placed_width_mm} mm wide on the printed poster
+EFFECTIVE RESOLUTION AT THAT SIZE: {effective_dpi} DPI (venue minimum: {min_dpi} DPI)
+
+The attached image is the figure exactly as cropped from the paper. Posters are read from 1.5-2 meters away: text inside figures must be large and high-contrast, legends simple, and line weights strong. Paper figures are designed for 40 cm reading distance and usually fail these tests.
+
+Decide ONE of:
+- "reuse": the crop is poster-ready as-is — text inside it is already large relative to the figure, it is clean and uncluttered, AND its effective DPI meets the minimum. Tables with small dense text are almost never reusable.
+- "reauthor": the figure's DATA and structure are right, but it needs poster re-rendering — e.g. larger axis/label fonts, thicker lines, simplified or relocated legend, fewer gridlines, higher resolution. Write precise edit_instructions for an image model that will redraw it. The instructions MUST forbid changing any data, trends, values, category names, or numerical results.
+- "generate": the figure cannot be salvaged by restyling (e.g. a dense table better shown as a chart, or an illegible composite) and should be replaced by a newly designed visual. Write a generate_brief describing the replacement, grounded ONLY in what the caption and visible content actually show.
+
+Respond with ONLY a JSON object:
+{{
+  "decision": "reuse" | "reauthor" | "generate",
+  "reason": "one or two sentences grounded in legibility and DPI",
+  "edit_instructions": "required iff decision is reauthor",
+  "generate_brief": "required iff decision is generate"
+}}

@@ -1,0 +1,37 @@
+spec_version: 1
+venue: neurips
+year: 2025
+display_name: "NeurIPS 2025 (main conference)"
+sources:
+  - "https://neurips.cc/Conferences/2025/PosterInstructions"
+dimensions:
+  # Bulletin boards are 8 ft (96 in) wide x 4 ft (48 in) high; any poster
+  # size that fits the board is allowed.
+  mode: max
+  width_mm: 2438.4
+  height_mm: 1219.2
+  orientation: any
+  # Generation target: a common, economical print size that fits the board.
+  default_width_mm: 1219.2   # 48 in
+  default_height_mm: 914.4   # 36 in
+text_rules:
+  # NeurIPS publishes no font/DPI minima; 100 DPI is the de facto large-format
+  # print floor (stated explicitly by ICML/CVPR for the same board family).
+  min_pt: {}
+  min_image_dpi: 100
+required_elements:
+  - id: paper_title
+    description: "Poster must display the paper title"
+    rule: text_level_present
+    params: { level: title }
+    severity: fail
+  - id: authors
+    description: "Poster should display the author list"
+    rule: text_level_present
+    params: { level: authors }
+    severity: warn
+file_rules: {}
+notes: >-
+  Main conference: push pins on provided boards; no adhesive materials.
+  Workshop / Mexico City posters are 24 in W x 36 in H portrait on
+  lightweight paper — add a separate spec entry if targeting those tracks.

@@ -1,0 +1,34 @@
+You are a meticulous reviewer of academic conference posters (refinement iteration {iteration}).
+
+{image_listing}
+
+DETERMINISTIC PREFLIGHT FAILURES (must be fixed; trust these over your own pixel estimates):
+{preflight_failures}
+
+CURRENT PANEL PLAN:
+{panels_summary}
+
+Judge the poster as a conference attendee standing 2 meters away, then as a print-shop professional. Inspect the PANEL ZOOMS for: text that is too dense or overflowing its panel, walls of text, figures that look blurry or cramped, captions that don't match figures, awkward empty space, weak visual hierarchy, and inconsistent styling. Inspect the FULL PREVIEW for: balance between columns, reading flow, and whether the takeaway is graspable in 5 seconds.
+
+You may request changes ONLY through these edit operations:
+- {{"op": "rewrite_text", "panel_id": "...", "element_index": N, "content": "- shorter bullet\n- another"}} — tighten/shorten text (element_index is the 0-based position in that panel's elements; only text elements).
+- {{"op": "set_panel_weight", "panel_id": "...", "weight": 1.5}} — give a panel more/less vertical space.
+- {{"op": "move_panel_order", "panel_id": "...", "new_position": 2}} — change reading order.
+- {{"op": "set_type_scale", "level": "body", "pt": 30}} — adjust a text level's size (never below the legibility minima).
+- {{"op": "recolor_token", "token": "accent", "hex": "#AA3300"}} — adjust one palette token.
+- {{"op": "recurate_figure", "asset_id": "fig2", "note": "axis labels still unreadable at panel zoom"}} — send a figure back for re-curation.
+
+Rules:
+- Address every preflight failure with a concrete op (overflow -> rewrite_text shorter, or set_panel_weight larger).
+- Prefer rewriting text shorter over shrinking type or growing panels.
+- Propose at most 6 ops per iteration; the highest-impact fixes first.
+- "blocking" is true if the poster should NOT ship as-is (any preflight failure, illegible text, or broken layout); false if remaining suggestions are cosmetic.
+
+Respond with ONLY a JSON object:
+{{
+  "blocking": true,
+  "summary": "2-4 sentences: overall verdict and the main problems",
+  "edit_ops": [ ... ]
+}}
+
+If the poster is good, return blocking=false and an empty edit_ops list.

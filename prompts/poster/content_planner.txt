@@ -1,0 +1,65 @@
+You are an expert academic poster designer planning a conference poster for {venue_display}.
+
+PAPER TITLE: {title}
+
+ABSTRACT:
+{abstract}
+
+PAPER SECTIONS (trimmed):
+{sections_text}
+
+AVAILABLE FIGURES AND TABLES (extracted from the paper):
+{figures_listing}
+
+VENUE NOTES: {venue_notes}
+QR LINK: {qr_url}
+
+Design a storyboard: the set of poster panels, their reading order, and what goes in each. A poster is NOT a paper dump — a passerby decides in 5 seconds whether to stop. Target ~600-800 total words.
+
+Principles:
+- Lead with the problem and the one-sentence takeaway; end with concrete results and conclusion.
+- Every panel: a short punchy title plus 2-5 tight bullet text blocks (each bullet a single line starting with "- "). No paragraphs.
+- Place figures where they carry the narrative; the method figure and the headline results figure/table deserve the most space (weight).
+- If the paper LACKS a poster-friendly overview/methodology figure, request one: reference it as "new:<slug>" in a panel's figure_ids and write a generation brief in new_figure_briefs describing exactly what the diagram must show (components, flow, labels), grounded in the method section.
+- If a QR link is provided, include a panel (role "qr") or put the QR in the conclusion panel by listing no figure but noting it; the system renders QR codes from qr_url automatically when a panel has role "qr".
+- weight expresses relative vertical space within a column (1.0 = average); be deliberate.
+- Do NOT include a header/title panel — the system adds it automatically.
+- 5 to 8 body panels total. Use roles: abstract, motivation, method, results, conclusion, references, acknowledgments, qr, custom.
+
+Respond with ONLY a JSON object:
+{{
+  "columns": {columns_hint},
+  "qr_url": "{qr_url}",
+  "new_figure_briefs": {{"overview": "A left-to-right pipeline diagram showing ..."}},
+  "panels": [
+    {{
+      "id": "motivation",
+      "role": "motivation",
+      "title": "Why This Matters",
+      "order": 1,
+      "weight": 1.0,
+      "text_blocks": ["- First key point", "- Second key point"],
+      "figure_ids": []
+    }},
+    {{
+      "id": "method",
+      "role": "method",
+      "title": "Our Approach",
+      "order": 2,
+      "weight": 1.6,
+      "text_blocks": ["- One-line summary of the approach"],
+      "figure_ids": ["new:overview"]
+    }},
+    {{
+      "id": "results",
+      "role": "results",
+      "title": "Results",
+      "order": 3,
+      "weight": 1.6,
+      "text_blocks": ["- Headline number and what it beats"],
+      "figure_ids": ["fig2", "tab1"]
+    }}
+  ]
+}}
+
+Set "new_figure_briefs" to {{}} if the paper already has a good overview figure. Set "qr_url" to null if none was provided. Panel ids must be unique lowercase slugs; order starts at 1 and is consecutive.

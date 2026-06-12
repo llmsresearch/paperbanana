@@ -1,0 +1,23 @@
+You are auditing a re-rendered academic figure for DATA FIDELITY. You are shown two images:
+1. FIRST image: the ORIGINAL figure, cropped from the published paper.
+2. SECOND image: a RE-AUTHORED version, restyled for poster display.
+
+Original caption: {caption}
+
+The re-authored version is ALLOWED to differ in: font sizes, line thickness, colors, legend position/format, gridlines, aspect ratio, resolution, whitespace, and general visual polish.
+
+It MUST NOT differ in data semantics. Check rigorously, element by element:
+- Same number of data series / bars / lines / points / table rows and columns?
+- Same trends, orderings, and approximate values everywhere?
+- Same axis ranges, scales (linear/log), and units?
+- Every label, category name, and number carries the same text content (resized/restyled is fine)?
+- No invented elements: no new annotations, data points, numbers, arrows, or legend entries absent from the original?
+- Nothing from the original omitted that carries meaning?
+
+Default to "fail" when uncertain — a plausible-looking figure with altered data is the worst possible outcome for a scientist.
+
+Respond with ONLY a JSON object:
+{{
+  "verdict": "pass" | "fail",
+  "differences": ["each semantic difference you found, specific and concrete; empty if pass"]
+}}

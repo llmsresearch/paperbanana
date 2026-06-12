@@ -19,6 +19,32 @@ def _is_gpt_image_2(model: str) -> bool:
     return model.lower() == "gpt-image-2"
 
 
+def legal_gpt_image_2_dims(width: int, height: int) -> tuple[int, int]:
+    """Clamp arbitrary pixel dims to a size gpt-image-2 accepts.
+
+    API constraints (discovered empirically, June 2026): width and height
+    divisible by 16, longest edge <= 3840, aspect ratio <= 3:1.
+    """
+    import math
+
+    w, h = float(max(width, 1)), float(max(height, 1))
+    if w / h > 3.0:
+        h = w / 3.0
+    elif h / w > 3.0:
+        w = h / 3.0
+    scale = min(1.0, 3840.0 / max(w, h))
+    w *= scale
+    h *= scale
+    wi = min(3840, max(256, round(w / 16) * 16))
+    hi = min(3840, max(256, round(h / 16) * 16))
+    # Rounding can push the ratio back over 3:1; grow the short side to fix.
+    if wi / hi > 3.0:
+        hi = math.ceil(wi / 3.0 / 16) * 16
+    elif hi / wi > 3.0:
+        wi = math.ceil(hi / 3.0 / 16) * 16
+    return wi, hi
+
+
 class OpenAIImageGen(ImageGenProvider):
     """Image generation using the OpenAI Python SDK (async).
 
@@ -74,7 +100,8 @@ class OpenAIImageGen(ImageGenProvider):
     def _size_string(self, width: int, height: int) -> str:
         """Map pixel dimensions to an OpenAI-supported size string."""
         if _is_gpt_image_2(self._model):
-            return f"{width}x{height}"
+            w, h = legal_gpt_image_2_dims(width, height)
+            return f"{w}x{h}"
         ratio = width / height
         if ratio > 1.2:
             return "1536x1024"
@@ -105,7 +132,15 @@ class OpenAIImageGen(ImageGenProvider):
         seed: Optional[int] = None,
         aspect_ratio: Optional[str] = None,
         quality: Optional[str] = None,
+        images: Optional[list[Image.Image]] = None,
     ) -> Image.Image:
+        """Generate an image; with ``images`` set, performs a guided edit.
+
+        Guided edits route to the OpenAI ``images.edit`` endpoint
+        (supported by GPT-Image models on both OpenAI and Azure), making
+        this provider usable for image-conditioned generation — e.g.
+        poster figure re-authoring.
+        """
         client = self._get_client()
 
         full_prompt = prompt
@@ -126,7 +161,16 @@ class OpenAIImageGen(ImageGenProvider):
         if quality:
             kwargs["quality"] = quality
 
-        result = await client.images.generate(**kwargs)
+        if images:
+            files = []
+            for i, img in enumerate(images):
+                buf = BytesIO()
+                img.save(buf, format="PNG")
+                buf.seek(0)
+                files.append((f"image_{i}.png", buf, "image/png"))
+            result = await client.images.edit(image=files if len(files) > 1 else files[0], **kwargs)
+        else:
+            result = await client.images.generate(**kwargs)
 
         b64_data = result.data[0].b64_json
         image_bytes = base64.b64decode(b64_data)

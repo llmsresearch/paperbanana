@@ -26,6 +26,7 @@ EXPECTED_TOOLS = {
     "evaluate_plot",
     "generate_diagram",
     "generate_plot",
+    "generate_poster",
     "orchestrate_figures",
 }
 

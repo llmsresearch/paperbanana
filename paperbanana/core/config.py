@@ -97,6 +97,21 @@ class Settings(BaseSettings):
         description="Number of parallel Phase-2 candidate branches (1-8)",
     )
 
+    # Poster settings
+    poster_refinement_iterations: int = Field(default=2, ge=0, le=8)
+    poster_reauthor_max_attempts: int = Field(default=2, ge=1, le=5)
+    poster_extract_dpi: int = Field(default=300, gt=0)
+    venue_spec_dir: Optional[str] = Field(
+        default=None,
+        alias="PAPERBANANA_VENUE_SPEC_DIR",
+        description="User venue poster-spec directory (default: ~/.config/paperbanana/venue_specs)",
+    )
+    soffice_path: Optional[str] = Field(
+        default=None,
+        alias="SOFFICE_PATH",
+        description="Explicit LibreOffice binary path for pptx->PDF conversion",
+    )
+
     # Reference settings
     reference_set_path: str = "data/reference_sets"
     reference_category: Optional[list[str]] = None

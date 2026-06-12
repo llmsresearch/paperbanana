@@ -978,6 +978,18 @@ def test_openai_imagen_size_mapping():
     assert gen._size_string(1100, 1024) == "1024x1024"
 
 
+def test_gpt_image_2_dims_legalized():
+    """gpt-image-2 sizes are clamped to API rules: /16, <=3840 edge, <=3:1 ratio."""
+    from paperbanana.providers.image_gen.openai_imagen import legal_gpt_image_2_dims
+
+    for w, h in [(4096, 1258), (3840, 1168), (2003, 615), (100, 5000), (1024, 1024)]:
+        lw, lh = legal_gpt_image_2_dims(w, h)
+        assert lw % 16 == 0 and lh % 16 == 0
+        assert max(lw, lh) <= 3840
+        assert max(lw / lh, lh / lw) <= 3.0 + 1e-9
+    assert legal_gpt_image_2_dims(1024, 1024) == (1024, 1024)
+
+
 @pytest.mark.asyncio
 async def test_openai_imagen_gpt_image_2_uses_custom_size_and_quality():
     """gpt-image-2 supports custom valid sizes and quality settings."""

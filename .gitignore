@@ -26,6 +26,8 @@ Thumbs.db
 # Outputs and generated images
 outputs/
 run_*/
+poster_*/
+*.pptx
 *.png
 *.jpg
 *.jpeg

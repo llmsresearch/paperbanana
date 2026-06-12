@@ -72,6 +72,22 @@ def check_aws_credentials() -> CheckResult:
     return CheckResult("AWS credentials", ok, detail, hint)
 
 
+def check_soffice() -> CheckResult:
+    """LibreOffice is required by the poster head for pptx -> PDF conversion."""
+    from paperbanana.poster.convert import SofficeNotFoundError, find_soffice
+
+    try:
+        path = find_soffice(os.environ.get("SOFFICE_PATH") or None)
+        return CheckResult("Poster (LibreOffice)", True, str(path))
+    except SofficeNotFoundError:
+        return CheckResult(
+            "Poster (LibreOffice)",
+            False,
+            "not found",
+            "brew install --cask libreoffice (or set SOFFICE_PATH)",
+        )
+
+
 def check_builtin_refs() -> CheckResult:
     try:
         from paperbanana.data.manager import resolve_reference_path
@@ -127,6 +143,8 @@ def _render_section(title: str, results: list[CheckResult]) -> None:
 
 _OPTIONAL_PACKAGES = [
     ("PDF (pymupdf)", "pymupdf", "pdf"),
+    ("Poster (python-pptx)", "python-pptx", "poster"),
+    ("Poster (qrcode)", "qrcode", "poster"),
     ("Studio (gradio)", "gradio", "studio"),
     ("OpenAI", "openai", "openai"),
     ("Google (google-genai)", "google-genai", "google"),
@@ -154,6 +172,7 @@ def run_doctor(output_json: bool = False) -> int:
 
     runtime = [check_python(), check_paperbanana()]
     optional = [check_optional_package(*args) for args in _OPTIONAL_PACKAGES]
+    optional.append(check_soffice())
     api_keys = [check_env_key(k) for k in _API_KEYS] + [check_aws_credentials()]
     refs = [check_builtin_refs(), check_expanded_refs()]
 

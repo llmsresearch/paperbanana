@@ -15,6 +15,7 @@ Tools:
     orchestrate_figures — Full-paper figure package (plan + optional generation)
     batch_diagrams      — Batch methodology diagrams from a YAML/JSON manifest
     batch_plots         — Batch statistical plots from a YAML/JSON manifest
+    generate_poster     — Venue-compliant conference poster from a paper PDF
 
 Usage:
     paperbanana-mcp          # stdio transport (default)
@@ -1001,6 +1002,102 @@ async def batch_plots(
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         return _json_result({"error": str(e), "strict_success": False})
     return _json_result(result)
+
+
+@mcp.tool
+async def generate_poster(
+    paper_pdf: str,
+    venue: str = "neurips",
+    year: int | None = None,
+    qr_url: str | None = None,
+    figure_decisions: dict[str, str] | None = None,
+    iterations: int | None = None,
+    output_dir: str = "outputs",
+    config: str | None = None,
+) -> str:
+    """Generate a venue-compliant conference poster from a paper PDF.
+
+    Produces an editable .pptx, a press-ready PDF at the venue's physical
+    poster size, a preview PNG, and a print/compliance preflight report.
+    Figures from the paper are not just copied: each is judged against
+    print legibility and either reused, re-authored (data-faithfulness
+    gated), or replaced with a newly generated diagram.
+
+    Requires LibreOffice (soffice) for pptx -> PDF conversion.
+
+    Args:
+        paper_pdf: Path to the source paper PDF.
+        venue: Venue with a poster spec (see ``paperbanana venues specs``;
+            built-ins: neurips, icml, cvpr, acl).
+        year: Venue spec year (default: latest available).
+        qr_url: Optional URL rendered as a QR code on the poster.
+        figure_decisions: Optional per-figure overrides, e.g.
+            ``{"fig3": "reuse"}`` with values reuse|reauthor|generate.
+        iterations: Critic refinement iterations (default from settings: 2).
+        output_dir: Directory for the run outputs.
+        config: Optional path to a config YAML file.
+
+    Returns:
+        JSON with artifact paths, figure decisions, and the preflight
+        summary (passed flag plus any failures/warnings).
+    """
+    from paperbanana.poster.convert import SofficeNotFoundError
+    from paperbanana.poster.figures import PosterFigureError
+    from paperbanana.poster.pipeline import PosterPipeline
+    from paperbanana.poster.renderer import TextOverflowError
+    from paperbanana.poster.venue_spec import UnknownVenueSpecError
+
+    _load_dotenv_best_effort()
+    overrides: dict = {"output_dir": output_dir}
+    if iterations is not None:
+        overrides["poster_refinement_iterations"] = iterations
+    settings = Settings.from_yaml(config, **overrides) if config else Settings(**overrides)
+
+    def _on_progress(event: str, payload: dict) -> None:
+        logger.info("mcp_progress", tool="generate_poster", progress_event=event, **payload)
+
+    try:
+        pipeline = PosterPipeline(settings=settings, progress_callback=_on_progress)
+        output = await pipeline.generate(
+            Path(paper_pdf),
+            venue=venue,
+            year=year,
+            qr_url=qr_url,
+            figure_overrides=figure_decisions,
+        )
+    except (
+        SofficeNotFoundError,
+        UnknownVenueSpecError,
+        PosterFigureError,
+        TextOverflowError,
+        FileNotFoundError,
+        ValueError,
+        RuntimeError,
+    ) as e:
+        return _json_result({"error": str(e), "preflight_passed": False})
+
+    return _json_result(
+        {
+            "run_dir": output.run_dir,
+            "pptx_path": output.pptx_path,
+            "pdf_path": output.pdf_path,
+            "preview_path": output.preview_path,
+            "preflight_passed": output.preflight.passed,
+            "preflight_failures": [
+                {"id": c.id, "value": c.value, "threshold": c.threshold, "detail": c.detail}
+                for c in output.preflight.failures
+            ],
+            "preflight_warnings": [
+                {"id": c.id, "detail": c.detail} for c in output.preflight.warnings
+            ],
+            "figure_decisions": {
+                d.figure_id: {"decision": d.decision, "reason": d.reason}
+                for d in output.figure_decisions
+            },
+            "iterations": output.iterations,
+            "metadata": output.metadata,
+        }
+    )
 
 
 def main():

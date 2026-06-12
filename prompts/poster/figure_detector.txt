@@ -1,0 +1,22 @@
+You are analyzing page {page_number} of an academic paper rendered as an image.
+
+Locate every FIGURE and TABLE on this page. For each one report:
+- "kind": "figure" or "table"
+- "figure_number": the label from its caption, exactly as printed (e.g. "Figure 3", "Table 1"). Use null if it has no numbered caption.
+- "caption": the full caption text, verbatim, including the label prefix.
+- "bbox": [x0, y0, x1, y1] integer coordinates on a 0-1000 grid where (0,0) is the top-left of the image and (1000,1000) the bottom-right. The box must tightly enclose the figure/table INCLUDING its caption.
+
+Rules:
+- Include plots, diagrams, architecture figures, qualitative example grids, and tables.
+- Do NOT include: equations, algorithm pseudocode blocks, inline symbols, page headers/footers, logos, or text columns.
+- If a figure spans both columns, report one box covering the full span.
+- If the same figure has sub-panels (a, b, c) under one caption, report it as ONE region.
+- Report regions top-to-bottom, left-to-right.
+
+Respond with ONLY a JSON array (no prose). If the page has no figures or tables, respond with [].
+
+Example:
+[
+  {{"kind": "figure", "figure_number": "Figure 2", "caption": "Figure 2: Overview of our two-phase pipeline.", "bbox": [62, 88, 938, 412]}},
+  {{"kind": "table", "figure_number": "Table 1", "caption": "Table 1: Main results on the benchmark.", "bbox": [510, 480, 952, 700]}}
+]

@@ -1,0 +1,32 @@
+spec_version: 1
+venue: acl
+year: 2024
+display_name: "ACL/EMNLP family (A0 portrait)"
+sources:
+  - "https://2024.emnlp.org/participants/"
+dimensions:
+  # "Posters should be A0 size (33.1 x 46.8 inches) in portrait orientation."
+  mode: exact
+  width_mm: 841.0
+  height_mm: 1189.0
+  orientation: portrait
+text_rules:
+  min_pt: {}
+  min_image_dpi: 100
+required_elements:
+  - id: paper_title
+    description: "Poster must display the paper title"
+    rule: text_level_present
+    params: { level: title }
+    severity: fail
+  - id: authors
+    description: "Poster should display the author list"
+    rule: text_level_present
+    params: { level: authors }
+    severity: warn
+file_rules: {}
+notes: >-
+  Grounded in EMNLP 2024 participant instructions; the A0-portrait convention
+  holds across recent *ACL venues. A poster PDF upload (Underline platform) is
+  typically required alongside the physical poster. Re-verify and add a new
+  year file when the next *ACL cycle publishes instructions.

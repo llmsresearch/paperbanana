@@ -1,0 +1,20 @@
+Extract bibliographic metadata from the opening pages of this academic paper.
+
+Paper text (first pages):
+---
+{first_pages_text}
+---
+
+Respond with ONLY a JSON object (no prose):
+{{
+  "title": "the full paper title",
+  "authors": ["First Author", "Second Author"],
+  "affiliations": ["Institution One", "Institution Two"],
+  "abstract": "the full abstract text, verbatim"
+}}
+
+Rules:
+- Title: the actual paper title, not a running header or the venue name.
+- Authors: every author in order; strip footnote markers and superscripts.
+- Affiliations: deduplicated institution names, in first-appearance order.
+- Abstract: the complete abstract paragraph(s); if no abstract section exists, use an empty string.
