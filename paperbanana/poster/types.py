@@ -15,7 +15,21 @@ from pydantic import BaseModel, Field, model_validator
 MM_PER_INCH = 25.4
 EMU_PER_MM = 36000
 
-TextLevel = Literal["title", "authors", "affiliation", "heading", "body", "caption", "footnote"]
+TextLevel = Literal[
+    "title",
+    "authors",
+    "affiliation",
+    "heading",
+    "body",
+    "caption",
+    "footnote",
+    "banner",
+    "big_number",
+]
+
+BandKind = Literal["header", "banner", "body", "footer"]
+
+PanelEmphasis = Literal["normal", "accent"]
 
 PanelRole = Literal[
     "header",
@@ -197,27 +211,82 @@ class QRElement(BaseModel):
     label: Optional[str] = None
 
 
-PosterElement = Annotated[Union[TextElement, FigureElement, QRElement], Field(discriminator="kind")]
+class BigNumberElement(BaseModel):
+    """A huge stat with a one-line label (the poster's eye-catcher).
+
+    The value is always grounded: it must come from the storyboard's
+    verbatim ``key_stats``, never authored by the layout proposer.
+    """
+
+    kind: Literal["big_number"] = "big_number"
+    value: str = Field(min_length=1, max_length=12)
+    label: str = Field(min_length=1, max_length=80)
+
+
+class BannerElement(BaseModel):
+    """A single-line takeaway rendered full-width on an accent background."""
+
+    kind: Literal["banner"] = "banner"
+    content: str = Field(min_length=1)
+
+
+PosterElement = Annotated[
+    Union[TextElement, FigureElement, QRElement, BigNumberElement, BannerElement],
+    Field(discriminator="kind"),
+]
+
+#: Taste guard: more callouts than this stops being emphasis.
+MAX_BIG_NUMBERS = 3
+
+
+class Band(BaseModel):
+    """A full-width horizontal region; bands stack top-to-bottom by order."""
+
+    id: str
+    kind: BandKind
+    order: int = Field(ge=0)
+    columns: int = Field(default=1, ge=1, le=6)
+    height_mm: Optional[float] = Field(
+        default=None, gt=0, description="Resolved by the placer; None until placed"
+    )
+
+
+class LayoutProvenance(BaseModel):
+    """How this layout came to be — the audit trail for learned geometry."""
+
+    proposal_index: int = 0
+    exemplar_ids: list[str] = Field(default_factory=list)
+    repairs: list[dict] = Field(default_factory=list)
+    reproposal_rounds: int = 0
+    skeleton_rank_scores: Optional[dict[str, float]] = None
 
 
 class Panel(BaseModel):
-    """One poster panel; geometry is assigned by the layout solver."""
+    """One poster panel; structure is proposed, geometry is measured/placed."""
 
     id: str
     role: PanelRole
     title: Optional[str] = None
     order: int = Field(ge=0, description="Reading order across the poster")
-    column: Optional[int] = Field(default=None, ge=0, description="Assigned by layout solver")
-    weight: float = Field(default=1.0, gt=0, description="Relative vertical share in its column")
+    band_id: str = "body"
+    column: int = Field(default=0, ge=0, description="Leftmost occupied column in its band")
+    col_span: int = Field(default=1, ge=1)
+    emphasis: PanelEmphasis = "normal"
+    weight: float = Field(default=1.0, gt=0, description="Measured content height cache (mm)")
     bbox: Optional[BBox] = None
     z: int = 0
     elements: list[PosterElement] = Field(min_length=1)
 
 
 class PosterIR(BaseModel):
-    """Editable intermediate representation of a poster (schema v1)."""
+    """Editable intermediate representation of a poster (schema v2).
 
-    schema_version: int = 1
+    v2 replaces the single global column grid with stacked *bands*, each
+    with its own column count; panels may span columns. Load v1 payloads
+    through :func:`paperbanana.poster.migrate.load_poster_ir`.
+    """
+
+    schema_version: int = 2
     venue: str
     venue_spec_year: int
     size: PhysicalSize
@@ -234,9 +303,10 @@ class PosterIR(BaseModel):
         ),
     )
     target_dpi: int = Field(default=300, gt=0)
-    columns: int = Field(default=3, ge=1, le=6)
     margin_mm: float = Field(default=20.0, ge=0)
     gutter_mm: float = Field(default=10.0, ge=0)
+    bands: list[Band] = Field(min_length=1)
+    layout_provenance: Optional[LayoutProvenance] = None
     style: StyleTokens
     panels: list[Panel] = Field(min_length=1)
     assets: dict[str, FigureAsset] = Field(default_factory=dict)
@@ -251,6 +321,7 @@ class PosterIR(BaseModel):
                 f"orientation '{self.orientation}' contradicts size "
                 f"{self.size.width_mm}x{self.size.height_mm}mm"
             )
+        self._validate_bands()
         panel_ids = [p.id for p in self.panels]
         if len(panel_ids) != len(set(panel_ids)):
             raise ValueError(f"duplicate panel ids: {panel_ids}")
@@ -260,12 +331,7 @@ class PosterIR(BaseModel):
         for asset_id, asset in self.assets.items():
             if asset.id != asset_id:
                 raise ValueError(f"asset key '{asset_id}' != asset.id '{asset.id}'")
-        for panel in self.panels:
-            for element in panel.elements:
-                if isinstance(element, FigureElement) and element.asset_id not in self.assets:
-                    raise ValueError(
-                        f"panel '{panel.id}' references unknown asset '{element.asset_id}'"
-                    )
+        self._validate_elements()
         placed = [p for p in self.panels if p.bbox is not None]
         for panel in placed:
             box = panel.bbox
@@ -282,6 +348,89 @@ class PosterIR(BaseModel):
                 if a.z == b.z and a.bbox.overlaps(b.bbox):
                     raise ValueError(f"panels '{a.id}' and '{b.id}' overlap at z={a.z}")
         return self
+
+    def _validate_bands(self) -> None:
+        band_ids = [b.id for b in self.bands]
+        if len(band_ids) != len(set(band_ids)):
+            raise ValueError(f"duplicate band ids: {band_ids}")
+        band_orders = [b.order for b in self.bands]
+        if len(band_orders) != len(set(band_orders)):
+            raise ValueError(f"duplicate band orders: {band_orders}")
+        headers = [b for b in self.bands if b.kind == "header"]
+        if len(headers) != 1:
+            raise ValueError(f"exactly one header band required, found {len(headers)}")
+        ordered = sorted(self.bands, key=lambda b: b.order)
+        if ordered[0].kind != "header":
+            raise ValueError("the header band must be the topmost band")
+        banners = [b for b in self.bands if b.kind == "banner"]
+        if len(banners) > 1:
+            raise ValueError("at most one banner band is allowed")
+        footers = [b for b in self.bands if b.kind == "footer"]
+        if footers and ordered[-1].kind != "footer":
+            raise ValueError("the footer band must be the bottommost band")
+        for band in self.bands:
+            if band.kind != "body" and band.columns != 1:
+                raise ValueError(f"band '{band.id}' ({band.kind}) must have columns=1")
+        by_id = {b.id: b for b in self.bands}
+        for panel in self.panels:
+            band = by_id.get(panel.band_id)
+            if band is None:
+                raise ValueError(f"panel '{panel.id}' references unknown band '{panel.band_id}'")
+            if panel.column + panel.col_span > band.columns:
+                raise ValueError(
+                    f"panel '{panel.id}' occupies columns "
+                    f"[{panel.column}, {panel.column + panel.col_span}) but band "
+                    f"'{band.id}' has only {band.columns} columns"
+                )
+        for band in self.bands:
+            members = [p for p in self.panels if p.band_id == band.id]
+            if band.kind in ("header", "banner", "footer"):
+                if len(members) != 1:
+                    raise ValueError(
+                        f"band '{band.id}' ({band.kind}) must hold exactly one panel, "
+                        f"found {len(members)}"
+                    )
+                if members[0].col_span != band.columns or members[0].column != 0:
+                    raise ValueError(
+                        f"panel '{members[0].id}' in {band.kind} band must span the full band"
+                    )
+            elif not members:
+                raise ValueError(f"body band '{band.id}' has no panels")
+
+    def _validate_elements(self) -> None:
+        banner_band_ids = {b.id for b in self.bands if b.kind == "banner"}
+        big_numbers = 0
+        used_levels: set[str] = set()
+        for panel in self.panels:
+            for element in panel.elements:
+                if isinstance(element, FigureElement) and element.asset_id not in self.assets:
+                    raise ValueError(
+                        f"panel '{panel.id}' references unknown asset '{element.asset_id}'"
+                    )
+                if isinstance(element, BannerElement) and panel.band_id not in banner_band_ids:
+                    raise ValueError(
+                        f"panel '{panel.id}' has a banner element outside a banner band"
+                    )
+                if isinstance(element, BigNumberElement):
+                    big_numbers += 1
+                    used_levels.update(("big_number", "body"))
+                if isinstance(element, BannerElement):
+                    used_levels.add("banner")
+                if isinstance(element, TextElement):
+                    used_levels.add(element.level)
+        if big_numbers > MAX_BIG_NUMBERS:
+            raise ValueError(
+                f"{big_numbers} big-number callouts exceed the maximum of {MAX_BIG_NUMBERS}"
+            )
+        missing = used_levels - set(self.style.type_scale_pt)
+        if missing:
+            raise ValueError(f"type_scale_pt missing sizes for used levels: {sorted(missing)}")
+
+    def band(self, band_id: str) -> Band:
+        return next(b for b in self.bands if b.id == band_id)
+
+    def bands_in_order(self) -> list[Band]:
+        return sorted(self.bands, key=lambda b: b.order)
 
     def panels_in_order(self) -> list[Panel]:
         return sorted(self.panels, key=lambda p: p.order)
@@ -347,12 +496,29 @@ class StoryboardPanel(BaseModel):
     )
 
 
+class KeyStat(BaseModel):
+    """A verbatim headline number from the paper, candidate for a callout."""
+
+    id: str
+    value: str = Field(min_length=1, max_length=12, description="Verbatim from the paper")
+    label: str = Field(min_length=1, max_length=80)
+    source_panel: str
+
+
 class Storyboard(BaseModel):
     """Content agent output: panel plan plus layout hints."""
 
     panels: list[StoryboardPanel] = Field(min_length=1)
     columns: int = Field(default=3, ge=1, le=6)
     qr_url: Optional[str] = None
+    takeaway: Optional[str] = Field(
+        default=None, description="One-sentence banner candidate, grounded in the paper"
+    )
+    key_stats: list[KeyStat] = Field(
+        default_factory=list,
+        max_length=4,
+        description="Verbatim headline numbers; the only permitted callout sources",
+    )
     new_figure_briefs: dict[str, str] = Field(
         default_factory=dict,
         description=(

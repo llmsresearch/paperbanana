@@ -1,4 +1,4 @@
-"""Shared fixtures for poster tests."""
+"""Shared fixtures for poster tests (IR schema v2)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 from paperbanana.poster.types import (
+    Band,
     BBox,
     FigureAsset,
     FigureElement,
@@ -41,6 +42,8 @@ def style_tokens() -> StyleTokens:
             "body": 28,
             "caption": 20,
             "footnote": 16,
+            "banner": 48,
+            "big_number": 96,
         },
     )
 
@@ -65,18 +68,31 @@ def figure_asset(tmp_path: Path) -> FigureAsset:
     )
 
 
+def default_bands(columns: int = 3) -> list[Band]:
+    return [
+        Band(id="header", kind="header", order=0, columns=1),
+        Band(id="body", kind="body", order=1, columns=columns),
+    ]
+
+
 def make_panel(
     panel_id: str,
     order: int,
     role: str = "method",
     bbox: BBox | None = None,
     elements: list | None = None,
+    band_id: str = "body",
+    column: int = 0,
+    col_span: int = 1,
 ) -> Panel:
     return Panel(
         id=panel_id,
         role=role,
         title=panel_id.title(),
         order=order,
+        band_id=band_id,
+        column=column,
+        col_span=col_span,
         bbox=bbox,
         elements=elements or [TextElement(level="body", content=f"Content of {panel_id}")],
     )
@@ -90,7 +106,7 @@ def poster_ir(style_tokens: StyleTokens, figure_asset: FigureAsset) -> PosterIR:
         venue_spec_year=2025,
         size=PhysicalSize(width_mm=1219.2, height_mm=914.4),
         orientation="landscape",
-        columns=3,
+        bands=default_bands(columns=3),
         style=style_tokens,
         assets={"fig1": figure_asset},
         paper_title="A Sample Paper Title",
@@ -101,6 +117,7 @@ def poster_ir(style_tokens: StyleTokens, figure_asset: FigureAsset) -> PosterIR:
                 "header",
                 0,
                 role="header",
+                band_id="header",
                 bbox=BBox(x_mm=20, y_mm=20, w_mm=1179.2, h_mm=120),
                 elements=[
                     TextElement(level="title", content="A Sample Paper Title"),
@@ -111,6 +128,7 @@ def poster_ir(style_tokens: StyleTokens, figure_asset: FigureAsset) -> PosterIR:
                 "method",
                 1,
                 role="method",
+                column=0,
                 bbox=BBox(x_mm=20, y_mm=150, w_mm=380, h_mm=700),
                 elements=[
                     TextElement(level="heading", content="Method"),
@@ -122,12 +140,14 @@ def poster_ir(style_tokens: StyleTokens, figure_asset: FigureAsset) -> PosterIR:
                 "results",
                 2,
                 role="results",
+                column=1,
                 bbox=BBox(x_mm=410, y_mm=150, w_mm=380, h_mm=700),
             ),
             make_panel(
                 "conclusion",
                 3,
                 role="conclusion",
+                column=2,
                 bbox=BBox(x_mm=800, y_mm=150, w_mm=399.2, h_mm=700),
             ),
         ],

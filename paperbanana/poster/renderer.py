@@ -17,6 +17,8 @@ from matplotlib import font_manager
 from PIL import Image, ImageFont
 
 from paperbanana.poster.types import (
+    BannerElement,
+    BigNumberElement,
     FigureElement,
     Panel,
     PosterElement,
@@ -141,10 +143,20 @@ def resolve_figure_placement(
 
 
 def measure_panel_required_height_mm(panel: Panel, ir: PosterIR) -> float:
-    """Total inner height the panel's content requires, in mm."""
+    """Total inner height the panel's content requires, in mm (placed panel)."""
     if panel.bbox is None:
         raise ValueError(f"panel '{panel.id}' has no bbox; run the layout solver first")
-    inner_w = panel.bbox.w_mm - 2 * PANEL_PADDING_MM
+    return measure_panel_required_at_width(panel, ir, panel.bbox.w_mm)
+
+
+def measure_panel_required_at_width(panel: Panel, ir: PosterIR, panel_width_mm: float) -> float:
+    """Content height at a given panel width — usable before placement.
+
+    Figure heights are width-driven; the ``max_height_frac`` clamp (which
+    needs a placed height) is approximated by the unclamped width-bound
+    size here, which is the safe upper bound.
+    """
+    inner_w = panel_width_mm - 2 * PANEL_PADDING_MM
     required = 0.0
     if panel.title and panel.role != "header":
         required += (
@@ -154,24 +166,37 @@ def measure_panel_required_height_mm(panel: Panel, ir: PosterIR) -> float:
             + ELEMENT_GAP_MM
         )
     for element in panel.elements:
-        required += _element_height_mm(panel, element, ir, inner_w) + ELEMENT_GAP_MM
+        required += _element_height_at_width(panel, element, ir, inner_w) + ELEMENT_GAP_MM
     if required > 0:
         required -= ELEMENT_GAP_MM  # no gap after the last element
     return required * MEASURE_SAFETY
 
 
 def _element_height_mm(panel: Panel, element: PosterElement, ir: PosterIR, inner_w: float) -> float:
+    return _element_height_at_width(panel, element, ir, inner_w)
+
+
+def _element_height_at_width(
+    panel: Panel, element: PosterElement, ir: PosterIR, inner_w: float
+) -> float:
     if isinstance(element, TextElement):
         family = (
-            ir.style.font_heading if element.level in ("title", "heading") else ir.style.font_body
+            ir.style.font_heading
+            if element.level in ("title", "heading", "banner", "big_number")
+            else ir.style.font_body
         )
         return measure_text_height_mm(
             element.content, family, ir.style.type_scale_pt[element.level], inner_w
         )
     if isinstance(element, FigureElement):
         asset = ir.assets[element.asset_id]
-        placement = resolve_figure_placement(panel, element, asset.width_px, asset.height_px)
-        height = placement.height_mm
+        if panel.bbox is not None:
+            placement = resolve_figure_placement(panel, element, asset.width_px, asset.height_px)
+            height = placement.height_mm
+        else:
+            # Pre-placement: width-bound size (the max_height_frac clamp
+            # needs a placed height; the unclamped bound is the safe one).
+            height = inner_w * asset.height_px / asset.width_px
         if element.caption:
             height += ELEMENT_GAP_MM / 2 + measure_text_height_mm(
                 element.caption, ir.style.font_body, ir.style.type_scale_pt["caption"], inner_w
@@ -184,6 +209,18 @@ def _element_height_mm(panel: Panel, element: PosterElement, ir: PosterIR, inner
                 element.label, ir.style.font_body, ir.style.type_scale_pt["caption"], inner_w
             )
         return height
+    if isinstance(element, BigNumberElement):
+        height = measure_text_height_mm(
+            element.value, ir.style.font_heading, ir.style.type_scale_pt["big_number"], inner_w
+        )
+        height += ELEMENT_GAP_MM / 2 + measure_text_height_mm(
+            element.label, ir.style.font_body, ir.style.type_scale_pt["body"], inner_w
+        )
+        return height
+    if isinstance(element, BannerElement):
+        return measure_text_height_mm(
+            element.content, ir.style.font_heading, ir.style.type_scale_pt["banner"], inner_w
+        )
     raise TypeError(f"unknown element kind: {element!r}")
 
 
@@ -255,8 +292,13 @@ def render_pptx(ir: PosterIR, out_path: Path, workdir: Path) -> Path:
         box = panel.bbox
         assert box is not None
         is_header = panel.role == "header"
-        panel_bg = "primary" if is_header else "panel_bg"
-        text_token = "background" if is_header else "text"
+        is_accent = panel.emphasis == "accent" or any(el.kind == "banner" for el in panel.elements)
+        if is_header:
+            panel_bg, text_token = "primary", "background"
+        elif is_accent:
+            panel_bg, text_token = "accent", "background"
+        else:
+            panel_bg, text_token = "panel_bg", "text"
 
         shape = slide.shapes.add_shape(
             1,
@@ -301,7 +343,11 @@ def render_pptx(ir: PosterIR, out_path: Path, workdir: Path) -> Path:
         ) -> float:
             nonlocal cursor_y
             size_pt = ir.style.type_scale_pt[level]
-            family = ir.style.font_heading if level in ("title", "heading") else ir.style.font_body
+            family = (
+                ir.style.font_heading
+                if level in ("title", "heading", "banner", "big_number")
+                else ir.style.font_body
+            )
             height_mm = measure_text_height_mm(content, family, size_pt, w_mm) * MEASURE_SAFETY
             top = cursor_y if y_mm is None else y_mm
             tb = slide.shapes.add_textbox(
@@ -366,6 +412,12 @@ def render_pptx(ir: PosterIR, out_path: Path, workdir: Path) -> Path:
                 cursor_y += QR_SIZE_MM + gap_mm / 2
                 if element.label:
                     add_text(element.label, "caption", align_center=True)
+            elif isinstance(element, BigNumberElement):
+                value_color = "background" if (is_header or is_accent) else "primary"
+                add_text(element.value, "big_number", align_center=True, text_color=value_color)
+                add_text(element.label, "body", align_center=True)
+            elif isinstance(element, BannerElement):
+                add_text(element.content, "banner", align_center=True)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out_path))

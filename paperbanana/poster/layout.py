@@ -1,210 +1,207 @@
-"""Deterministic poster layout solver.
+"""Deterministic skyline placement for proposed band/column structures.
 
-The content agent decides *what* goes on the poster and in which reading
-order; this module decides *where*. Geometry is never produced by a
-model, so layout invariants (no overlap, page bounds, margins) hold by
-construction.
+v4 division of labor: the *structure* of a poster (bands, columns per
+band, panel membership, spans, emphasis) is LEARNED — proposed by the
+LayoutProposerAgent grounded in real-poster exemplars. This module is
+pure mechanism: it turns a structure plus measured content heights into
+exact millimetre geometry. It makes no design decisions; the packing
+heuristics of v1-v3 (balanced column splitting, escalation) are gone.
 
-Algorithm: the ``header`` panel spans the full content width at the top;
-remaining panels fill ``columns`` columns in reading order, each column
-receiving a contiguous run of panels whose cumulative weight approaches
-the per-column average. Within a column, panel heights are proportional
-to their weights.
+Placement model:
+- Bands stack top-to-bottom in band order.
+- header/banner/footer bands: one full-width panel, height = measured.
+- body bands: equal-width columns with per-column y-cursors (a skyline);
+  panels in reading order; a panel spanning columns [c, c+s) sits at
+  ``max(cursor[c:c+s])`` and advances all spanned cursors. Heights are
+  measured content + padding + bounded growth.
+- Residual page slack stretches body bands proportionally to their
+  loads; inside panels, the renderer's justification distributes it.
+
+Overflow (the stack exceeding the page) raises :class:`BandOverflowError`
+with per-column loads — feedback for text shortening or a structural
+re-proposal, never silently absorbed.
 """
 
 from __future__ import annotations
 
+from pydantic import BaseModel
+
 from paperbanana.poster.types import BBox, Panel, PosterIR
 
-#: Fraction of page height reserved for the header band by default.
-DEFAULT_HEADER_FRAC = 0.13
+#: Maximum growth of a panel beyond its measured content height.
+MAX_PANEL_GROWTH_FRAC = 0.25
+#: Banner bands are emphasis, not content: cap them at this page fraction.
+MAX_BANNER_FRAC = 0.08
 
 
 class LayoutError(ValueError):
     """Raised when the requested layout is geometrically impossible."""
 
 
-def body_column_height_mm(ir: PosterIR, header_frac: float = DEFAULT_HEADER_FRAC) -> float:
-    """Vertical space available to each body column, in mm."""
-    content_h = ir.size.height_mm - 2 * ir.margin_mm
-    header_h = content_h * header_frac
-    body_top = ir.margin_mm + header_h + ir.gutter_mm
-    return ir.size.height_mm - ir.margin_mm - body_top
+class ColumnLoad(BaseModel):
+    """Measured load of one column in one band, for overflow feedback."""
+
+    band_id: str
+    column: int
+    required_mm: float
+    available_mm: float
 
 
-def assign_bboxes(
-    ir: PosterIR,
-    header_frac: float = DEFAULT_HEADER_FRAC,
-    column_capacity_mm: float | None = None,
-) -> PosterIR:
-    """Return a copy of the IR with every panel placed.
+class BandOverflowError(LayoutError):
+    """The proposed structure cannot fit the measured content on the page."""
+
+    def __init__(self, overflows: list[ColumnLoad], page_deficit_mm: float):
+        self.overflows = overflows
+        self.page_deficit_mm = page_deficit_mm
+        details = "; ".join(
+            f"band '{o.band_id}' col {o.column}: needs {o.required_mm:.0f}mm "
+            f"of {o.available_mm:.0f}mm"
+            for o in overflows
+        )
+        super().__init__(
+            f"proposed layout overflows the page by {page_deficit_mm:.0f}mm "
+            f"({details or 'total band stack too tall'})"
+        )
+
+
+def place_bands(ir: PosterIR, measured_mm: dict[str, float]) -> PosterIR:
+    """Return a copy of the IR with every band sized and every panel placed.
 
     Args:
-        ir: Poster IR; panel ``order`` and ``weight`` drive placement.
-        header_frac: Vertical fraction of the page given to the header band.
-        column_capacity_mm: When set, panel weights are treated as physical
-            heights (mm) and columns are packed first-fit against this
-            capacity instead of weight-balanced — used by the content
-            fitter, where weights are measured content heights.
+        ir: Poster IR with band structure set (bboxes may be stale/None).
+        measured_mm: Panel id -> measured content height at that panel's
+            placed width (excluding padding), from the renderer's font
+            metrics.
 
     Raises:
-        LayoutError: If there is no header panel, no body panels, or the
-            page/margins/columns leave no positive content area.
+        LayoutError: Structural impossibility (no content area, missing
+            measurements).
+        BandOverflowError: Content cannot fit; carries per-column loads.
     """
-    if not 0.0 < header_frac < 0.5:
-        raise LayoutError(f"header_frac must be in (0, 0.5), got {header_frac}")
-
-    panels = sorted((p.model_copy(deep=True) for p in ir.panels), key=lambda p: p.order)
-    headers = [p for p in panels if p.role == "header"]
-    if len(headers) != 1:
-        raise LayoutError(f"layout requires exactly one header panel, found {len(headers)}")
-    header = headers[0]
-    body = [p for p in panels if p.role != "header"]
-    if not body:
-        raise LayoutError("layout requires at least one non-header panel")
+    panels = [p.model_copy(deep=True) for p in ir.panels]
+    for panel in panels:
+        if panel.id not in measured_mm:
+            raise LayoutError(f"no measurement for panel '{panel.id}'")
 
     content_w = ir.size.width_mm - 2 * ir.margin_mm
-    content_h = ir.size.height_mm - 2 * ir.margin_mm
-    if content_w <= 0 or content_h <= 0:
+    page_h = ir.size.height_mm
+    if content_w <= 0 or page_h - 2 * ir.margin_mm <= 0:
         raise LayoutError(
             f"margins {ir.margin_mm}mm leave no content area on a "
             f"{ir.size.width_mm}x{ir.size.height_mm}mm page"
         )
 
-    header_h = content_h * header_frac
-    header.bbox = BBox(x_mm=ir.margin_mm, y_mm=ir.margin_mm, w_mm=content_w, h_mm=header_h)
-    header.column = None
+    from paperbanana.poster.renderer import PANEL_PADDING_MM
 
-    body_top = ir.margin_mm + header_h + ir.gutter_mm
-    body_h = ir.size.height_mm - ir.margin_mm - body_top
-    col_w = (content_w - (ir.columns - 1) * ir.gutter_mm) / ir.columns
-    if col_w <= 0 or body_h <= 0:
-        raise LayoutError(
-            f"{ir.columns} columns with {ir.gutter_mm}mm gutters do not fit in "
-            f"{content_w:.0f}x{body_h:.0f}mm of body space"
-        )
+    bands = sorted((b.model_copy(deep=True) for b in ir.bands), key=lambda b: b.order)
+    by_band: dict[str, list[Panel]] = {
+        b.id: sorted([p for p in panels if p.band_id == b.id], key=lambda p: p.order) for b in bands
+    }
 
-    columns = _split_into_columns(
-        body, ir.columns, capacity=column_capacity_mm, gutter_mm=ir.gutter_mm
-    )
-    for col_index, col_panels in enumerate(columns):
-        x = ir.margin_mm + col_index * (col_w + ir.gutter_mm)
-        gutters = ir.gutter_mm * (len(col_panels) - 1)
-        usable_h = body_h - gutters
-        if usable_h <= 0:
-            raise LayoutError(
-                f"column {col_index} cannot fit {len(col_panels)} panels with "
-                f"{ir.gutter_mm}mm gutters in {body_h:.0f}mm"
-            )
-        heights, extra_gap = _column_heights(
-            [p.weight for p in col_panels], usable_h, capacity_mode=column_capacity_mm is not None
-        )
-        y = body_top
-        for i, panel in enumerate(col_panels):
-            h = heights[i]
-            if i == len(col_panels) - 1:
-                # Snap to the bottom margin only to absorb drift/minor
-                # remainders — never stretch a lone small panel into a
-                # giant near-empty box.
-                bottom_h = ir.size.height_mm - ir.margin_mm - y
-                if bottom_h <= h * 1.1 + 1.0:
-                    h = bottom_h
-            panel.bbox = BBox(x_mm=x, y_mm=y, w_mm=col_w, h_mm=h)
-            panel.column = col_index
-            y += h + ir.gutter_mm + extra_gap
-
-    placed = {p.id: p for p in [header, *[p for col in columns for p in col]]}
-    return ir.model_copy(update={"panels": [placed[p.id] for p in panels]})
-
-
-#: Maximum growth of a panel beyond its measured content height (capacity mode).
-MAX_PANEL_GROWTH_FRAC = 0.25
-
-
-def _column_heights(
-    weights: list[float], usable_h: float, capacity_mode: bool
-) -> tuple[list[float], float]:
-    """Panel heights for one column, plus extra inter-panel spacing.
-
-    Balanced mode (weights are relative): proportional fill of the column.
-
-    Capacity mode (weights are measured content heights in mm): panels get
-    their content height plus bounded growth; remaining slack becomes
-    evenly distributed extra spacing between panels, so columns stay
-    bottom-aligned without inflating boxes far beyond their content —
-    the fix for v1's stretched, half-empty panels.
-    """
-    total = sum(weights)
-    n = len(weights)
-    if not capacity_mode or total >= usable_h:
-        return [usable_h * w / total for w in weights], 0.0
-    if n == 1:
-        # A lone panel keeps near-content size; whitespace below beats a
-        # stretched, mostly-empty box.
-        return [min(usable_h, weights[0] * (1 + 2 * MAX_PANEL_GROWTH_FRAC))], 0.0
-    slack = usable_h - total
-    heights = [w + min(w * MAX_PANEL_GROWTH_FRAC, slack * w / total) for w in weights]
-    leftover = usable_h - sum(heights)
-    extra_gap = max(0.0, leftover / (n - 1))
-    return heights, extra_gap
-
-
-def _split_into_columns(
-    body: list[Panel],
-    n_columns: int,
-    capacity: float | None = None,
-    gutter_mm: float = 0.0,
-) -> list[list[Panel]]:
-    """Split panels (already in reading order) into contiguous column runs.
-
-    Without ``capacity``: greedy weight balancing — a column closes once
-    its cumulative weight reaches the per-column average.
-
-    With ``capacity``: weights are physical heights (mm); columns balance
-    toward the per-column average load like real posters do, but also
-    close early when adding the *next* panel (plus its gutter) would
-    exceed the physical capacity. Pure first-fit-to-capacity is wrong
-    here: it packs the left columns tight and strands light panels in a
-    sparse right column. Forced closes (to leave one panel per remaining
-    column) can still overshoot — the content fitter detects that as
-    overflow.
-    """
-    if len(body) < n_columns:
-        raise LayoutError(
-            f"{len(body)} body panels cannot fill {n_columns} columns; "
-            "reduce columns or merge panels"
-        )
-    total = sum(p.weight for p in body)
-    target = total / n_columns
-    if capacity is not None:
-        # Average load including the gutters that join panels in a column.
-        target = (total + gutter_mm * max(0, len(body) - n_columns)) / n_columns
-    columns: list[list[Panel]] = []
-    current: list[Panel] = []
-    acc = 0.0
-    for i, panel in enumerate(body):
-        current.append(panel)
-        # Gutters count against physical capacity but not weight balance.
-        acc += panel.weight + (gutter_mm if capacity is not None and len(current) > 1 else 0.0)
-        remaining = len(body) - i - 1
-        cols_after_close = n_columns - len(columns) - 1
-        if cols_after_close == 0:
-            continue  # final column takes everything left
-        # Always close when the remaining panels are only just enough to
-        # give each remaining column one panel.
-        must_close = remaining == cols_after_close
-        if capacity is not None:
-            next_burst = remaining > 0 and acc + gutter_mm + body[i + 1].weight > capacity
-            should_close = next_burst or acc >= target
+    # Pass 1 — natural band heights from measured content.
+    band_heights: dict[str, float] = {}
+    band_column_loads: dict[str, list[float]] = {}
+    for band in bands:
+        members = by_band[band.id]
+        if band.kind in ("header", "banner", "footer"):
+            height = measured_mm[members[0].id] + 2 * PANEL_PADDING_MM
+            if band.kind == "banner":
+                height = min(height, page_h * MAX_BANNER_FRAC)
+            band_heights[band.id] = height
+            band_column_loads[band.id] = [height]
         else:
-            should_close = acc >= target
-        if remaining > 0 and (must_close or should_close):
-            columns.append(current)
-            current, acc = [], 0.0
-    if current:
-        columns.append(current)
-    if len(columns) != n_columns:
-        raise LayoutError(
-            f"internal layout error: produced {len(columns)} columns for {n_columns} requested"
-        )
-    return columns
+            cursors = [0.0] * band.columns
+            for panel in members:
+                start, end = panel.column, panel.column + panel.col_span
+                y = max(cursors[start:end])
+                if y > 0:
+                    y += ir.gutter_mm
+                h = measured_mm[panel.id] + 2 * PANEL_PADDING_MM
+                panel.weight = max(0.1, round(measured_mm[panel.id], 1))
+                bottom = y + h
+                for c in range(start, end):
+                    cursors[c] = bottom
+            band_heights[band.id] = max(cursors)
+            band_column_loads[band.id] = cursors
+
+    total_gutters = ir.gutter_mm * (len(bands) - 1)
+    natural_total = sum(band_heights.values()) + total_gutters
+    available_total = page_h - 2 * ir.margin_mm
+    if natural_total > available_total + 0.1:
+        deficit = natural_total - available_total
+        overflows = [
+            ColumnLoad(
+                band_id=band.id,
+                column=c,
+                required_mm=load,
+                available_mm=max(0.0, band_heights[band.id] - deficit),
+            )
+            for band in bands
+            for c, load in enumerate(band_column_loads[band.id])
+            if band.kind == "body"
+        ]
+        worst = sorted(overflows, key=lambda o: -o.required_mm)[:6]
+        raise BandOverflowError(worst, deficit)
+
+    # Pass 2 — distribute page slack to body bands proportionally to load.
+    slack = available_total - natural_total
+    body_ids = [b.id for b in bands if b.kind == "body"]
+    body_total = sum(band_heights[b] for b in body_ids) or 1.0
+    final_heights = dict(band_heights)
+    for band_id in body_ids:
+        final_heights[band_id] += slack * (band_heights[band_id] / body_total)
+
+    # Pass 3 — place panels with exact geometry.
+    y_band = ir.margin_mm
+    for band in bands:
+        members = by_band[band.id]
+        band_h = final_heights[band.id]
+        band.height_mm = round(band_h, 2)
+        if band.kind in ("header", "banner", "footer"):
+            members[0].bbox = BBox(x_mm=ir.margin_mm, y_mm=y_band, w_mm=content_w, h_mm=band_h)
+            members[0].column = 0
+        else:
+            col_w = (content_w - (band.columns - 1) * ir.gutter_mm) / band.columns
+            if col_w <= 0:
+                raise LayoutError(
+                    f"band '{band.id}': {band.columns} columns with {ir.gutter_mm}mm "
+                    f"gutters do not fit in {content_w:.0f}mm"
+                )
+            stretch = band_h / band_heights[band.id] if band_heights[band.id] > 0 else 1.0
+            cursors = [y_band] * band.columns
+            for panel in members:
+                start, end = panel.column, panel.column + panel.col_span
+                y = max(cursors[start:end])
+                if y > y_band:
+                    y += ir.gutter_mm
+                natural_h = measured_mm[panel.id] + 2 * PANEL_PADDING_MM
+                h = min(natural_h * stretch, natural_h * (1 + MAX_PANEL_GROWTH_FRAC))
+                width = col_w * panel.col_span + ir.gutter_mm * (panel.col_span - 1)
+                panel.bbox = BBox(
+                    x_mm=ir.margin_mm + start * (col_w + ir.gutter_mm),
+                    y_mm=y,
+                    w_mm=width,
+                    h_mm=h,
+                )
+                bottom = y + h
+                for c in range(start, end):
+                    cursors[c] = bottom
+        y_band += band_h + ir.gutter_mm
+
+    placed = {p.id: p for plist in by_band.values() for p in plist}
+    return ir.model_copy(
+        update={
+            "panels": [placed[p.id] for p in ir.panels],
+            "bands": bands,
+        }
+    )
+
+
+def panel_width_mm(ir: PosterIR, panel: Panel) -> float:
+    """Physical width a panel will occupy, derivable before placement."""
+    band = ir.band(panel.band_id)
+    content_w = ir.size.width_mm - 2 * ir.margin_mm
+    if band.kind != "body":
+        return content_w
+    col_w = (content_w - (band.columns - 1) * ir.gutter_mm) / band.columns
+    return col_w * panel.col_span + ir.gutter_mm * (panel.col_span - 1)

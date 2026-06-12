@@ -103,12 +103,15 @@ def test_overflow_raises(poster_ir: PosterIR):
 
 
 def _cvpr_ir(style_tokens, print_scale: int) -> PosterIR:
+    from .conftest import default_bands
+
     return PosterIR(
         venue="cvpr",
         venue_spec_year=2025,
         size=PhysicalSize(width_mm=2133.6, height_mm=1066.8),  # 84in > 56in pptx cap
         orientation="landscape",
         print_scale=print_scale,
+        bands=default_bands(columns=1),
         style=style_tokens,
         paper_title="X",
         panels=[
@@ -116,6 +119,7 @@ def _cvpr_ir(style_tokens, print_scale: int) -> PosterIR:
                 "header",
                 0,
                 role="header",
+                band_id="header",
                 bbox=BBox(x_mm=10, y_mm=10, w_mm=2000, h_mm=150),
                 elements=[TextElement(level="title", content="X")],
             ),

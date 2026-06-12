@@ -36,6 +36,8 @@ DEFAULT_LEGIBILITY_MIN_PT: dict[TextLevel, float] = {
     "body": 24,
     "caption": 18,
     "footnote": 14,
+    "banner": 40,
+    "big_number": 64,
 }
 
 #: Dimension tolerance for 'exact' venue sizes, in mm.
@@ -58,6 +60,7 @@ def run_preflight(
     checks.extend(_check_text_overflow(ir))
     checks.extend(_check_contrast(ir))
     checks.extend(_check_caption_anchoring(ir))
+    checks.append(_check_callout_count(ir))
     checks.extend(_check_faithfulness(ir))
     if pdf_path is not None:
         checks.append(_check_pdf_size(pdf_path, spec))
@@ -272,8 +275,13 @@ def _check_contrast(ir: PosterIR) -> list[PreflightCheck]:
     checks = []
     for panel in ir.panels:
         is_header = panel.role == "header"
-        fg = ir.style.palette["background" if is_header else "text"]
-        bg = ir.style.palette["primary" if is_header else "panel_bg"]
+        is_accent = panel.emphasis == "accent" or any(el.kind == "banner" for el in panel.elements)
+        if is_header:
+            fg, bg = ir.style.palette["background"], ir.style.palette["primary"]
+        elif is_accent:
+            fg, bg = ir.style.palette["background"], ir.style.palette["accent"]
+        else:
+            fg, bg = ir.style.palette["text"], ir.style.palette["panel_bg"]
         ratio = contrast_ratio(fg, bg)
         sizes = [
             ir.style.type_scale_pt[el.level] for el in panel.elements if isinstance(el, TextElement)
@@ -293,6 +301,25 @@ def _check_contrast(ir: PosterIR) -> list[PreflightCheck]:
             )
         )
     return checks
+
+
+def _check_callout_count(ir: PosterIR) -> PreflightCheck:
+    from paperbanana.poster.types import MAX_BIG_NUMBERS
+
+    count = sum(1 for panel in ir.panels for el in panel.elements if el.kind == "big_number")
+    if count > MAX_BIG_NUMBERS:
+        status = "fail"
+    elif count == MAX_BIG_NUMBERS:
+        status = "warn"
+    else:
+        status = "pass"
+    return PreflightCheck(
+        id="callout_count",
+        status=status,
+        value=str(count),
+        threshold=f"<= {MAX_BIG_NUMBERS}",
+        detail="big-number callouts lose impact beyond a couple per poster",
+    )
 
 
 def _check_caption_anchoring(ir: PosterIR) -> list[PreflightCheck]:

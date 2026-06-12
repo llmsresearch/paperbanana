@@ -18,8 +18,9 @@ from PIL import Image
 from pydantic import BaseModel, Field
 
 from paperbanana.core.utils import extract_json
+from paperbanana.poster.migrate import load_poster_ir
 from paperbanana.poster.preflight import run_preflight
-from paperbanana.poster.types import PosterIR, PreflightReport
+from paperbanana.poster.types import PreflightReport
 from paperbanana.poster.venue_spec import load_venue_spec
 
 logger = structlog.get_logger()
@@ -116,7 +117,7 @@ async def evaluate_poster(
         ir_path = Path(run_dir) / "poster_ir.json"
         if not ir_path.is_file():
             raise FileNotFoundError(f"no poster_ir.json in {run_dir}; cannot check compliance")
-        ir = PosterIR(**json.loads(ir_path.read_text(encoding="utf-8")))
+        ir = load_poster_ir(json.loads(ir_path.read_text(encoding="utf-8")))
         spec = load_venue_spec(ir.venue, ir.venue_spec_year, extra_dir=venue_spec_dir)
         pdf_path = Path(run_dir) / "poster.pdf"
         compliance = run_preflight(

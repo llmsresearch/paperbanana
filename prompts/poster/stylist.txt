@@ -37,8 +37,10 @@ Respond with ONLY a JSON object:
     "heading": 44,
     "body": 28,
     "caption": 20,
-    "footnote": 16
+    "footnote": 16,
+    "banner": 48,
+    "big_number": 96
   }}
 }}
 
-Scale the type to the poster: titles around 72-90pt, body 26-32pt. All seven levels are required.
+Scale the type to the poster: titles around 72-90pt, body 26-32pt, banner (one-line takeaway strip) 44-56pt, big_number (headline stat callout) 90-140pt. All nine levels are required.

@@ -68,8 +68,60 @@ class RecurateFigure(BaseModel):
     note: str
 
 
+class SetEmphasis(BaseModel):
+    """Set a panel's visual emphasis (accent fill)."""
+
+    op: Literal["set_emphasis"] = "set_emphasis"
+    panel_id: str
+    emphasis: Literal["normal", "accent"]
+
+
+class MovePanelToBand(BaseModel):
+    """Move a panel into a band/column position; triggers re-layout."""
+
+    op: Literal["move_panel_to_band"] = "move_panel_to_band"
+    panel_id: str
+    band_id: str
+    column: int = Field(default=0, ge=0)
+    col_span: int = Field(default=1, ge=1)
+
+
+class SetColSpan(BaseModel):
+    """Change a panel's column span within its band; triggers re-layout."""
+
+    op: Literal["set_col_span"] = "set_col_span"
+    panel_id: str
+    col_span: int = Field(ge=1)
+
+
+class RewriteBanner(BaseModel):
+    """Replace the takeaway banner's text."""
+
+    op: Literal["rewrite_banner"] = "rewrite_banner"
+    content: str = Field(min_length=1)
+
+
+class RemoveCallout(BaseModel):
+    """Remove a big-number callout from a panel."""
+
+    op: Literal["remove_callout"] = "remove_callout"
+    panel_id: str
+
+
 PosterEditOp = Annotated[
-    Union[RewriteText, SetTypeScale, SetPanelWeight, MovePanelOrder, RecolorToken, RecurateFigure],
+    Union[
+        RewriteText,
+        SetTypeScale,
+        SetPanelWeight,
+        MovePanelOrder,
+        RecolorToken,
+        RecurateFigure,
+        SetEmphasis,
+        MovePanelToBand,
+        SetColSpan,
+        RewriteBanner,
+        RemoveCallout,
+    ],
     Field(discriminator="op"),
 ]
 
@@ -167,11 +219,67 @@ def apply_edit_ops(
             if op.asset_id not in data["assets"]:
                 raise EditOpError(f"recurate_figure: unknown asset '{op.asset_id}'")
             deferred.append(op)
+        elif isinstance(op, SetEmphasis):
+            panel = by_id.get(op.panel_id)
+            if panel is None:
+                raise EditOpError(f"set_emphasis: unknown panel '{op.panel_id}'")
+            panel["emphasis"] = op.emphasis
+        elif isinstance(op, MovePanelToBand):
+            panel = by_id.get(op.panel_id)
+            if panel is None:
+                raise EditOpError(f"move_panel_to_band: unknown panel '{op.panel_id}'")
+            band = next((b for b in data["bands"] if b["id"] == op.band_id), None)
+            if band is None:
+                raise EditOpError(f"move_panel_to_band: unknown band '{op.band_id}'")
+            if band["kind"] != "body":
+                raise EditOpError(
+                    f"move_panel_to_band: band '{op.band_id}' is {band['kind']}, not body"
+                )
+            if op.column + op.col_span > band["columns"]:
+                raise EditOpError(
+                    f"move_panel_to_band: columns [{op.column}, {op.column + op.col_span}) "
+                    f"exceed band '{op.band_id}' ({band['columns']} columns)"
+                )
+            panel["band_id"] = op.band_id
+            panel["column"] = op.column
+            panel["col_span"] = op.col_span
+            needs_relayout = True
+        elif isinstance(op, SetColSpan):
+            panel = by_id.get(op.panel_id)
+            if panel is None:
+                raise EditOpError(f"set_col_span: unknown panel '{op.panel_id}'")
+            band = next(b for b in data["bands"] if b["id"] == panel["band_id"])
+            if panel["column"] + op.col_span > band["columns"]:
+                raise EditOpError(
+                    f"set_col_span: span {op.col_span} from column {panel['column']} "
+                    f"exceeds band '{band['id']}' ({band['columns']} columns)"
+                )
+            panel["col_span"] = op.col_span
+            needs_relayout = True
+        elif isinstance(op, RewriteBanner):
+            banner_elements = [
+                el for p in panels for el in p["elements"] if el.get("kind") == "banner"
+            ]
+            if not banner_elements:
+                raise EditOpError("rewrite_banner: the poster has no banner element")
+            banner_elements[0]["content"] = op.content
+        elif isinstance(op, RemoveCallout):
+            panel = by_id.get(op.panel_id)
+            if panel is None:
+                raise EditOpError(f"remove_callout: unknown panel '{op.panel_id}'")
+            kept = [el for el in panel["elements"] if el.get("kind") != "big_number"]
+            if len(kept) == len(panel["elements"]):
+                raise EditOpError(f"remove_callout: panel '{op.panel_id}' has no callout")
+            if not kept:
+                raise EditOpError(f"remove_callout: panel '{op.panel_id}' would become empty")
+            panel["elements"] = kept
+            needs_relayout = True
         else:  # pragma: no cover - closed union
             raise EditOpError(f"unhandled op type: {op!r}")
 
     if needs_relayout:
         for p in panels:
             p["bbox"] = None
-            p["column"] = None
+        for b in data["bands"]:
+            b["height_mm"] = None
     return PosterIR(**data), deferred

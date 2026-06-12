@@ -122,3 +122,87 @@ def test_style_tokens_reject_bad_hex(style_tokens: StyleTokens):
     data["palette"]["primary"] = "blue"
     with pytest.raises(ValidationError, match="hex"):
         StyleTokens(**data)
+
+
+# ---------------------------------------------------------------------------
+# IR v2: bands, spans, new elements, migration
+
+
+def test_v1_payload_migrates_to_v2(poster_ir: PosterIR):
+    from paperbanana.poster.migrate import load_poster_ir
+
+    data = poster_ir.model_dump()
+    # Reconstruct a v1-shaped payload.
+    data["schema_version"] = 1
+    data.pop("bands")
+    data.pop("layout_provenance", None)
+    data["columns"] = 3
+    for p in data["panels"]:
+        p.pop("band_id", None)
+        p.pop("col_span", None)
+        p.pop("emphasis", None)
+        if p["role"] != "header":
+            p["column"] = {"method": 0, "results": 1, "conclusion": 2}[p["id"]]
+
+    ir = load_poster_ir(data)
+    assert ir.schema_version == 2
+    assert {b.kind for b in ir.bands} == {"header", "body"}
+    assert ir.band("body").columns == 3
+    header = next(p for p in ir.panels if p.role == "header")
+    assert header.band_id == "header"
+    method = next(p for p in ir.panels if p.id == "method")
+    assert method.band_id == "body" and method.col_span == 1
+
+
+def test_band_validation_rules(poster_ir: PosterIR):
+    from paperbanana.poster.types import Band
+
+    data = poster_ir.model_dump()
+    # Two header bands -> invalid.
+    data["bands"] = [
+        Band(id="header", kind="header", order=0).model_dump(),
+        Band(id="h2", kind="header", order=1).model_dump(),
+        Band(id="body", kind="body", order=2, columns=3).model_dump(),
+    ]
+    with pytest.raises(ValidationError, match="exactly one header band"):
+        PosterIR(**data)
+
+
+def test_span_exceeding_band_columns_rejected(poster_ir: PosterIR):
+    data = poster_ir.model_dump()
+    data["panels"][1]["column"] = 2
+    data["panels"][1]["col_span"] = 2  # 2+2 > 3 columns
+    data["panels"][1]["bbox"] = None
+    with pytest.raises(ValidationError, match="occupies columns"):
+        PosterIR(**data)
+
+
+def test_banner_element_requires_banner_band(poster_ir: PosterIR):
+    from paperbanana.poster.types import BannerElement
+
+    data = poster_ir.model_dump()
+    data["panels"][2]["elements"].append(BannerElement(content="A takeaway").model_dump())
+    with pytest.raises(ValidationError, match="banner element outside"):
+        PosterIR(**data)
+
+
+def test_big_number_count_capped(poster_ir: PosterIR):
+    from paperbanana.poster.types import BigNumberElement
+
+    data = poster_ir.model_dump()
+    for i in range(4):
+        data["panels"][1 + (i % 3)]["elements"].append(
+            BigNumberElement(value=f"{i}x", label="speedup").model_dump()
+        )
+    with pytest.raises(ValidationError, match="big-number callouts"):
+        PosterIR(**data)
+
+
+def test_used_levels_must_have_sizes(poster_ir: PosterIR):
+    from paperbanana.poster.types import BigNumberElement
+
+    data = poster_ir.model_dump()
+    del data["style"]["type_scale_pt"]["big_number"]
+    data["panels"][1]["elements"].append(BigNumberElement(value="12x", label="better").model_dump())
+    with pytest.raises(ValidationError, match="missing sizes"):
+        PosterIR(**data)

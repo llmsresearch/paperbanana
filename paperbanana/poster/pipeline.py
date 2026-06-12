@@ -43,12 +43,7 @@ from paperbanana.poster.convert import find_soffice, pdf_to_png, pptx_to_pdf, re
 from paperbanana.poster.edits import EditOpError, apply_edit_ops, parse_edit_ops
 from paperbanana.poster.figures import curate_figures, estimate_placed_width_mm
 from paperbanana.poster.ingest import ingest_paper
-from paperbanana.poster.layout import (
-    DEFAULT_HEADER_FRAC,
-    LayoutError,
-    assign_bboxes,
-    body_column_height_mm,
-)
+from paperbanana.poster.layout import BandOverflowError, panel_width_mm, place_bands
 from paperbanana.poster.lessons import format_lessons_block, load_lessons, record_lessons
 from paperbanana.poster.preflight import (
     DEFAULT_LEGIBILITY_MIN_PT,
@@ -58,7 +53,7 @@ from paperbanana.poster.preflight import (
 from paperbanana.poster.renderer import (
     PANEL_PADDING_MM,
     TextOverflowError,
-    measure_panel_required_height_mm,
+    measure_panel_required_at_width,
     render_pptx,
     required_print_scale,
 )
@@ -69,6 +64,7 @@ from paperbanana.poster.schemas import (
 )
 from paperbanana.poster.style_knowledge import load_poster_style_guide
 from paperbanana.poster.types import (
+    Band,
     FigureAsset,
     FigureDecisionResult,
     FigureElement,
@@ -86,11 +82,11 @@ from paperbanana.poster.venue_spec import VenueSpec, load_venue_spec
 
 logger = structlog.get_logger()
 
-#: Attempts to shorten an overflowing panel's text before giving up.
+#: Text-shortening passes per structural round before restructuring.
 TEXT_FIT_ATTEMPTS = 2
-#: Deterministic weight-rebalancing rounds after text shortening.
-WEIGHT_FIT_ATTEMPTS = 3
-#: Column-count escalation ceiling for dense posters.
+#: Structural adjustment rounds (column bump now; learned re-proposal in Phase 2).
+MAX_STRUCTURE_ROUNDS = 3
+#: Column-count ceiling for dense posters.
 MAX_FIT_COLUMNS = 5
 #: Narrowest acceptable body column.
 MIN_COLUMN_WIDTH_MM = 200.0
@@ -113,7 +109,6 @@ class PosterPipeline:
     ):
         self.settings = settings or Settings()
         self.run_id = _generate_poster_run_id()
-        self._header_frac = DEFAULT_HEADER_FRAC
         self._progress_callback = progress_callback
         self._run_dir = Path(self.settings.output_dir) / self.run_id
 
@@ -359,10 +354,6 @@ class PosterPipeline:
 
         # Stage 5: build IR ----------------------------------------------------
         ir = self._build_ir(assets, storyboard, style, asset_map, spec, qr_url)
-        self._header_frac = self._tune_header_band(ir, layout_schema)
-        # Column escalation during fitting may only be undone down to the
-        # storyboard's own choice — never below it.
-        self._columns_floor = max(2, ir.columns)
 
         # Stage 6: refinement loop ----------------------------------------------
         iteration = 0
@@ -373,8 +364,6 @@ class PosterPipeline:
             iter_dir = self._run_dir / f"iter_{iteration}"
             iter_dir.mkdir(parents=True, exist_ok=True)
 
-            if not ir.is_fully_placed():
-                ir = assign_bboxes(ir, header_frac=self._header_frac)
             ir = await self._fit_content(ir, min_pt_floor)
             (iter_dir / "poster_ir.json").write_text(ir.model_dump_json(indent=2), encoding="utf-8")
 
@@ -504,34 +493,6 @@ class PosterPipeline:
         return output
 
     # ------------------------------------------------------------------
-
-    def _tune_header_band(self, ir: PosterIR, schema) -> float:
-        """Size the header band to its measured content, bounded by what
-        real posters do (the schema's title-band p25-p75 range)."""
-        from paperbanana.poster.types import BBox
-
-        header = next(p for p in ir.panels if p.role == "header")
-        content_w = ir.size.width_mm - 2 * ir.margin_mm
-        content_h = ir.size.height_mm - 2 * ir.margin_mm
-        probe = header.model_copy(
-            update={
-                "bbox": BBox(x_mm=ir.margin_mm, y_mm=ir.margin_mm, w_mm=content_w, h_mm=content_h)
-            }
-        )
-        required = measure_panel_required_height_mm(probe, ir) + 2 * PANEL_PADDING_MM
-        needed_frac = required / content_h
-        if schema.title_band_frac is not None:
-            lo, hi = schema.title_band_frac.p25, schema.title_band_frac.p75
-        else:
-            lo, hi = 0.10, 0.20
-        frac = min(max(needed_frac, lo), max(hi, needed_frac))
-        self._emit(
-            "header_band_tuned",
-            needed_frac=round(needed_frac, 3),
-            corpus_range=[lo, hi],
-            chosen=round(frac, 3),
-        )
-        return frac
 
     def _resolve_style_pack(self, venue_name: str) -> Optional[VenuePack]:
         """Style packs are optional supplements to the mandatory venue spec."""
@@ -676,6 +637,18 @@ class PosterPipeline:
                 QRElement(url=effective_qr, label="Paper & code")
             ]
 
+        # Default band structure (header + one body band). The Phase-2
+        # LayoutProposerAgent replaces this with a learned proposal
+        # (multiple bands, spans, banner, callouts).
+        bands = [
+            Band(id="header", kind="header", order=0, columns=1),
+            Band(id="body", kind="body", order=1, columns=storyboard.columns),
+        ]
+        for panel in panels:
+            panel.band_id = "header" if panel.role == "header" else "body"
+            panel.column = 0
+            panel.col_span = 1
+
         size = PhysicalSize(width_mm=gen_w, height_mm=gen_h)
         return PosterIR(
             venue=spec.venue,
@@ -683,7 +656,7 @@ class PosterPipeline:
             size=size,
             orientation=size.orientation,
             print_scale=required_print_scale(gen_w, gen_h),
-            columns=storyboard.columns,
+            bands=bands,
             style=style,
             panels=panels,
             assets=asset_map,
@@ -692,166 +665,168 @@ class PosterPipeline:
             affiliations=assets.affiliations,
         )
 
-    def _overflowing_panels(self, ir: PosterIR) -> list[tuple[Panel, float, float]]:
-        """(panel, required_mm, available_mm) for every overflowing placed panel."""
-        overflowing = []
-        for panel in ir.panels_in_order():
-            if panel.bbox is None:
+    def _measure_all(self, ir: PosterIR) -> dict[str, float]:
+        """Measured content height per panel at its structural width."""
+        return {
+            panel.id: measure_panel_required_at_width(panel, ir, panel_width_mm(ir, panel))
+            for panel in ir.panels
+        }
+
+    def _default_assign_columns(self, ir: PosterIR, measured: dict[str, float]) -> PosterIR:
+        """TEMP Phase-1 scaffold: contiguous load-balanced column membership.
+
+        The Phase-2 LayoutProposerAgent owns column membership (and spans);
+        this deterministic assignment only exists so Phase 1 reproduces v3
+        behavior. It never changes panels that span multiple columns.
+        """
+        data = ir.model_dump()
+        panels_by_id = {p["id"]: p for p in data["panels"]}
+        for band in ir.bands_in_order():
+            if band.kind != "body" or band.columns == 1:
                 continue
-            available = panel.bbox.h_mm - 2 * PANEL_PADDING_MM
-            required = measure_panel_required_height_mm(panel, ir)
-            if required > available:
-                overflowing.append((panel, required, available))
-        return overflowing
+            members = sorted(
+                (p for p in ir.panels if p.band_id == band.id and p.col_span == 1),
+                key=lambda p: p.order,
+            )
+            if not members:
+                continue
+            loads = [measured[p.id] + 2 * PANEL_PADDING_MM for p in members]
+            total = sum(loads)
+            target = total / band.columns
+            col, acc = 0, 0.0
+            for i, panel in enumerate(members):
+                remaining = len(members) - i - 1
+                cols_left = band.columns - col - 1
+                panels_by_id[panel.id]["column"] = col
+                acc += loads[i]
+                if cols_left > 0 and remaining > 0 and (acc >= target or remaining == cols_left):
+                    col += 1
+                    acc = 0.0
+        for p in data["panels"]:
+            p["bbox"] = None
+        for b in data["bands"]:
+            b["height_mm"] = None
+        return PosterIR(**data)
+
+    def _bump_body_columns(self, ir: PosterIR) -> Optional[PosterIR]:
+        """TEMP Phase-1 structural fallback-free adjustment: widen the most
+        loaded body band by one column when geometry allows; Phase 2 hands
+        this decision to the layout proposer's re-proposal round."""
+        content_w = ir.size.width_mm - 2 * ir.margin_mm
+        data = ir.model_dump()
+        candidates = [b for b in data["bands"] if b["kind"] == "body"]
+        if not candidates:
+            return None
+        band = max(candidates, key=lambda b: b["columns"])
+        new_columns = band["columns"] + 1
+        col_w = (content_w - (new_columns - 1) * ir.gutter_mm) / new_columns
+        if new_columns > MAX_FIT_COLUMNS or col_w < MIN_COLUMN_WIDTH_MM:
+            return None
+        band["columns"] = new_columns
+        for p in data["panels"]:
+            if p["band_id"] == band["id"]:
+                p["column"] = 0
+                p["col_span"] = min(p["col_span"], new_columns)
+            p["bbox"] = None
+        for b in data["bands"]:
+            b["height_mm"] = None
+        self._emit("columns_increased", band=band["id"], columns=new_columns)
+        return PosterIR(**data)
 
     async def _fit_content(self, ir: PosterIR, min_pt_floor: dict[str, float]) -> PosterIR:
-        """Make every panel's content fit its box, without shrinking type.
+        """Fit measured content into the proposed structure, without
+        shrinking type.
 
-        Two bounded mechanisms, alternating:
-        1. VLM text shortening (content is the model's domain).
-        2. Deterministic rebalancing: every panel's weight is set to its
-           measured content height and the columns are re-split
-           (geometry is code's domain) — this fixes figure-heavy panels
-           that no amount of text-cutting can save, while further
-           shortening handles a genuinely global deficit.
+        Bounded mechanisms, in order per structural round: measurement +
+        skyline placement; VLM text shortening targeted at overflowing
+        columns; then a structural adjustment (Phase 1: deterministic
+        column bump; Phase 2: learned re-proposal).
 
         Raises:
-            TextOverflowError: If a panel still cannot fit after both
-                budgets — a genuine impossibility the storyboard must fix.
+            TextOverflowError: When content cannot fit after all budgets.
         """
-        ir = await self._shorten_text_rounds(ir)
-        for columns in range(ir.columns, MAX_FIT_COLUMNS + 1):
-            if columns != ir.columns:
-                col_w = (
-                    ir.size.width_mm - 2 * ir.margin_mm - (columns - 1) * ir.gutter_mm
-                ) / columns
-                if col_w < MIN_COLUMN_WIDTH_MM:
-                    break
-                data = ir.model_dump()
-                data["columns"] = columns
-                for p in data["panels"]:
-                    p["bbox"] = None
-                    p["column"] = None
-                ir = assign_bboxes(PosterIR(**data), header_frac=self._header_frac)
-                self._emit("columns_increased", columns=columns)
-            for _ in range(WEIGHT_FIT_ATTEMPTS):
-                if not self._overflowing_panels(ir):
-                    return self._try_fewer_columns(ir)
-                # Measured heights shift after each re-layout (text rewraps
-                # at the column width, figure clamps change), so iterate.
-                ir = self._rebalance_by_measured_heights(ir)
-            if not self._overflowing_panels(ir):
-                return self._try_fewer_columns(ir)
-            ir = await self._shorten_text_rounds(ir, rounds=1)
-            ir = self._rebalance_by_measured_heights(ir)
-            if not self._overflowing_panels(ir):
-                return self._try_fewer_columns(ir)
-        overflowing = self._overflowing_panels(ir)
-        if overflowing:
-            panel, required, available = overflowing[0]
-            raise TextOverflowError(panel.id, required, available)
-        return self._try_fewer_columns(ir)
-
-    def _try_fewer_columns(self, ir: PosterIR) -> PosterIR:
-        """Undo column escalation when the content also fits in fewer,
-        wider columns — escalation must not be a ratchet (a lone panel
-        marooned in a sparse extra column is worse than denser columns)."""
-        floor = getattr(self, "_columns_floor", 2)
-        while ir.columns > floor:
-            data = ir.model_dump()
-            data["columns"] = ir.columns - 1
-            for p in data["panels"]:
-                p["bbox"] = None
-                p["column"] = None
-            try:
-                candidate = assign_bboxes(PosterIR(**data), header_frac=self._header_frac)
-            except LayoutError:
+        last_overflow: Optional[BandOverflowError] = None
+        for _ in range(MAX_STRUCTURE_ROUNDS):
+            measured = self._measure_all(ir)
+            ir = self._default_assign_columns(ir, measured)
+            for _ in range(TEXT_FIT_ATTEMPTS + 1):
+                measured = self._measure_all(ir)
+                try:
+                    return place_bands(ir, measured)
+                except BandOverflowError as exc:
+                    last_overflow = exc
+                    ir = await self._shorten_overflowing(ir, measured, exc)
+            bumped = self._bump_body_columns(ir)
+            if bumped is None:
                 break
-            for _ in range(2):
-                candidate = self._rebalance_by_measured_heights(candidate)
-            if self._overflowing_panels(candidate):
-                break
-            ir = candidate
-            self._emit("columns_reduced", columns=ir.columns)
-        return ir
-
-    def _rebalance_by_measured_heights(self, ir: PosterIR) -> PosterIR:
-        """Set every body panel's weight to its measured content height.
-
-        Weights are relative shares, so weight == required height makes
-        each panel's allocation proportional to what its content actually
-        needs, and the column splitter balances total required height
-        across columns. Incremental per-panel bumping cannot do this:
-        when all panels in a column overflow, scaling them together just
-        renormalizes the same shares.
-        """
-        required_by_id: dict[str, float] = {}
-        for panel in ir.panels_in_order():
-            if panel.role == "header" or panel.bbox is None:
-                continue
-            required_by_id[panel.id] = (
-                measure_panel_required_height_mm(panel, ir) + 2 * PANEL_PADDING_MM
+            ir = bumped
+        if last_overflow is not None and last_overflow.overflows:
+            worst = last_overflow.overflows[0]
+            raise TextOverflowError(
+                f"{worst.band_id}/col{worst.column}", worst.required_mm, worst.available_mm
             )
-        data = ir.model_dump()
-        for p in data["panels"]:
-            if p["id"] in required_by_id:
-                p["weight"] = round(required_by_id[p["id"]], 1)
-            p["bbox"] = None
-            p["column"] = None
-        self._emit(
-            "panels_rebalanced",
-            weights={k: round(v) for k, v in required_by_id.items()},
-        )
-        new_ir = PosterIR(**data)
-        return assign_bboxes(
-            new_ir,
-            header_frac=self._header_frac,
-            column_capacity_mm=body_column_height_mm(new_ir, self._header_frac),
-        )
+        raise TextOverflowError("poster", 0.0, 0.0)
 
-    async def _shorten_text_rounds(self, ir: PosterIR, rounds: int = TEXT_FIT_ATTEMPTS) -> PosterIR:
-        """Bounded VLM text-shortening passes over overflowing panels."""
+    async def _shorten_overflowing(
+        self,
+        ir: PosterIR,
+        measured: dict[str, float],
+        overflow: BandOverflowError,
+    ) -> PosterIR:
+        """One VLM text-shortening pass over panels in overflowing columns."""
         template = (Path(self._prompt_dir) / "poster" / "shorten.txt").read_text(encoding="utf-8")
-        for _ in range(rounds):
-            overflowing = self._overflowing_panels(ir)
-            if not overflowing:
-                return ir
-            data = ir.model_dump()
-            panels_by_id = {p["id"]: p for p in data["panels"]}
-            for panel, required, available in overflowing:
-                text_indices = [
-                    i for i, el in enumerate(panel.elements) if isinstance(el, TextElement)
-                ]
-                if not text_indices:
-                    continue  # figure-only panel: nothing to shorten here
-                blocks = [panel.elements[i].content for i in text_indices]
-                target_ratio = max(30, int(available / required * 90))
-                prompt = template.format(
-                    panel_title=panel.title or panel.id,
-                    text_blocks=json.dumps(blocks, ensure_ascii=False, indent=2),
-                    required_mm=f"{required:.0f}",
-                    available_mm=f"{available:.0f}",
-                    target_ratio=target_ratio,
+        hot = {(o.band_id, o.column) for o in overflow.overflows}
+        ratios = {
+            (o.band_id, o.column): (
+                max(0.3, o.available_mm / o.required_mm) if o.required_mm > 0 else 1.0
+            )
+            for o in overflow.overflows
+        }
+        data = ir.model_dump()
+        panels_by_id = {p["id"]: p for p in data["panels"]}
+        shortened_any = False
+        for panel in ir.panels_in_order():
+            spanned = {
+                (panel.band_id, c) for c in range(panel.column, panel.column + panel.col_span)
+            }
+            touched = spanned & hot
+            if not touched:
+                continue
+            text_indices = [i for i, el in enumerate(panel.elements) if isinstance(el, TextElement)]
+            if not text_indices:
+                continue  # figure-only panel: nothing to shorten here
+            ratio = min(ratios[key] for key in touched)
+            required = measured[panel.id]
+            available = required * ratio
+            blocks = [panel.elements[i].content for i in text_indices]
+            prompt = template.format(
+                panel_title=panel.title or panel.id,
+                text_blocks=json.dumps(blocks, ensure_ascii=False, indent=2),
+                required_mm=f"{required:.0f}",
+                available_mm=f"{available:.0f}",
+                target_ratio=max(30, int(ratio * 90)),
+            )
+            raw = await self._vlm.generate(prompt=prompt, response_format="json", temperature=0.3)
+            rewritten = extract_json(raw)
+            if not isinstance(rewritten, list) or len(rewritten) != len(blocks):
+                raise ValueError(
+                    f"text-fit rewrite for panel '{panel.id}' returned an invalid "
+                    f"response (expected {len(blocks)} blocks): {raw[:300]!r}"
                 )
-                raw = await self._vlm.generate(
-                    prompt=prompt, response_format="json", temperature=0.3
-                )
-                shortened = extract_json(raw)
-                if not isinstance(shortened, list) or len(shortened) != len(blocks):
-                    raise ValueError(
-                        f"text-fit rewrite for panel '{panel.id}' returned an invalid "
-                        f"response (expected {len(blocks)} blocks): {raw[:300]!r}"
-                    )
-                for i, content in zip(text_indices, shortened):
-                    if not str(content).strip():
-                        raise ValueError(f"text-fit rewrite for panel '{panel.id}' emptied a block")
-                    panels_by_id[panel.id]["elements"][i]["content"] = str(content)
-                self._shorten_events = getattr(self, "_shorten_events", 0) + 1
-                self._emit(
-                    "panel_text_shortened",
-                    panel=panel.id,
-                    required_mm=round(required),
-                    available_mm=round(available),
-                )
-            ir = PosterIR(**data)
-        return ir
+            for i, content in zip(text_indices, rewritten):
+                if not str(content).strip():
+                    raise ValueError(f"text-fit rewrite for panel '{panel.id}' emptied a block")
+                panels_by_id[panel.id]["elements"][i]["content"] = str(content)
+            shortened_any = True
+            self._shorten_events = getattr(self, "_shorten_events", 0) + 1
+            self._emit(
+                "panel_text_shortened",
+                panel=panel.id,
+                required_mm=round(required),
+                available_mm=round(available),
+            )
+        if not shortened_any:
+            return ir
+        for p in data["panels"]:
+            p["bbox"] = None
+        return PosterIR(**data)
