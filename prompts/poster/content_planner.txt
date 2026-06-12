@@ -37,6 +37,10 @@ Respond with ONLY a JSON object:
 {{
   "columns": {columns_hint},
   "qr_url": "{qr_url}",
+  "takeaway": "One punchy sentence stating the paper's single most important finding (verbatim numbers allowed).",
+  "key_stats": [
+    {{"id": "stat1", "value": "3.4x", "label": "faster than the prior SOTA", "source_panel": "results"}}
+  ],
   "new_figure_briefs": {{"overview": "A left-to-right pipeline diagram showing ..."}},
   "panels": [
     {{
@@ -70,3 +74,5 @@ Respond with ONLY a JSON object:
 }}
 
 Set "new_figure_briefs" to {{}} if the paper already has a good overview figure. Set "qr_url" to null if none was provided. Panel ids must be unique lowercase slugs; order starts at 1 and is consecutive.
+
+CRITICAL grounding rules for "takeaway" and "key_stats": every value must appear VERBATIM in the paper (copy the number exactly — these become huge callouts on the poster, a wrong number is catastrophic). 1-4 key_stats, each <= 12 characters for "value" with a <= 80 character "label". "source_panel" is the panel id where that result is discussed. If the paper has no single standout number, return an empty key_stats list.

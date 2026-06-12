@@ -34,24 +34,35 @@ from paperbanana.poster.agents import (
     FaithfulnessAgent,
     FigureCuratorAgent,
     FigureDetectorAgent,
+    LayoutProposerAgent,
     PaperMetadataAgent,
     PosterContentAgent,
     PosterCriticAgent,
     PosterStylistAgent,
+)
+from paperbanana.poster.agents.layout_proposer import (
+    format_overflow_feedback,
+    format_violation_feedback,
 )
 from paperbanana.poster.convert import find_soffice, pdf_to_png, pptx_to_pdf, render_panel_crops
 from paperbanana.poster.edits import EditOpError, apply_edit_ops, parse_edit_ops
 from paperbanana.poster.figures import curate_figures, estimate_placed_width_mm
 from paperbanana.poster.ingest import ingest_paper
 from paperbanana.poster.layout import BandOverflowError, panel_width_mm, place_bands
+from paperbanana.poster.legalizer import (
+    LayoutProposalError,
+    build_ir_from_proposal,
+    repair,
+    validate_proposal,
+)
 from paperbanana.poster.lessons import format_lessons_block, load_lessons, record_lessons
 from paperbanana.poster.preflight import (
     DEFAULT_LEGIBILITY_MIN_PT,
     render_preflight_markdown,
     run_preflight,
 )
+from paperbanana.poster.proposal import LayoutProposal, RepairAction
 from paperbanana.poster.renderer import (
-    PANEL_PADDING_MM,
     TextOverflowError,
     measure_panel_required_at_width,
     render_pptx,
@@ -141,6 +152,7 @@ class PosterPipeline:
         self.curator = FigureCuratorAgent(self._vlm, **kwargs)
         self.stylist = PosterStylistAgent(self._vlm, **kwargs)
         self.critic = PosterCriticAgent(self._vlm, **kwargs)
+        self.layout_proposer = LayoutProposerAgent(self._vlm, **kwargs)
         self.faithfulness = FaithfulnessAgent(self._vlm, **kwargs)
 
         logger.info(
@@ -352,8 +364,10 @@ class PosterPipeline:
             decisions={d.figure_id: d.decision for d in decisions},
         )
 
-        # Stage 5: build IR ----------------------------------------------------
+        # Stage 5: build IR + learned structure ---------------------------------
         ir = self._build_ir(assets, storyboard, style, asset_map, spec, qr_url)
+        self._proposer_ctx = {"storyboard": storyboard, "layout_patterns": layout_patterns}
+        ir = await self._propose_structure(ir, storyboard, layout_patterns, resume=resume)
 
         # Stage 6: refinement loop ----------------------------------------------
         iteration = 0
@@ -665,6 +679,95 @@ class PosterPipeline:
             affiliations=assets.affiliations,
         )
 
+    async def _propose_structure(
+        self,
+        draft_ir: PosterIR,
+        storyboard: Storyboard,
+        layout_patterns: str,
+        resume: bool = False,
+    ) -> PosterIR:
+        """Obtain a legal learned structure and apply it to the draft IR."""
+        cached = self._load_stage("layout_proposal", resume)
+        if cached is not None:
+            proposal = LayoutProposal(**cached["proposal"])
+            repairs = [RepairAction(**r) for r in cached["repairs"]]
+            rounds = cached.get("rounds", 0)
+        else:
+            proposal, repairs, rounds = await self._obtain_legal_proposal(
+                storyboard, draft_ir, layout_patterns, feedback=""
+            )
+            self._save_stage(
+                "layout_proposal",
+                json.dumps(
+                    {
+                        "proposal": json.loads(proposal.model_dump_json()),
+                        "repairs": [json.loads(r.model_dump_json()) for r in repairs],
+                        "rounds": rounds,
+                    },
+                    indent=2,
+                ),
+            )
+        ir = build_ir_from_proposal(
+            draft_ir, proposal, storyboard, repairs, reproposal_rounds=rounds
+        )
+        self._emit(
+            "layout_proposed",
+            bands=[(b.kind, b.columns) for b in ir.bands_in_order()],
+            banner=proposal.use_banner,
+            hero=proposal.hero_figure_id,
+            callouts=len(proposal.callouts),
+            repairs=len(repairs),
+            rounds=rounds,
+        )
+        return ir
+
+    async def _obtain_legal_proposal(
+        self,
+        storyboard: Storyboard,
+        draft_ir: PosterIR,
+        layout_patterns: str,
+        feedback: str,
+    ) -> tuple[LayoutProposal, list[RepairAction], int]:
+        """Propose, validate, repair; fatal violations re-prompt, bounded."""
+        budget = self.settings.poster_proposal_repair_rounds
+        fatal: list = []
+        for attempt in range(budget + 1):
+            proposal = await self.layout_proposer.run(
+                storyboard=storyboard,
+                assets=draft_ir.assets,
+                size=draft_ir.size,
+                margin_mm=draft_ir.margin_mm,
+                gutter_mm=draft_ir.gutter_mm,
+                layout_patterns=layout_patterns,
+                violation_feedback=feedback,
+                proposal_index=attempt,
+            )
+            violations = validate_proposal(
+                proposal,
+                storyboard,
+                set(draft_ir.assets),
+                draft_ir.size.width_mm,
+                draft_ir.margin_mm,
+                draft_ir.gutter_mm,
+            )
+            fatal = [v for v in violations if v.fatal]
+            if not fatal:
+                repaired, repairs = repair(
+                    proposal,
+                    violations,
+                    draft_ir.size.width_mm,
+                    draft_ir.margin_mm,
+                    draft_ir.gutter_mm,
+                )
+                return repaired, repairs, attempt
+            feedback = format_violation_feedback(fatal)
+            self._emit(
+                "proposal_rejected",
+                attempt=attempt,
+                fatal=[f"{v.code}:{v.target}" for v in fatal],
+            )
+        raise LayoutProposalError(fatal, budget + 1)
+
     def _measure_all(self, ir: PosterIR) -> dict[str, float]:
         """Measured content height per panel at its structural width."""
         return {
@@ -672,83 +775,22 @@ class PosterPipeline:
             for panel in ir.panels
         }
 
-    def _default_assign_columns(self, ir: PosterIR, measured: dict[str, float]) -> PosterIR:
-        """TEMP Phase-1 scaffold: contiguous load-balanced column membership.
-
-        The Phase-2 LayoutProposerAgent owns column membership (and spans);
-        this deterministic assignment only exists so Phase 1 reproduces v3
-        behavior. It never changes panels that span multiple columns.
-        """
-        data = ir.model_dump()
-        panels_by_id = {p["id"]: p for p in data["panels"]}
-        for band in ir.bands_in_order():
-            if band.kind != "body" or band.columns == 1:
-                continue
-            members = sorted(
-                (p for p in ir.panels if p.band_id == band.id and p.col_span == 1),
-                key=lambda p: p.order,
-            )
-            if not members:
-                continue
-            loads = [measured[p.id] + 2 * PANEL_PADDING_MM for p in members]
-            total = sum(loads)
-            target = total / band.columns
-            col, acc = 0, 0.0
-            for i, panel in enumerate(members):
-                remaining = len(members) - i - 1
-                cols_left = band.columns - col - 1
-                panels_by_id[panel.id]["column"] = col
-                acc += loads[i]
-                if cols_left > 0 and remaining > 0 and (acc >= target or remaining == cols_left):
-                    col += 1
-                    acc = 0.0
-        for p in data["panels"]:
-            p["bbox"] = None
-        for b in data["bands"]:
-            b["height_mm"] = None
-        return PosterIR(**data)
-
-    def _bump_body_columns(self, ir: PosterIR) -> Optional[PosterIR]:
-        """TEMP Phase-1 structural fallback-free adjustment: widen the most
-        loaded body band by one column when geometry allows; Phase 2 hands
-        this decision to the layout proposer's re-proposal round."""
-        content_w = ir.size.width_mm - 2 * ir.margin_mm
-        data = ir.model_dump()
-        candidates = [b for b in data["bands"] if b["kind"] == "body"]
-        if not candidates:
-            return None
-        band = max(candidates, key=lambda b: b["columns"])
-        new_columns = band["columns"] + 1
-        col_w = (content_w - (new_columns - 1) * ir.gutter_mm) / new_columns
-        if new_columns > MAX_FIT_COLUMNS or col_w < MIN_COLUMN_WIDTH_MM:
-            return None
-        band["columns"] = new_columns
-        for p in data["panels"]:
-            if p["band_id"] == band["id"]:
-                p["column"] = 0
-                p["col_span"] = min(p["col_span"], new_columns)
-            p["bbox"] = None
-        for b in data["bands"]:
-            b["height_mm"] = None
-        self._emit("columns_increased", band=band["id"], columns=new_columns)
-        return PosterIR(**data)
-
     async def _fit_content(self, ir: PosterIR, min_pt_floor: dict[str, float]) -> PosterIR:
         """Fit measured content into the proposed structure, without
         shrinking type.
 
         Bounded mechanisms, in order per structural round: measurement +
         skyline placement; VLM text shortening targeted at overflowing
-        columns; then a structural adjustment (Phase 1: deterministic
-        column bump; Phase 2: learned re-proposal).
+        columns; then a LEARNED structural re-proposal — the proposer is
+        re-prompted with the measured per-column loads and restructures
+        (more columns, moved panels, dropped hero span). No hand-coded
+        structural adjustment remains.
 
         Raises:
             TextOverflowError: When content cannot fit after all budgets.
         """
         last_overflow: Optional[BandOverflowError] = None
-        for _ in range(MAX_STRUCTURE_ROUNDS):
-            measured = self._measure_all(ir)
-            ir = self._default_assign_columns(ir, measured)
+        for structural_round in range(MAX_STRUCTURE_ROUNDS):
             for _ in range(TEXT_FIT_ATTEMPTS + 1):
                 measured = self._measure_all(ir)
                 try:
@@ -756,10 +798,30 @@ class PosterPipeline:
                 except BandOverflowError as exc:
                     last_overflow = exc
                     ir = await self._shorten_overflowing(ir, measured, exc)
-            bumped = self._bump_body_columns(ir)
-            if bumped is None:
+            ctx = getattr(self, "_proposer_ctx", None)
+            if ctx is None or last_overflow is None:
                 break
-            ir = bumped
+            feedback = format_overflow_feedback(
+                last_overflow.overflows, last_overflow.page_deficit_mm
+            )
+            try:
+                proposal, repairs, _ = await self._obtain_legal_proposal(
+                    ctx["storyboard"], ir, ctx["layout_patterns"], feedback=feedback
+                )
+            except LayoutProposalError:
+                break
+            ir = build_ir_from_proposal(
+                ir,
+                proposal,
+                ctx["storyboard"],
+                repairs,
+                reproposal_rounds=structural_round + 1,
+            )
+            self._emit(
+                "structure_reproposed",
+                round=structural_round + 1,
+                bands=[(b.kind, b.columns) for b in ir.bands_in_order()],
+            )
         if last_overflow is not None and last_overflow.overflows:
             worst = last_overflow.overflows[0]
             raise TextOverflowError(

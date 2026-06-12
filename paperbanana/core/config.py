@@ -99,6 +99,8 @@ class Settings(BaseSettings):
 
     # Poster settings
     poster_refinement_iterations: int = Field(default=2, ge=0, le=8)
+    poster_layout_proposals: int = Field(default=2, ge=1, le=4)
+    poster_proposal_repair_rounds: int = Field(default=2, ge=1, le=4)
     poster_reauthor_max_attempts: int = Field(default=2, ge=1, le=5)
     poster_extract_dpi: int = Field(default=300, gt=0)
     venue_spec_dir: Optional[str] = Field(

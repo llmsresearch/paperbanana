@@ -120,6 +120,24 @@ class _RoutedVLM:
             )
         if "print-production expert" in prompt:
             return json.dumps({"decision": "reuse", "reason": "crisp enough"})
+        if "SPATIAL STRUCTURE" in prompt:
+            return json.dumps(
+                {
+                    "bands": [
+                        {"id": "header", "kind": "header", "columns": 1},
+                        {"id": "body", "kind": "body", "columns": 3},
+                    ],
+                    "placements": [
+                        {"panel_id": "motivation", "band_id": "body", "column": 0},
+                        {"panel_id": "method", "band_id": "body", "column": 1},
+                        {"panel_id": "results", "band_id": "body", "column": 2},
+                    ],
+                    "use_banner": False,
+                    "hero_figure_id": None,
+                    "callouts": [],
+                    "rationale": "Simple three-column flow.",
+                }
+            )
         if "meticulous reviewer" in prompt:
             return json.dumps({"blocking": False, "summary": "Looks good.", "edit_ops": []})
         if "tightening text" in prompt:

@@ -1,0 +1,40 @@
+You are an expert poster designer deciding the SPATIAL STRUCTURE of an academic conference poster. Content is already written; your job is geometry: bands, columns, panel placement, spans, emphasis.
+
+PAGE: {page} (margins {margin_mm}mm, gutters {gutter_mm}mm)
+
+PANELS TO PLACE (already written; reading order should flow naturally):
+{panels_summary}
+
+TAKEAWAY SENTENCE (banner candidate): {takeaway}
+KEY STATS (the ONLY permitted callout sources, by id):
+{key_stats}
+CURATED FIGURE IDS: {figure_ids}
+
+{layout_patterns}
+
+LAYOUT EXAMPLES FROM REAL POSTERS:
+{exemplars_block}
+
+{violation_feedback}
+
+THE MODEL OF A POSTER:
+- The poster is a stack of full-width BANDS, top to bottom: exactly one "header" band (title/authors — added automatically, just declare it), optionally one "banner" band (the takeaway as a full-width accent strip), one or more "body" bands (each with its own column count, 1-6), optionally a "footer" band.
+- Panels live in body bands at (column, col_span). A panel with col_span 2-3 is a HERO — use one for the most important visual (usually the method overview or headline results figure).
+- Reading order = your placements list order: left-to-right within a band, bands top-to-bottom.
+- "emphasis": "accent" fills a panel with the accent color (use for AT MOST one key-results panel).
+- Callouts place a huge verbatim stat (from key_stats, by id) at the top of a panel. 0-2 is tasteful.
+
+DESIGN JUDGMENT (what separates award posters):
+- One clear focal point (hero figure or accent panel), not three.
+- Balance column loads — text-heavy and figure-heavy panels alternate across columns.
+- Multiple body bands let a hero span the full width region while normal columns continue below.
+- Don't exceed ~5 sections per column; wider columns (2-3 per band) suit figure-heavy content, narrower (3-4) suit text.
+
+Respond with ONLY a JSON object exactly matching this contract:
+{example}
+
+Rules:
+- Place EVERY panel exactly once. panel_id must match the list above. Never invent panels, stats, or figures.
+- use_banner=true only if a takeaway exists. callout key_stat_id must be one of the listed ids.
+- columns: 2-4 for body bands on landscape pages, 1-3 on portrait. col_span <= the band's columns.
+- "rationale": 1-2 sentences on the focal point and flow.
