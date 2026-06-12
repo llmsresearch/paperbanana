@@ -44,6 +44,7 @@ from paperbanana.poster.agents.layout_proposer import (
     format_overflow_feedback,
     format_violation_feedback,
 )
+from paperbanana.poster.agents.skeleton_judge import SkeletonJudgeAgent
 from paperbanana.poster.convert import find_soffice, pdf_to_png, pptx_to_pdf, render_panel_crops
 from paperbanana.poster.edits import EditOpError, apply_edit_ops, parse_edit_ops
 from paperbanana.poster.figures import curate_figures, estimate_placed_width_mm
@@ -160,6 +161,7 @@ class PosterPipeline:
         self.stylist = PosterStylistAgent(self._vlm, **kwargs)
         self.critic = PosterCriticAgent(self._vlm, **kwargs)
         self.layout_proposer = LayoutProposerAgent(self._vlm, **kwargs)
+        self.skeleton_judge = SkeletonJudgeAgent(self._vlm, **kwargs)
         self.faithfulness = FaithfulnessAgent(self._vlm, **kwargs)
 
         logger.info(
@@ -760,8 +762,8 @@ class PosterPipeline:
             repairs = [RepairAction(**r) for r in cached["repairs"]]
             rounds = cached.get("rounds", 0)
         else:
-            proposal, repairs, rounds = await self._obtain_legal_proposal(
-                storyboard, draft_ir, layout_patterns, feedback=""
+            proposal, repairs, rounds, rank_scores = await self._best_of_n_proposals(
+                storyboard, draft_ir, layout_patterns
             )
             self._save_stage(
                 "layout_proposal",
@@ -770,6 +772,7 @@ class PosterPipeline:
                         "proposal": json.loads(proposal.model_dump_json()),
                         "repairs": [json.loads(r.model_dump_json()) for r in repairs],
                         "rounds": rounds,
+                        "rank_scores": rank_scores,
                     },
                     indent=2,
                 ),
@@ -792,6 +795,125 @@ class PosterPipeline:
             rounds=rounds,
         )
         return ir
+
+    async def _best_of_n_proposals(
+        self,
+        storyboard: Storyboard,
+        draft_ir: PosterIR,
+        layout_patterns: str,
+    ) -> tuple[LayoutProposal, list[RepairAction], int, Optional[dict]]:
+        """Generate N structures, rank cheap skeleton previews, keep the best.
+
+        Candidates with fatal violations are dropped (logged); if none
+        survive, the single-proposal re-prompt loop takes over. With one
+        survivor there is nothing to rank.
+        """
+        from paperbanana.poster.skeleton import placeholder_assets, render_skeleton_preview
+
+        n = self.settings.poster_layout_proposals
+        candidates: list[tuple[LayoutProposal, list[RepairAction]]] = []
+        for i in range(n):
+            proposal = await self.layout_proposer.run(
+                storyboard=storyboard,
+                assets=draft_ir.assets,
+                size=draft_ir.size,
+                margin_mm=draft_ir.margin_mm,
+                gutter_mm=draft_ir.gutter_mm,
+                layout_patterns=layout_patterns,
+                exemplars_block=format_exemplars_block(
+                    getattr(self, "_proposer_ctx", {}).get("exemplars", [])
+                ),
+                proposal_index=i,
+            )
+            violations = validate_proposal(
+                proposal,
+                storyboard,
+                set(draft_ir.assets),
+                draft_ir.size.width_mm,
+                draft_ir.margin_mm,
+                draft_ir.gutter_mm,
+            )
+            fatal = [v for v in violations if v.fatal]
+            if fatal:
+                self._emit(
+                    "candidate_dropped",
+                    index=i,
+                    fatal=[f"{v.code}:{v.target}" for v in fatal],
+                )
+                continue
+            candidates.append(
+                repair(
+                    proposal,
+                    violations,
+                    draft_ir.size.width_mm,
+                    draft_ir.margin_mm,
+                    draft_ir.gutter_mm,
+                )
+            )
+        if not candidates:
+            proposal, repairs, rounds = await self._obtain_legal_proposal(
+                storyboard, draft_ir, layout_patterns, feedback=""
+            )
+            return proposal, repairs, rounds, None
+        if len(candidates) == 1:
+            proposal, repairs = candidates[0]
+            return proposal, repairs, 0, None
+
+        # Rank: skeleton previews with placeholder figures, one judge call.
+        skeleton_dir = self._run_dir / "skeletons"
+        placeholders = placeholder_assets(draft_ir.assets, skeleton_dir / "assets")
+        previews: list = []
+        preview_indices: list[int] = []
+        penalties: dict[int, float] = {}
+        for i, (proposal, repairs) in enumerate(candidates):
+            candidate_ir = build_ir_from_proposal(
+                draft_ir.model_copy(update={"assets": placeholders}),
+                proposal,
+                storyboard,
+                repairs,
+            )
+            measured = self._measure_all(candidate_ir)
+            png, penalty = render_skeleton_preview(
+                candidate_ir, measured, skeleton_dir, self._soffice, label=f"candidate_{i}"
+            )
+            if png is None:
+                penalties[i] = penalty
+            else:
+                previews.append(Image.open(png).convert("RGB"))
+                preview_indices.append(i)
+        summary = "; ".join(
+            f"{p.id}({p.role}, figs={len(p.figure_ids)})" for p in storyboard.panels
+        )
+        if not previews:
+            # Every candidate overflowed: keep the least-bad one; the fit
+            # loop's shortening + re-proposal machinery takes it from here.
+            best = min(penalties, key=penalties.get)
+            self._emit("skeleton_rank_all_overflow", chosen=best, penalties=penalties)
+            proposal, repairs = candidates[best]
+            return proposal, repairs, 0, {str(k): -v for k, v in penalties.items()}
+        ranking = await self.skeleton_judge.run(
+            previews=previews,
+            storyboard_summary=summary,
+            penalties=penalties,
+        )
+        # The judge ranks the *rendered* candidates by image position; map back.
+        winner_pos = min(max(ranking.winner, 0), len(preview_indices) - 1)
+        winner = preview_indices[winner_pos]
+        self._save_stage(
+            "skeleton_rank",
+            json.dumps(
+                {
+                    "winner": winner,
+                    "scores": ranking.scores,
+                    "penalties": penalties,
+                    "rationale": ranking.rationale,
+                },
+                indent=2,
+            ),
+        )
+        self._emit("skeletons_ranked", winner=winner, scores=ranking.scores)
+        proposal, repairs = candidates[winner]
+        return proposal, repairs, 0, ranking.scores
 
     async def _obtain_legal_proposal(
         self,

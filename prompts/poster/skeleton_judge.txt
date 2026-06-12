@@ -1,0 +1,24 @@
+You are choosing the best LAYOUT among {n} candidate structures for the same academic poster. The attached images are cheap previews: real text, gray crossed boxes standing in for figures. Judge STRUCTURE only — column balance, reading flow, focal point, density — not figure content or final polish.
+
+{listing}
+
+Candidates that overflowed (defective by construction):
+{penalty_note}
+
+CONTENT BEING LAID OUT:
+{storyboard_summary}
+
+Judge each candidate (1-5) as a poster designer:
+- Is there one clear focal point (hero/banner/accent), placed where the eye lands first?
+- Are column loads balanced — no packed-left/sparse-right, no straggling whitespace blocks?
+- Does reading order flow naturally (motivation -> method -> results -> conclusion)?
+- Is density right — neither cramped nor airy?
+
+Respond with ONLY a JSON object:
+{{
+  "winner": 0,
+  "scores": {{"0": 4, "1": 3}},
+  "rationale": "1-2 sentences on why the winner wins"
+}}
+
+"winner" is the candidate index (0-based). Score every candidate, including overflowed ones (give those 1).

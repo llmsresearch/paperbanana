@@ -138,6 +138,8 @@ class _RoutedVLM:
                     "rationale": "Simple three-column flow.",
                 }
             )
+        if "choosing the best LAYOUT" in prompt:
+            return json.dumps({"winner": 0, "scores": {"0": 4, "1": 3}, "rationale": "balanced"})
         if "meticulous reviewer" in prompt:
             return json.dumps({"blocking": False, "summary": "Looks good.", "edit_ops": []})
         if "tightening text" in prompt:
