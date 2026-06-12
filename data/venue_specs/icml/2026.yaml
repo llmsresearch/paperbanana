@@ -1,0 +1,34 @@
+spec_version: 1
+venue: icml
+year: 2026
+display_name: "ICML 2026 (main conference)"
+sources:
+  - "https://icml.cc/Conferences/2026/PosterInstructions"
+dimensions:
+  # Suggested sizes: 48x36, 60x36, 72x36 in (W x H), landscape (inferred:
+  # all suggested sizes are landscape). Bound is the largest suggested size.
+  mode: max
+  width_mm: 1828.8   # 72 in
+  height_mm: 914.4   # 36 in
+  orientation: landscape
+  default_width_mm: 1219.2   # 48 in (first suggested size)
+  default_height_mm: 914.4   # 36 in
+text_rules:
+  min_pt: {}
+  min_image_dpi: 100
+required_elements:
+  - id: paper_title
+    description: "Poster must display the paper title"
+    rule: text_level_present
+    params: { level: title }
+    severity: fail
+  - id: authors
+    description: "Poster should display the author list"
+    rule: text_level_present
+    params: { level: authors }
+    severity: warn
+file_rules: {}
+notes: >-
+  Official printing partner: Foster (orders through June 15, 2026; pickup
+  Hall B2 East Gate). Workshop posters must not exceed 24 in W x 36 in H
+  and must be portrait — add a separate spec entry if targeting workshops.

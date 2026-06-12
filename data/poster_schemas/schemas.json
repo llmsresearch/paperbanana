@@ -1,0 +1,243 @@
+{
+  "source": "SciPostLayout (omron-sinicx, CC-BY-4.0; posters from F1000Research, per-poster CC licenses) \u2014 https://huggingface.co/datasets/omron-sinicx/scipostlayout_v2",
+  "built": "2026-06-12T14:18:44",
+  "n_posters": 7855,
+  "induction": "deterministic geometry over human layout annotations (no model calls)",
+  "global": {
+    "orientation_share": {
+      "landscape": 0.35,
+      "portrait": 0.65
+    },
+    "visual_share": {
+      "p25": 0.173,
+      "median": 0.249,
+      "p75": 0.332
+    }
+  },
+  "schemas": [
+    {
+      "id": "portrait-2col",
+      "orientation": "portrait",
+      "columns": 2,
+      "n_posters": 3080,
+      "share_of_corpus": 0.392,
+      "sections": {
+        "p25": 4,
+        "median": 5,
+        "p75": 6
+      },
+      "sections_per_column": 2.5,
+      "visual_share": {
+        "p25": 0.172,
+        "median": 0.249,
+        "p75": 0.327
+      },
+      "title_band_frac": {
+        "p25": 0.109,
+        "median": 0.132,
+        "p75": 0.163
+      },
+      "text_blocks": {
+        "p25": 5.0,
+        "median": 8.0,
+        "p75": 11.0
+      }
+    },
+    {
+      "id": "landscape-3col",
+      "orientation": "landscape",
+      "columns": 3,
+      "n_posters": 1592,
+      "share_of_corpus": 0.203,
+      "sections": {
+        "p25": 5,
+        "median": 6.0,
+        "p75": 7
+      },
+      "sections_per_column": 2.0,
+      "visual_share": {
+        "p25": 0.186,
+        "median": 0.251,
+        "p75": 0.326
+      },
+      "title_band_frac": {
+        "p25": 0.118,
+        "median": 0.143,
+        "p75": 0.172
+      },
+      "text_blocks": {
+        "p25": 6.0,
+        "median": 9.0,
+        "p75": 13.0
+      }
+    },
+    {
+      "id": "portrait-3col",
+      "orientation": "portrait",
+      "columns": 3,
+      "n_posters": 1466,
+      "share_of_corpus": 0.187,
+      "sections": {
+        "p25": 4,
+        "median": 6.0,
+        "p75": 7
+      },
+      "sections_per_column": 2.0,
+      "visual_share": {
+        "p25": 0.172,
+        "median": 0.244,
+        "p75": 0.328
+      },
+      "title_band_frac": {
+        "p25": 0.109,
+        "median": 0.133,
+        "p75": 0.169
+      },
+      "text_blocks": {
+        "p25": 7.0,
+        "median": 10.0,
+        "p75": 14.0
+      }
+    },
+    {
+      "id": "landscape-2col",
+      "orientation": "landscape",
+      "columns": 2,
+      "n_posters": 500,
+      "share_of_corpus": 0.064,
+      "sections": {
+        "p25": 4,
+        "median": 5.0,
+        "p75": 6
+      },
+      "sections_per_column": 2.5,
+      "visual_share": {
+        "p25": 0.187,
+        "median": 0.258,
+        "p75": 0.348
+      },
+      "title_band_frac": {
+        "p25": 0.116,
+        "median": 0.142,
+        "p75": 0.175
+      },
+      "text_blocks": {
+        "p25": 5.0,
+        "median": 8.0,
+        "p75": 13.0
+      }
+    },
+    {
+      "id": "landscape-4col",
+      "orientation": "landscape",
+      "columns": 4,
+      "n_posters": 493,
+      "share_of_corpus": 0.063,
+      "sections": {
+        "p25": 5,
+        "median": 6.0,
+        "p75": 8
+      },
+      "sections_per_column": 1.5,
+      "visual_share": {
+        "p25": 0.17,
+        "median": 0.243,
+        "p75": 0.325
+      },
+      "title_band_frac": {
+        "p25": 0.124,
+        "median": 0.142,
+        "p75": 0.175
+      },
+      "text_blocks": {
+        "p25": 8.0,
+        "median": 11.0,
+        "p75": 14.0
+      }
+    },
+    {
+      "id": "portrait-1col",
+      "orientation": "portrait",
+      "columns": 1,
+      "n_posters": 342,
+      "share_of_corpus": 0.044,
+      "sections": {
+        "p25": 3,
+        "median": 4.0,
+        "p75": 5
+      },
+      "sections_per_column": 4.0,
+      "visual_share": {
+        "p25": 0.166,
+        "median": 0.286,
+        "p75": 0.426
+      },
+      "title_band_frac": {
+        "p25": 0.11,
+        "median": 0.138,
+        "p75": 0.174
+      },
+      "text_blocks": {
+        "p25": 3.0,
+        "median": 5.0,
+        "p75": 10.0
+      }
+    },
+    {
+      "id": "portrait-4col",
+      "orientation": "portrait",
+      "columns": 4,
+      "n_posters": 216,
+      "share_of_corpus": 0.027,
+      "sections": {
+        "p25": 4,
+        "median": 6,
+        "p75": 7
+      },
+      "sections_per_column": 1.5,
+      "visual_share": {
+        "p25": 0.151,
+        "median": 0.218,
+        "p75": 0.291
+      },
+      "title_band_frac": {
+        "p25": 0.112,
+        "median": 0.14,
+        "p75": 0.189
+      },
+      "text_blocks": {
+        "p25": 7.0,
+        "median": 10.0,
+        "p75": 14.0
+      }
+    },
+    {
+      "id": "landscape-1col",
+      "orientation": "landscape",
+      "columns": 1,
+      "n_posters": 110,
+      "share_of_corpus": 0.014,
+      "sections": {
+        "p25": 4,
+        "median": 4.0,
+        "p75": 6
+      },
+      "sections_per_column": 4.0,
+      "visual_share": {
+        "p25": 0.084,
+        "median": 0.26,
+        "p75": 0.43
+      },
+      "title_band_frac": {
+        "p25": 0.132,
+        "median": 0.158,
+        "p75": 0.239
+      },
+      "text_blocks": {
+        "p25": 1.0,
+        "median": 5.0,
+        "p75": 12.0
+      }
+    }
+  ]
+}

@@ -109,3 +109,56 @@ override to use (`--figure-decision figN=reuse`).
 The MCP server exposes `generate_poster(paper_pdf, venue, year, qr_url,
 figure_decisions, iterations, output_dir, config)` returning artifact
 paths plus the preflight summary as JSON.
+
+## Design knowledge
+
+Generation is conditioned on a poster design guide
+(`data/guidelines/poster_style_guide.md`: five-second rule, 600-800 word
+budget, ~40-50% figure share, narrative order, visual hierarchy), injected
+into the content planner and stylist. A venue style pack can override it
+by shipping its own `poster_style_guide.md` — the hook where per-venue
+learned design knowledge plugs in.
+
+## Evaluation & benchmarking
+
+```bash
+paperbanana evaluate-poster --run-dir outputs/poster_<id> [--reference author_poster.png]
+```
+
+Two components, deliberately separated:
+
+- **VLM judge** — Content / Design / Coherence on a 1-5 scale, using the
+  PPTEval rubric so scores are directly comparable with Paper2Poster
+  (PosterAgent-4o: 3.72 overall vs 3.77 for human posters) and successor
+  baselines. Pass `--reference` to calibrate against the author's poster.
+- **Deterministic compliance** — the venue preflight recomputed from the
+  run's `poster_ir.json`; never judged by a model.
+
+Benchmark roadmap: run the harness over the Paper2Poster benchmark
+(100 paper-poster pairs from NeurIPS/ICML/ICLR 2022-24, on HuggingFace as
+`Paper2Poster/Paper2Poster`) judging generated vs author posters, plus a
+PaperQuiz-style comprehension test (VLM answers paper questions seeing
+only the poster). The differentiating metrics PaperBanana adds on top:
+print-fidelity (font-at-distance, effective DPI) and venue compliance —
+dimensions no published system measures.
+
+## Roadmap: poster exemplar corpus
+
+The figure pipeline's core idea — retrieval over curated reference sets —
+generalizes to posters. Planned architecture (mirrors
+`data/reference_sets/` + `guidelines/synthesis.py`):
+
+1. **Corpus**: `data/reference_sets/posters/<venue>/` with award-winning /
+   permissively-licensed conference posters (image + paper link + venue +
+   year metadata). Venues publish e-poster galleries (NeurIPS/CVPR virtual
+   sites) — licensing per poster must be checked before redistribution, so
+   the corpus ships as an index + fetch script, not bundled images.
+2. **Synthesis**: a map-reduce VLM pass (the existing
+   `guidelines/synthesis.py` pattern) extracts per-venue layout statistics
+   — column counts, figure-area share, word counts, palette families — and
+   writes them into each venue pack's `poster_style_guide.md`. Knowledge
+   becomes reviewable text, not opaque embeddings.
+3. **Retrieval**: at generation time the content planner additionally sees
+   2-3 exemplar storyboards (panel structures extracted from corpus
+   posters of the same venue), the same role the Retriever plays for
+   figures.

@@ -21,14 +21,22 @@ PanelRole = Literal[
     "header",
     "abstract",
     "motivation",
+    "background",
     "method",
     "results",
+    "analysis",
+    "ablation",
+    "comparison",
+    "takeaway",
     "conclusion",
     "references",
     "acknowledgments",
     "qr",
     "custom",
 ]
+
+#: Roles with structural meaning; everything else is presentational.
+STRUCTURAL_ROLES = frozenset({"header", "qr"})
 
 FigureDecision = Literal["reuse", "reauthor", "generate"]
 

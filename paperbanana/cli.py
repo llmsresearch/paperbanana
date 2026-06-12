@@ -5011,5 +5011,97 @@ def poster(
         raise typer.Exit(2)
 
 
+@app.command("evaluate-poster")
+def evaluate_poster_cmd(
+    run_dir: str = typer.Option(
+        ..., "--run-dir", help="Poster run directory (outputs/poster_*) to evaluate"
+    ),
+    context: Optional[str] = typer.Option(
+        None,
+        "--context",
+        help="Paper text/PDF grounding the content score (default: the run's ingested paper)",
+    ),
+    reference: Optional[str] = typer.Option(
+        None, "--reference", help="Author-made reference poster image for calibrated judging"
+    ),
+    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="Judge VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="Judge VLM model"),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
+) -> None:
+    """Evaluate a generated poster: PPTEval-aligned VLM judge (Content/Design/
+    Coherence, comparable with Paper2Poster baselines) plus deterministic
+    venue-compliance preflight recomputed from the run's IR."""
+    run_path = Path(run_dir).expanduser()
+    preview = run_path / "preview.png"
+    if not preview.is_file():
+        console.print(f"[red]Error: no preview.png in {run_path}[/red]")
+        raise typer.Exit(1)
+
+    if context:
+        from paperbanana.core.orchestrate import load_paper_text
+
+        paper_context = load_paper_text(Path(context))
+    else:
+        assets_json = run_path / "paper_assets" / "paper_assets.json"
+        if not assets_json.is_file():
+            console.print(
+                f"[red]Error: no ingested paper in {run_path}; pass --context explicitly[/red]"
+            )
+            raise typer.Exit(1)
+        assets = json_mod.loads(assets_json.read_text(encoding="utf-8"))
+        sections = "\n\n".join(f"## {s['heading']}\n{s['text']}" for s in assets["sections"])
+        paper_context = f"{assets['title']}\n\n{assets['abstract']}\n\n{sections}"
+
+    overrides: dict = {}
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    if config:
+        settings = Settings.from_yaml(config, **overrides)
+    else:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+        settings = Settings(**overrides)
+
+    from paperbanana.core.utils import find_prompt_dir
+    from paperbanana.poster.evaluation import evaluate_poster
+    from paperbanana.providers.registry import ProviderRegistry
+
+    vlm = ProviderRegistry.create_vlm(settings)
+    evaluation = asyncio.run(
+        evaluate_poster(
+            vlm,
+            preview_path=preview,
+            paper_context=paper_context,
+            prompt_dir=Path(settings.prompt_dir or find_prompt_dir()),
+            reference_path=Path(reference).expanduser() if reference else None,
+            run_dir=run_path,
+            venue_spec_dir=settings.venue_spec_dir,
+        )
+    )
+
+    table = Table(title=f"Poster Evaluation — {run_path.name}")
+    table.add_column("Dimension", style="bold")
+    table.add_column("Score (1-5)")
+    table.add_column("Rationale", overflow="fold")
+    for s in evaluation.scores:
+        table.add_row(s.dimension.title(), f"{s.score:.0f}", s.rationale)
+    table.add_row("Overall", f"[bold]{evaluation.overall:.2f}[/bold]", "")
+    console.print(table)
+    if evaluation.compliance is not None:
+        status = "[green]PASSED[/green]" if evaluation.compliance.passed else "[red]FAILED[/red]"
+        console.print(
+            f"Venue compliance (deterministic): {status} "
+            f"({len(evaluation.compliance.failures)} failures, "
+            f"{len(evaluation.compliance.warnings)} warnings)"
+        )
+    (run_path / "evaluation.json").write_text(
+        evaluation.model_dump_json(indent=2), encoding="utf-8"
+    )
+    console.print(f"Saved: {run_path / 'evaluation.json'}")
+
+
 if __name__ == "__main__":
     app()

@@ -177,6 +177,7 @@ def _settings(tmp_path: Path) -> Settings:
 @needs_soffice
 async def test_pipeline_end_to_end(paper_pdf: Path, tmp_path: Path, monkeypatch):
     monkeypatch.setenv("PAPERBANANA_VENUE_SPEC_DIR", "/nonexistent")
+    monkeypatch.setenv("PAPERBANANA_LESSONS_DIR", str(tmp_path / "lessons"))
     monkeypatch.chdir(Path(__file__).resolve().parents[2])  # builtin specs resolve relatively
     pipeline = PosterPipeline(
         settings=_settings(tmp_path),

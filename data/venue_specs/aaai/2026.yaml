@@ -1,0 +1,38 @@
+spec_version: 1
+venue: aaai
+year: 2026
+display_name: "AAAI-26 (Singapore)"
+sources:
+  - "https://aaai.org/conference/aaai/aaai-26/poster-guidelines/"
+  - "https://aaai.org/wp-content/uploads/2025/11/R3_Authors-Poster-Guide-@-AAAI-2026_110625.pdf"
+dimensions:
+  # "All posters should be PORTRAIT in orientation and should be no larger
+  # than A0 which is 841mm x 1190mm" — hard maximum.
+  mode: max
+  width_mm: 841.0
+  height_mm: 1190.0
+  orientation: portrait
+  default_width_mm: 841.0
+  default_height_mm: 1189.0   # standard A0
+text_rules:
+  min_pt: {}
+  min_image_dpi: 100
+required_elements:
+  - id: paper_title
+    description: "Poster must display the paper title"
+    rule: text_level_present
+    params: { level: title }
+    severity: fail
+  - id: authors
+    description: "Poster should display the author list"
+    rule: text_level_present
+    params: { level: authors }
+    severity: warn
+file_rules: {}
+notes: >-
+  Slightly rigid standard poster material; prohibited: adhesive-backed
+  materials, foam board, fabric, laminated or lightweight plain paper.
+  Install 8:00-11:45am on session day; remove before 4:30pm or the poster
+  is discarded. Official printing: Arcon Marketing (advance order, pickup
+  at Singapore Expo). Workshop/lab/tutorial poster details come from
+  program organizers.

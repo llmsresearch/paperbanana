@@ -5,6 +5,11 @@ ABSTRACT (for topical color inspiration): {abstract}
 
 Choose a professional, restrained design. Posters fail when they look like marketing flyers: aim for an authoritative academic look with one confident accent color.
 
+DESIGN GUIDE (the visual-hierarchy and color rules here are binding):
+---
+{design_guidelines}
+---
+
 Constraints (hard):
 - Fonts: choose ONLY from: {allowed_fonts}. Venue preference: {venue_fonts}.
 - Type scale minima (pt) — never go below these: {min_pt_floor}

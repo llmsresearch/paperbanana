@@ -1,0 +1,35 @@
+spec_version: 1
+venue: iclr
+year: 2026
+display_name: "ICLR 2026 (main conference)"
+sources:
+  - "https://iclr.cc/Conferences/2026/PosterInstructions"
+dimensions:
+  # "Maximum size: 1.90m x 0.90m (76.4in x 37.4in) width/height" — hard max,
+  # landscape.
+  mode: max
+  width_mm: 1900.0
+  height_mm: 900.0
+  orientation: landscape
+  # Generation target: A0 landscape — a standard print size inside the bound.
+  default_width_mm: 1189.0
+  default_height_mm: 841.0
+text_rules:
+  min_pt: {}
+  min_image_dpi: 100
+required_elements:
+  - id: paper_title
+    description: "Poster must display the paper title"
+    rule: text_level_present
+    params: { level: title }
+    severity: fail
+  - id: authors
+    description: "Poster should display the author list"
+    rule: text_level_present
+    params: { level: authors }
+    severity: warn
+file_rules: {}
+notes: >-
+  Command strips / painter's tape provided; no adhesive-backed posters; hang
+  no more than 1 hour before the session. Workshop posters: max 61 x 91 cm
+  (24 x 36 in), portrait — add a separate spec entry if targeting workshops.

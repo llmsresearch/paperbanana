@@ -25,6 +25,8 @@ class PosterContentAgent(BaseAgent):
         venue_notes: str,
         columns_hint: int,
         qr_url: Optional[str] = None,
+        design_guidelines: str = "",
+        layout_patterns: str = "",
         **kwargs: Any,
     ) -> Storyboard:
         template = self.load_prompt("poster")
@@ -47,12 +49,32 @@ class PosterContentAgent(BaseAgent):
             venue_notes=venue_notes or "(none)",
             columns_hint=columns_hint,
             qr_url=qr_url or "(none provided)",
+            design_guidelines=design_guidelines or "(none)",
+            layout_patterns=layout_patterns or "",
         )
         raw = await self.vlm.generate(prompt=prompt, response_format="json", temperature=0.4)
         data = extract_json(raw)
         if not isinstance(data, dict):
             raise ValueError(f"content planner returned no JSON object: {raw[:400]!r}")
         data.setdefault("qr_url", qr_url)
+        # Models sometimes list the QR code as a pseudo-figure; QR placement
+        # is driven by panel role + qr_url, so normalize those entries away.
+        # Likewise, only 'header' and 'qr' roles carry structural meaning —
+        # an inventive section role degrades cleanly to 'custom'.
+        from typing import get_args
+
+        from paperbanana.poster.types import PanelRole
+
+        valid_roles = set(get_args(PanelRole))
+        for panel in data.get("panels", []):
+            if not isinstance(panel, dict):
+                continue
+            if "figure_ids" in panel:
+                panel["figure_ids"] = [
+                    fid for fid in panel["figure_ids"] if str(fid).lower() not in ("qr", "qrcode")
+                ]
+            role = str(panel.get("role", "custom")).lower()
+            panel["role"] = role if role in valid_roles else "custom"
         storyboard = Storyboard(**data)
         known = {f.id for f in assets.figures}
         for panel in storyboard.panels:

@@ -43,7 +43,13 @@ from paperbanana.poster.convert import find_soffice, pdf_to_png, pptx_to_pdf, re
 from paperbanana.poster.edits import EditOpError, apply_edit_ops, parse_edit_ops
 from paperbanana.poster.figures import curate_figures, estimate_placed_width_mm
 from paperbanana.poster.ingest import ingest_paper
-from paperbanana.poster.layout import assign_bboxes, body_column_height_mm
+from paperbanana.poster.layout import (
+    DEFAULT_HEADER_FRAC,
+    LayoutError,
+    assign_bboxes,
+    body_column_height_mm,
+)
+from paperbanana.poster.lessons import format_lessons_block, load_lessons, record_lessons
 from paperbanana.poster.preflight import (
     DEFAULT_LEGIBILITY_MIN_PT,
     render_preflight_markdown,
@@ -56,6 +62,12 @@ from paperbanana.poster.renderer import (
     render_pptx,
     required_print_scale,
 )
+from paperbanana.poster.schemas import (
+    format_layout_priors,
+    load_schema_library,
+    select_schema,
+)
+from paperbanana.poster.style_knowledge import load_poster_style_guide
 from paperbanana.poster.types import (
     FigureAsset,
     FigureDecisionResult,
@@ -101,6 +113,7 @@ class PosterPipeline:
     ):
         self.settings = settings or Settings()
         self.run_id = _generate_poster_run_id()
+        self._header_frac = DEFAULT_HEADER_FRAC
         self._progress_callback = progress_callback
         self._run_dir = Path(self.settings.output_dir) / self.run_id
 
@@ -209,6 +222,30 @@ class PosterPipeline:
 
         spec = load_venue_spec(venue_name, year, extra_dir=self.settings.venue_spec_dir)
         venue_pack = self._resolve_style_pack(venue_name)
+        design_guide = load_poster_style_guide(
+            self.settings.guidelines_path, venue=venue_name, venue_dir=self.settings.venue_dir
+        )
+
+        # Learning layers: induced real-poster structure + lessons from
+        # previous runs on this machine.
+        gen_w_mm, _ = spec.dimensions.generation_size_mm()
+        schema_library = load_schema_library()
+        layout_schema = select_schema(
+            schema_library,
+            spec.dimensions.generation_orientation(),
+            min_columns=3 if gen_w_mm >= 1100 else 2,
+        )
+        layout_patterns = format_layout_priors(schema_library, layout_schema)
+        lessons = load_lessons(venue=venue_name)
+        design_guide_with_lessons = design_guide + format_lessons_block(lessons)
+        self._emit(
+            "knowledge_loaded",
+            schema=layout_schema.id,
+            schema_posters=layout_schema.n_posters,
+            lessons=len(lessons),
+        )
+        run_lessons: list[str] = []
+        self._shorten_events = 0
         min_pt_floor = dict(DEFAULT_LEGIBILITY_MIN_PT)
         for level, value in spec.text_rules.min_pt.items():
             min_pt_floor[level] = max(min_pt_floor.get(level, 0), value)
@@ -252,8 +289,10 @@ class PosterPipeline:
                 assets=assets,
                 venue_display=spec.display_name,
                 venue_notes=spec.notes or "",
-                columns_hint=3,
+                columns_hint=layout_schema.columns,
                 qr_url=qr_url,
+                design_guidelines=design_guide_with_lessons,
+                layout_patterns=layout_patterns,
             )
             self._save_stage("storyboard", storyboard.model_dump_json(indent=2))
         self._emit("storyboard_complete", panels=len(storyboard.panels))
@@ -269,6 +308,7 @@ class PosterPipeline:
                 venue_display=spec.display_name,
                 venue_fonts=venue_pack.config.fonts if venue_pack else None,
                 min_pt_floor=min_pt_floor,
+                design_guidelines=design_guide_with_lessons,
             )
             self._save_stage("style", style.model_dump_json(indent=2))
         self._emit("style_complete", fonts=[style.font_heading, style.font_body])
@@ -319,6 +359,10 @@ class PosterPipeline:
 
         # Stage 5: build IR ----------------------------------------------------
         ir = self._build_ir(assets, storyboard, style, asset_map, spec, qr_url)
+        self._header_frac = self._tune_header_band(ir, layout_schema)
+        # Column escalation during fitting may only be undone down to the
+        # storyboard's own choice — never below it.
+        self._columns_floor = max(2, ir.columns)
 
         # Stage 6: refinement loop ----------------------------------------------
         iteration = 0
@@ -330,7 +374,7 @@ class PosterPipeline:
             iter_dir.mkdir(parents=True, exist_ok=True)
 
             if not ir.is_fully_placed():
-                ir = assign_bboxes(ir)
+                ir = assign_bboxes(ir, header_frac=self._header_frac)
             ir = await self._fit_content(ir, min_pt_floor)
             (iter_dir / "poster_ir.json").write_text(ir.model_dump_json(indent=2), encoding="utf-8")
 
@@ -368,6 +412,10 @@ class PosterPipeline:
                 blocking=critique.blocking,
                 ops=len(critique.edit_ops),
             )
+            if critique.blocking and critique.summary:
+                run_lessons.append(
+                    f"Critic flagged (iteration {iteration}): {critique.summary[:300]}"
+                )
             if not critique.blocking and not critique.edit_ops and preflight.passed:
                 break
 
@@ -392,6 +440,7 @@ class PosterPipeline:
                     applied=applied,
                     rejected=rejected,
                 )
+                run_lessons.extend(f"Critic proposed an illegal edit: {r[:200]}" for r in rejected)
             if deferred:
                 logger.warning(
                     "recurate_figure ops are not re-executed within the loop in v1; "
@@ -437,15 +486,52 @@ class PosterPipeline:
         (self._run_dir / "poster_output.json").write_text(
             output.model_dump_json(indent=2), encoding="utf-8"
         )
+        for check in preflight.failures:
+            run_lessons.append(f"Final preflight failure {check.id}: {check.detail[:200]}")
+        if self._shorten_events >= 3:
+            run_lessons.append(
+                f"Storyboard overpacked panels: {self._shorten_events} overflow rewrites were "
+                "needed; plan fewer/shorter bullets per panel from the start."
+            )
+        record_lessons(self.run_id, venue_name, run_lessons)
         self._emit(
             "poster_complete",
             run_dir=str(self._run_dir),
             preflight_passed=preflight.passed,
             iterations=iteration,
+            lessons_recorded=len(run_lessons),
         )
         return output
 
     # ------------------------------------------------------------------
+
+    def _tune_header_band(self, ir: PosterIR, schema) -> float:
+        """Size the header band to its measured content, bounded by what
+        real posters do (the schema's title-band p25-p75 range)."""
+        from paperbanana.poster.types import BBox
+
+        header = next(p for p in ir.panels if p.role == "header")
+        content_w = ir.size.width_mm - 2 * ir.margin_mm
+        content_h = ir.size.height_mm - 2 * ir.margin_mm
+        probe = header.model_copy(
+            update={
+                "bbox": BBox(x_mm=ir.margin_mm, y_mm=ir.margin_mm, w_mm=content_w, h_mm=content_h)
+            }
+        )
+        required = measure_panel_required_height_mm(probe, ir) + 2 * PANEL_PADDING_MM
+        needed_frac = required / content_h
+        if schema.title_band_frac is not None:
+            lo, hi = schema.title_band_frac.p25, schema.title_band_frac.p75
+        else:
+            lo, hi = 0.10, 0.20
+        frac = min(max(needed_frac, lo), max(hi, needed_frac))
+        self._emit(
+            "header_band_tuned",
+            needed_frac=round(needed_frac, 3),
+            corpus_range=[lo, hi],
+            chosen=round(frac, 3),
+        )
+        return frac
 
     def _resolve_style_pack(self, venue_name: str) -> Optional[VenuePack]:
         """Style packs are optional supplements to the mandatory venue spec."""
@@ -572,17 +658,23 @@ class PosterPipeline:
                     elements=elements,
                 )
             )
-        if effective_qr and not any(p.role == "qr" for p in panels):
-            panels.append(
-                Panel(
-                    id="qr",
-                    role="qr",
-                    title="Paper",
-                    order=max(p.order for p in panels) + 1,
-                    weight=0.7,
-                    elements=[QRElement(url=effective_qr, label="Paper & code")],
-                )
-            )
+        # A QR code is an element, not a panel: a panel containing only QR
+        # elements wastes a column slot, so fold it into the preceding
+        # content panel; likewise, a missing QR is appended to the last one.
+        body = sorted([p for p in panels if p.role != "header"], key=lambda p: p.order)
+        qr_only = [p for p in body if all(el.kind == "qr" for el in p.elements) and len(body) > 1]
+        for panel in qr_only:
+            target = next(b for b in reversed(body) if b is not panel)
+            target.elements = list(target.elements) + list(panel.elements)
+            panels.remove(panel)
+            body.remove(panel)
+        for i, panel in enumerate(sorted(panels, key=lambda p: p.order)):
+            panel.order = i
+        if effective_qr and not any(el.kind == "qr" for p in panels for el in p.elements):
+            last = max((p for p in panels if p.role != "header"), key=lambda p: p.order)
+            last.elements = list(last.elements) + [
+                QRElement(url=effective_qr, label="Paper & code")
+            ]
 
         size = PhysicalSize(width_mm=gen_w, height_mm=gen_h)
         return PosterIR(
@@ -640,24 +732,47 @@ class PosterPipeline:
                 for p in data["panels"]:
                     p["bbox"] = None
                     p["column"] = None
-                ir = assign_bboxes(PosterIR(**data))
+                ir = assign_bboxes(PosterIR(**data), header_frac=self._header_frac)
                 self._emit("columns_increased", columns=columns)
             for _ in range(WEIGHT_FIT_ATTEMPTS):
                 if not self._overflowing_panels(ir):
-                    return ir
+                    return self._try_fewer_columns(ir)
                 # Measured heights shift after each re-layout (text rewraps
                 # at the column width, figure clamps change), so iterate.
                 ir = self._rebalance_by_measured_heights(ir)
             if not self._overflowing_panels(ir):
-                return ir
+                return self._try_fewer_columns(ir)
             ir = await self._shorten_text_rounds(ir, rounds=1)
             ir = self._rebalance_by_measured_heights(ir)
             if not self._overflowing_panels(ir):
-                return ir
+                return self._try_fewer_columns(ir)
         overflowing = self._overflowing_panels(ir)
         if overflowing:
             panel, required, available = overflowing[0]
             raise TextOverflowError(panel.id, required, available)
+        return self._try_fewer_columns(ir)
+
+    def _try_fewer_columns(self, ir: PosterIR) -> PosterIR:
+        """Undo column escalation when the content also fits in fewer,
+        wider columns — escalation must not be a ratchet (a lone panel
+        marooned in a sparse extra column is worse than denser columns)."""
+        floor = getattr(self, "_columns_floor", 2)
+        while ir.columns > floor:
+            data = ir.model_dump()
+            data["columns"] = ir.columns - 1
+            for p in data["panels"]:
+                p["bbox"] = None
+                p["column"] = None
+            try:
+                candidate = assign_bboxes(PosterIR(**data), header_frac=self._header_frac)
+            except LayoutError:
+                break
+            for _ in range(2):
+                candidate = self._rebalance_by_measured_heights(candidate)
+            if self._overflowing_panels(candidate):
+                break
+            ir = candidate
+            self._emit("columns_reduced", columns=ir.columns)
         return ir
 
     def _rebalance_by_measured_heights(self, ir: PosterIR) -> PosterIR:
@@ -688,7 +803,11 @@ class PosterPipeline:
             weights={k: round(v) for k, v in required_by_id.items()},
         )
         new_ir = PosterIR(**data)
-        return assign_bboxes(new_ir, column_capacity_mm=body_column_height_mm(new_ir))
+        return assign_bboxes(
+            new_ir,
+            header_frac=self._header_frac,
+            column_capacity_mm=body_column_height_mm(new_ir, self._header_frac),
+        )
 
     async def _shorten_text_rounds(self, ir: PosterIR, rounds: int = TEXT_FIT_ATTEMPTS) -> PosterIR:
         """Bounded VLM text-shortening passes over overflowing panels."""
@@ -727,6 +846,7 @@ class PosterPipeline:
                     if not str(content).strip():
                         raise ValueError(f"text-fit rewrite for panel '{panel.id}' emptied a block")
                     panels_by_id[panel.id]["elements"][i]["content"] = str(content)
+                self._shorten_events = getattr(self, "_shorten_events", 0) + 1
                 self._emit(
                     "panel_text_shortened",
                     panel=panel.id,

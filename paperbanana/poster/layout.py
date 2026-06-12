@@ -89,7 +89,6 @@ def assign_bboxes(
     )
     for col_index, col_panels in enumerate(columns):
         x = ir.margin_mm + col_index * (col_w + ir.gutter_mm)
-        total_weight = sum(p.weight for p in col_panels)
         gutters = ir.gutter_mm * (len(col_panels) - 1)
         usable_h = body_h - gutters
         if usable_h <= 0:
@@ -97,19 +96,57 @@ def assign_bboxes(
                 f"column {col_index} cannot fit {len(col_panels)} panels with "
                 f"{ir.gutter_mm}mm gutters in {body_h:.0f}mm"
             )
+        heights, extra_gap = _column_heights(
+            [p.weight for p in col_panels], usable_h, capacity_mode=column_capacity_mm is not None
+        )
         y = body_top
         for i, panel in enumerate(col_panels):
-            h = usable_h * (panel.weight / total_weight)
+            h = heights[i]
             if i == len(col_panels) - 1:
-                # Absorb floating-point drift so the column ends exactly at
-                # the bottom margin.
-                h = ir.size.height_mm - ir.margin_mm - y
+                # Snap to the bottom margin only to absorb drift/minor
+                # remainders — never stretch a lone small panel into a
+                # giant near-empty box.
+                bottom_h = ir.size.height_mm - ir.margin_mm - y
+                if bottom_h <= h * 1.1 + 1.0:
+                    h = bottom_h
             panel.bbox = BBox(x_mm=x, y_mm=y, w_mm=col_w, h_mm=h)
             panel.column = col_index
-            y += h + ir.gutter_mm
+            y += h + ir.gutter_mm + extra_gap
 
     placed = {p.id: p for p in [header, *[p for col in columns for p in col]]}
     return ir.model_copy(update={"panels": [placed[p.id] for p in panels]})
+
+
+#: Maximum growth of a panel beyond its measured content height (capacity mode).
+MAX_PANEL_GROWTH_FRAC = 0.25
+
+
+def _column_heights(
+    weights: list[float], usable_h: float, capacity_mode: bool
+) -> tuple[list[float], float]:
+    """Panel heights for one column, plus extra inter-panel spacing.
+
+    Balanced mode (weights are relative): proportional fill of the column.
+
+    Capacity mode (weights are measured content heights in mm): panels get
+    their content height plus bounded growth; remaining slack becomes
+    evenly distributed extra spacing between panels, so columns stay
+    bottom-aligned without inflating boxes far beyond their content —
+    the fix for v1's stretched, half-empty panels.
+    """
+    total = sum(weights)
+    n = len(weights)
+    if not capacity_mode or total >= usable_h:
+        return [usable_h * w / total for w in weights], 0.0
+    if n == 1:
+        # A lone panel keeps near-content size; whitespace below beats a
+        # stretched, mostly-empty box.
+        return [min(usable_h, weights[0] * (1 + 2 * MAX_PANEL_GROWTH_FRAC))], 0.0
+    slack = usable_h - total
+    heights = [w + min(w * MAX_PANEL_GROWTH_FRAC, slack * w / total) for w in weights]
+    leftover = usable_h - sum(heights)
+    extra_gap = max(0.0, leftover / (n - 1))
+    return heights, extra_gap
 
 
 def _split_into_columns(
@@ -123,10 +160,14 @@ def _split_into_columns(
     Without ``capacity``: greedy weight balancing — a column closes once
     its cumulative weight reaches the per-column average.
 
-    With ``capacity``: weights are physical heights (mm); a column closes
-    when adding the *next* panel (plus its gutter) would exceed the
-    capacity. Forced closes (to leave one panel per remaining column) can
-    still overshoot — the content fitter detects that as overflow.
+    With ``capacity``: weights are physical heights (mm); columns balance
+    toward the per-column average load like real posters do, but also
+    close early when adding the *next* panel (plus its gutter) would
+    exceed the physical capacity. Pure first-fit-to-capacity is wrong
+    here: it packs the left columns tight and strands light panels in a
+    sparse right column. Forced closes (to leave one panel per remaining
+    column) can still overshoot — the content fitter detects that as
+    overflow.
     """
     if len(body) < n_columns:
         raise LayoutError(
@@ -135,6 +176,9 @@ def _split_into_columns(
         )
     total = sum(p.weight for p in body)
     target = total / n_columns
+    if capacity is not None:
+        # Average load including the gutters that join panels in a column.
+        target = (total + gutter_mm * max(0, len(body) - n_columns)) / n_columns
     columns: list[list[Panel]] = []
     current: list[Panel] = []
     acc = 0.0
@@ -151,7 +195,7 @@ def _split_into_columns(
         must_close = remaining == cols_after_close
         if capacity is not None:
             next_burst = remaining > 0 and acc + gutter_mm + body[i + 1].weight > capacity
-            should_close = next_burst
+            should_close = next_burst or acc >= target
         else:
             should_close = acc >= target
         if remaining > 0 and (must_close or should_close):

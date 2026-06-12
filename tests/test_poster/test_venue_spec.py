@@ -62,7 +62,7 @@ def test_latest_year_selected_when_year_omitted(tmp_path: Path):
 
 def test_unknown_venue_lists_available():
     with pytest.raises(UnknownVenueSpecError, match="neurips"):
-        load_venue_spec("aaai", builtin_dir=BUILTIN_DIR, extra_dir="/nonexistent")
+        load_venue_spec("ispor", builtin_dir=BUILTIN_DIR, extra_dir="/nonexistent")
 
 
 def test_unknown_year_raises():

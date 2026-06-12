@@ -14,6 +14,13 @@ AVAILABLE FIGURES AND TABLES (extracted from the paper):
 VENUE NOTES: {venue_notes}
 QR LINK: {qr_url}
 
+DESIGN GUIDE (follow this — it encodes how award-winning posters at this kind of venue are built):
+---
+{design_guidelines}
+---
+
+{layout_patterns}
+
 Design a storyboard: the set of poster panels, their reading order, and what goes in each. A poster is NOT a paper dump — a passerby decides in 5 seconds whether to stop. Target ~600-800 total words.
 
 Principles:
@@ -21,7 +28,7 @@ Principles:
 - Every panel: a short punchy title plus 2-5 tight bullet text blocks (each bullet a single line starting with "- "). No paragraphs.
 - Place figures where they carry the narrative; the method figure and the headline results figure/table deserve the most space (weight).
 - If the paper LACKS a poster-friendly overview/methodology figure, request one: reference it as "new:<slug>" in a panel's figure_ids and write a generation brief in new_figure_briefs describing exactly what the diagram must show (components, flow, labels), grounded in the method section.
-- If a QR link is provided, include a panel (role "qr") or put the QR in the conclusion panel by listing no figure but noting it; the system renders QR codes from qr_url automatically when a panel has role "qr".
+- If a QR link is provided, give one panel the role "qr" (or it will be placed automatically). NEVER list "qr" in figure_ids — figure_ids only holds extracted figure/table ids or "new:<slug>" requests; QR rendering is automatic from qr_url.
 - weight expresses relative vertical space within a column (1.0 = average); be deliberate.
 - Do NOT include a header/title panel — the system adds it automatically.
 - 5 to 8 body panels total. Use roles: abstract, motivation, method, results, conclusion, references, acknowledgments, qr, custom.

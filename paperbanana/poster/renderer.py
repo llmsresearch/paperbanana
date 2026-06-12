@@ -273,7 +273,21 @@ def render_pptx(ir: PosterIR, out_path: Path, workdir: Path) -> Path:
 
         inner_x = box.x_mm + PANEL_PADDING_MM
         inner_w = box.w_mm - 2 * PANEL_PADDING_MM
-        cursor_y = box.y_mm + PANEL_PADDING_MM
+
+        # Distribute panel slack as bounded extra spacing between elements,
+        # centering the remainder — content reads as deliberately composed
+        # instead of pooling at the top of a tall box.
+        required = measure_panel_required_height_mm(panel, ir)
+        available = box.h_mm - 2 * PANEL_PADDING_MM
+        slack = max(0.0, available - required)
+        n_slots = len(panel.elements) + (1 if panel.title and not is_header else 0)
+        if n_slots > 1:
+            extra_gap = min(slack / (n_slots - 1), 2.5 * ELEMENT_GAP_MM)
+        else:
+            extra_gap = 0.0
+        top_offset = (slack - extra_gap * max(n_slots - 1, 0)) / 2
+        gap_mm = ELEMENT_GAP_MM + extra_gap
+        cursor_y = box.y_mm + PANEL_PADDING_MM + top_offset
 
         def add_text(
             content: str,
@@ -312,7 +326,7 @@ def render_pptx(ir: PosterIR, out_path: Path, workdir: Path) -> Path:
                     run.font.color.rgb = color(text_color)
                     run.font.bold = level in ("title", "heading")
             if y_mm is None:
-                cursor_y = top + height_mm + ELEMENT_GAP_MM
+                cursor_y = top + height_mm + gap_mm
             return height_mm
 
         if panel.title and not is_header:
@@ -334,11 +348,11 @@ def render_pptx(ir: PosterIR, out_path: Path, workdir: Path) -> Path:
                     emu(placement.width_mm),
                     emu(placement.height_mm),
                 )
-                cursor_y += placement.height_mm + ELEMENT_GAP_MM / 2
+                cursor_y += placement.height_mm + gap_mm / 2
                 if element.caption:
                     add_text(element.caption, "caption", align_center=True)
                 else:
-                    cursor_y += ELEMENT_GAP_MM / 2
+                    cursor_y += gap_mm / 2
             elif isinstance(element, QRElement):
                 qr_path = _render_qr(element.url, workdir)
                 qr_x = inner_x + (inner_w - QR_SIZE_MM) / 2
@@ -349,7 +363,7 @@ def render_pptx(ir: PosterIR, out_path: Path, workdir: Path) -> Path:
                     emu(QR_SIZE_MM),
                     emu(QR_SIZE_MM),
                 )
-                cursor_y += QR_SIZE_MM + ELEMENT_GAP_MM / 2
+                cursor_y += QR_SIZE_MM + gap_mm / 2
                 if element.label:
                     add_text(element.label, "caption", align_center=True)
 

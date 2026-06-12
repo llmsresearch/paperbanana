@@ -27,6 +27,7 @@ class PosterStylistAgent(BaseAgent):
         venue_display: str,
         venue_fonts: list[str] | None,
         min_pt_floor: dict[str, float],
+        design_guidelines: str = "",
         **kwargs: Any,
     ) -> StyleTokens:
         template = self.load_prompt("poster")
@@ -39,6 +40,7 @@ class PosterStylistAgent(BaseAgent):
             allowed_fonts=", ".join(SAFE_FONT_FAMILIES),
             venue_fonts=", ".join(preferred) or "(no venue preference)",
             min_pt_floor="; ".join(f"{k}: {v:.0f}pt" for k, v in sorted(min_pt_floor.items())),
+            design_guidelines=design_guidelines or "(none)",
         )
         raw = await self.vlm.generate(prompt=prompt, response_format="json", temperature=0.5)
         data = extract_json(raw)

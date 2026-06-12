@@ -1,0 +1,39 @@
+spec_version: 1
+venue: cvpr
+year: 2026
+display_name: "CVPR 2026"
+sources:
+  - "https://cvpr.thecvf.com/Conferences/2026/PosterPrinting"
+  - "https://cvpr.thecvf.com/Conferences/2026/YouTubeVideoPosterUpload"
+dimensions:
+  # "84\" x 42\"" = 213 x 107 cm, landscape, 2:1 — the official printing
+  # service's only size; effectively the fixed standard.
+  mode: exact
+  width_mm: 2133.6   # 84 in
+  height_mm: 1066.8  # 42 in
+  orientation: landscape
+text_rules:
+  min_pt: {}
+  # "100 DPI or vector art at full size is recommended"
+  min_image_dpi: 100
+required_elements:
+  - id: paper_title
+    description: "Poster must display the paper title"
+    rule: text_level_present
+    params: { level: title }
+    severity: fail
+  - id: authors
+    description: "Poster should display the author list"
+    rule: text_level_present
+    params: { level: authors }
+    severity: warn
+file_rules:
+  # Virtual-site e-poster upload: "PNG no more than 5120 width x 2880 height
+  # and no more than 10 MB".
+  png_max_px: 5120
+notes: >-
+  PDF preferred for printing, no bleed; uploaded print file is final. Print
+  orders end Friday May 29 noon EST. Full name + paper ID go in the print
+  job name (not on the poster). Workshop posters are 42 x 21 in (half size,
+  same 2:1 landscape). 84 in exceeds the pptx 56 in page cap: the pptx is
+  designed at 1/2 scale (print_scale=2) and printed at 200%.
