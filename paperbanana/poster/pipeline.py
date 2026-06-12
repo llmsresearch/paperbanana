@@ -748,6 +748,17 @@ class PosterPipeline:
                 threshold=threshold,
             )
 
+    @staticmethod
+    def _storyboard_for(draft_ir: PosterIR, storyboard: Storyboard) -> Storyboard:
+        """The storyboard restricted to panels that survived IR building.
+
+        QR-only storyboard panels are folded into neighbors by _build_ir;
+        the proposer must only place panels that actually exist.
+        """
+        draft_ids = {p.id for p in draft_ir.panels}
+        panels = [p for p in storyboard.panels if p.id in draft_ids]
+        return storyboard.model_copy(update={"panels": panels})
+
     async def _propose_structure(
         self,
         draft_ir: PosterIR,
@@ -756,6 +767,7 @@ class PosterPipeline:
         resume: bool = False,
     ) -> PosterIR:
         """Obtain a legal learned structure and apply it to the draft IR."""
+        storyboard = self._storyboard_for(draft_ir, storyboard)
         cached = self._load_stage("layout_proposal", resume)
         if cached is not None:
             proposal = LayoutProposal(**cached["proposal"])
@@ -810,6 +822,7 @@ class PosterPipeline:
         """
         from paperbanana.poster.skeleton import placeholder_assets, render_skeleton_preview
 
+        storyboard = self._storyboard_for(draft_ir, storyboard)
         n = self.settings.poster_layout_proposals
         candidates: list[tuple[LayoutProposal, list[RepairAction]]] = []
         for i in range(n):
@@ -923,6 +936,7 @@ class PosterPipeline:
         feedback: str,
     ) -> tuple[LayoutProposal, list[RepairAction], int]:
         """Propose, validate, repair; fatal violations re-prompt, bounded."""
+        storyboard = self._storyboard_for(draft_ir, storyboard)
         budget = self.settings.poster_proposal_repair_rounds
         fatal: list = []
         for attempt in range(budget + 1):

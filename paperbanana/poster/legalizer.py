@@ -445,7 +445,12 @@ def build_ir_from_proposal(
             BigNumberElement(value=stat.value, label=stat.label)
         )
     for placement in proposal.placements:
-        panel_dump = next(p for p in data["panels"] if p["id"] == placement.panel_id)
+        panel_dump = next((p for p in data["panels"] if p["id"] == placement.panel_id), None)
+        if panel_dump is None:
+            raise ValueError(
+                f"proposal places panel '{placement.panel_id}' which is not in the "
+                "draft IR — validate against the draft's panel set first"
+            )
         panel_dump.update(
             band_id=placement.band_id,
             column=placement.column,

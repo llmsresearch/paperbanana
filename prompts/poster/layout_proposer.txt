@@ -30,7 +30,14 @@ DESIGN JUDGMENT (what separates award posters):
 - Multiple body bands let a hero span the full width region while normal columns continue below.
 - Don't exceed ~5 sections per column; wider columns (2-3 per band) suit figure-heavy content, narrower (3-4) suit text.
 
-Respond with ONLY a JSON object exactly matching this contract:
+CAPACITY ARITHMETIC (do this before answering): each body column holds roughly (page height minus header/banner bands) of content. Text needs ~1mm of column height per 2 characters at body size; a figure needs (column width x its h/w aspect) mm, capped at 40% of page height. Sum each column's panels — if any column's sum exceeds its budget, your structure is wrong before it is rendered.
+
+COLUMN DISTRIBUTION RULES (hard):
+- Spread panels across ALL columns of a band. Never stack most panels in column 0.
+- Text-heavy panels (>800 chars) get their own column or a 2-wide band slot; do not stack two of them in one column.
+- Stacked body bands SHRINK every column's height budget — prefer ONE body band unless a full-width hero genuinely needs its own band.
+
+Respond with ONLY a JSON object exactly matching this contract (NOTE: this example shows the FORMAT only — it is NOT a recommended structure; derive bands/columns/hero/banner from the content loads, the corpus priors, and the exemplars above):
 {example}
 
 Rules:

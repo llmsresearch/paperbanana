@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import structlog
+
 from paperbanana.agents.base import BaseAgent
 from paperbanana.core.utils import extract_json
 from paperbanana.poster.types import PaperAssets, Storyboard
+
+logger = structlog.get_logger()
 
 _SECTION_CHAR_BUDGET = 2200
 
@@ -75,6 +79,17 @@ class PosterContentAgent(BaseAgent):
                 ]
             role = str(panel.get("role", "custom")).lower()
             panel["role"] = role if role in valid_roles else "custom"
+        # Key stats must be short enough to render as huge callouts; an
+        # over-long "stat" is a sentence, not a number — drop it (it still
+        # appears in the panel text), and log the decision.
+        kept_stats = []
+        for stat in data.get("key_stats") or []:
+            value = str(stat.get("value", "")).strip()
+            if 0 < len(value) <= 16 and len(str(stat.get("label", ""))) <= 80:
+                kept_stats.append(stat)
+            else:
+                logger.warning("Dropping unusable key_stat", stat=stat)
+        data["key_stats"] = kept_stats
         storyboard = Storyboard(**data)
         known = {f.id for f in assets.figures}
         for panel in storyboard.panels:

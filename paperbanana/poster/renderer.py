@@ -45,6 +45,9 @@ QR_SIZE_MM = 80.0
 
 #: Maximum pptx page dimension (PowerPoint limit: 56 inches).
 MAX_PPTX_DIM_MM = 56 * 25.4
+#: No single figure may exceed this fraction of the page height — the
+#: physical bound that keeps hero figures posters-sized, not wall-sized.
+MAX_FIGURE_PAGE_FRAC = 0.40
 
 
 class TextOverflowError(ValueError):
@@ -124,10 +127,15 @@ def measure_text_height_mm(
 
 
 def resolve_figure_placement(
-    panel: Panel, element: FigureElement, asset_width_px: int, asset_height_px: int
+    panel: Panel,
+    element: FigureElement,
+    asset_width_px: int,
+    asset_height_px: int,
+    page_height_mm: float | None = None,
 ) -> FigurePlacement:
     """Physical figure size inside a panel: full inner width, aspect kept,
-    clamped by ``max_height_frac`` of the panel's inner height."""
+    clamped by ``max_height_frac`` of the panel's inner height and by the
+    page-fraction bound (no figure taller than 40% of the poster)."""
     if panel.bbox is None:
         raise ValueError(f"panel '{panel.id}' has no bbox; run the layout solver first")
     inner_w = panel.bbox.w_mm - 2 * PANEL_PADDING_MM
@@ -136,6 +144,8 @@ def resolve_figure_placement(
     width = inner_w
     height = width * aspect
     max_h = inner_h * element.max_height_frac
+    if page_height_mm is not None:
+        max_h = min(max_h, page_height_mm * MAX_FIGURE_PAGE_FRAC)
     if height > max_h:
         height = max_h
         width = height / aspect
@@ -191,12 +201,22 @@ def _element_height_at_width(
     if isinstance(element, FigureElement):
         asset = ir.assets[element.asset_id]
         if panel.bbox is not None:
-            placement = resolve_figure_placement(panel, element, asset.width_px, asset.height_px)
+            placement = resolve_figure_placement(
+                panel,
+                element,
+                asset.width_px,
+                asset.height_px,
+                page_height_mm=ir.size.height_mm,
+            )
             height = placement.height_mm
         else:
-            # Pre-placement: width-bound size (the max_height_frac clamp
-            # needs a placed height; the unclamped bound is the safe one).
-            height = inner_w * asset.height_px / asset.width_px
+            # Pre-placement: width-bound size, capped at the page-fraction
+            # bound (a hero figure shrinks in width rather than consuming
+            # half the poster's height).
+            height = min(
+                inner_w * asset.height_px / asset.width_px,
+                ir.size.height_mm * MAX_FIGURE_PAGE_FRAC,
+            )
         if element.caption:
             height += ELEMENT_GAP_MM / 2 + measure_text_height_mm(
                 element.caption, ir.style.font_body, ir.style.type_scale_pt["caption"], inner_w
@@ -384,7 +404,11 @@ def render_pptx(ir: PosterIR, out_path: Path, workdir: Path) -> Path:
             elif isinstance(element, FigureElement):
                 asset = ir.assets[element.asset_id]
                 placement = resolve_figure_placement(
-                    panel, element, asset.width_px, asset.height_px
+                    panel,
+                    element,
+                    asset.width_px,
+                    asset.height_px,
+                    page_height_mm=ir.size.height_mm,
                 )
                 pic_x = inner_x + (inner_w - placement.width_mm) / 2
                 slide.shapes.add_picture(

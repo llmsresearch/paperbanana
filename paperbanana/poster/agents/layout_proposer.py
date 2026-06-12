@@ -96,16 +96,21 @@ class LayoutProposerAgent(BaseAgent):
 
 def format_overflow_feedback(overflows, page_deficit_mm: float) -> str:
     """Render measured overflow loads as re-proposal feedback."""
+    total_required = sum(o.required_mm for o in overflows)
     lines = [
         f"YOUR PREVIOUS STRUCTURE OVERFLOWED THE PAGE by {page_deficit_mm:.0f}mm "
-        "after content was measured. Restructure — more columns where load is "
-        "high, move panels between bands, shrink or drop the hero span:",
+        "after content was measured. The content volume is FIXED — you must "
+        "spread it over more parallel columns, not more stacked bands. "
+        "Concretely: use ONE body band with MORE columns (4 is fine), avoid "
+        "multiple stacked body bands, shrink the hero span to 2 columns or "
+        "drop it, and skip the banner if space is tight. Measured loads:",
     ]
     for o in overflows:
         lines.append(
             f"- band '{o.band_id}' column {o.column}: content needs {o.required_mm:.0f}mm, "
             f"only {o.available_mm:.0f}mm available"
         )
+    lines.append(f"(total overflowing content: {total_required:.0f}mm)")
     return "\n".join(lines)
 
 
@@ -118,37 +123,23 @@ def format_violation_feedback(violations) -> str:
 
 
 def proposal_to_json_example() -> str:
-    """Compact contract example embedded in the prompt."""
+    """Format-only contract example (deliberately plain — see prompt note)."""
     return json.dumps(
         {
             "bands": [
                 {"id": "header", "kind": "header", "columns": 1},
-                {"id": "banner", "kind": "banner", "columns": 1},
-                {"id": "main", "kind": "body", "columns": 3},
-                {"id": "bottom", "kind": "body", "columns": 2},
+                {"id": "main", "kind": "body", "columns": 4},
             ],
             "placements": [
-                {"panel_id": "motivation", "band_id": "main", "column": 0, "col_span": 1},
-                {
-                    "panel_id": "method",
-                    "band_id": "main",
-                    "column": 1,
-                    "col_span": 2,
-                    "emphasis": "normal",
-                },
-                {
-                    "panel_id": "results",
-                    "band_id": "bottom",
-                    "column": 0,
-                    "col_span": 1,
-                    "emphasis": "accent",
-                },
-                {"panel_id": "conclusion", "band_id": "bottom", "column": 1, "col_span": 1},
+                {"panel_id": "<id>", "band_id": "main", "column": 0, "col_span": 1},
+                {"panel_id": "<id>", "band_id": "main", "column": 1, "col_span": 1},
+                {"panel_id": "<id>", "band_id": "main", "column": 2, "col_span": 1},
+                {"panel_id": "<id>", "band_id": "main", "column": 3, "col_span": 1},
             ],
-            "use_banner": True,
-            "hero_figure_id": "overview",
-            "callouts": [{"panel_id": "results", "key_stat_id": "stat1"}],
-            "rationale": "Hero method figure spans 2 columns; results get the accent.",
+            "use_banner": False,
+            "hero_figure_id": None,
+            "callouts": [],
+            "rationale": "why this structure fits this content",
         },
         indent=2,
     )

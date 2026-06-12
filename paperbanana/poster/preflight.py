@@ -162,7 +162,9 @@ def _check_image_dpi(ir: PosterIR, spec: VenueSpec) -> list[PreflightCheck]:
             if not isinstance(el, FigureElement):
                 continue
             asset = ir.assets[el.asset_id]
-            placement = resolve_figure_placement(panel, el, asset.width_px, asset.height_px)
+            placement = resolve_figure_placement(
+                panel, el, asset.width_px, asset.height_px, page_height_mm=ir.size.height_mm
+            )
             dpi = asset.effective_dpi(placement.width_mm)
             checks.append(
                 PreflightCheck(

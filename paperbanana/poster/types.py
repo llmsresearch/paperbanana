@@ -219,7 +219,7 @@ class BigNumberElement(BaseModel):
     """
 
     kind: Literal["big_number"] = "big_number"
-    value: str = Field(min_length=1, max_length=12)
+    value: str = Field(min_length=1, max_length=16)
     label: str = Field(min_length=1, max_length=80)
 
 
@@ -500,7 +500,7 @@ class KeyStat(BaseModel):
     """A verbatim headline number from the paper, candidate for a callout."""
 
     id: str
-    value: str = Field(min_length=1, max_length=12, description="Verbatim from the paper")
+    value: str = Field(min_length=1, max_length=16, description="Verbatim from the paper")
     label: str = Field(min_length=1, max_length=80)
     source_panel: str
 
