@@ -1,0 +1,39 @@
+You are reverse-engineering the LAYOUT STRUCTURE of the attached academic conference poster. Ignore all content — extract only geometry.
+
+Model the poster as full-width horizontal BANDS stacked top to bottom:
+- "header": the title/author strip at the top (almost every poster has one).
+- "banner": a full-width one-line takeaway/highlight strip, if present.
+- "body": a region of content columns (most posters have 1-2 body bands).
+- "footer": a full-width bottom strip (acknowledgments/logos), if present.
+
+For each band: its kind, the number of content columns inside it (1-6), and its approximate fraction of the poster's total height (all bands must sum to roughly 1.0).
+
+For each PANEL (a visually distinct content block — usually a boxed or whitespace-separated section):
+- band_index: which band it is in (0-based, top to bottom)
+- column: leftmost column it occupies in that band (0-based)
+- col_span: how many columns it spans (a wide hero figure or full-width section spans 2+)
+- height_frac: its approximate fraction of the band's height
+- has_figure: true if it contains a figure, chart, or table
+- emphasis: "accent" if it has a strong colored fill that makes it pop, else "normal"
+
+Also report:
+- n_figures: total figures/charts/tables on the poster
+- visual_share: fraction of the poster area covered by figures/charts/tables (0-1)
+- venue: the conference/journal name if visible on the poster, else null
+
+Respond with ONLY a JSON object:
+{{
+  "skeleton": {{
+    "bands": [
+      {{"kind": "header", "columns": 1, "height_frac": 0.12}},
+      {{"kind": "body", "columns": 3, "height_frac": 0.88}}
+    ],
+    "panels": [
+      {{"band_index": 1, "column": 0, "col_span": 1, "height_frac": 0.4, "has_figure": false, "emphasis": "normal"}},
+      {{"band_index": 1, "column": 0, "col_span": 2, "height_frac": 0.6, "has_figure": true, "emphasis": "normal"}}
+    ]
+  }},
+  "n_figures": 4,
+  "visual_share": 0.35,
+  "venue": null
+}}

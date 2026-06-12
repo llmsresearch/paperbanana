@@ -102,6 +102,15 @@ class Settings(BaseSettings):
     poster_layout_proposals: int = Field(default=2, ge=1, le=4)
     poster_proposal_repair_rounds: int = Field(default=2, ge=1, le=4)
     poster_reauthor_max_attempts: int = Field(default=2, ge=1, le=5)
+    poster_exemplar_top_k: int = Field(default=3, ge=0, le=6)
+    poster_memory_promote: bool = True
+    poster_memory_promote_min_score: float = Field(default=4.0, ge=1, le=5)
+    poster_memory_max_self: int = Field(default=50, ge=1, le=500)
+    poster_memory_dir: Optional[str] = Field(
+        default=None,
+        alias="PAPERBANANA_POSTER_MEMORY_DIR",
+        description="User poster exemplar memory directory",
+    )
     poster_extract_dpi: int = Field(default=300, gt=0)
     venue_spec_dir: Optional[str] = Field(
         default=None,

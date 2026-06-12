@@ -104,6 +104,14 @@ venues_app = typer.Typer(
 )
 app.add_typer(venues_app, name="venues")
 
+# ── Posters subcommand group (poster memory / corpus) ─────────────
+posters_app = typer.Typer(
+    name="posters",
+    help="Poster layout memory: ingest exemplar posters, inspect, purge.",
+    no_args_is_help=True,
+)
+app.add_typer(posters_app, name="posters")
+
 
 def _validate_venue_or_exit(venue: Optional[str], venue_dir: Optional[str] = None) -> None:
     """Validate a --venue value against built-in and user style packs."""
@@ -5101,6 +5109,153 @@ def evaluate_poster_cmd(
         evaluation.model_dump_json(indent=2), encoding="utf-8"
     )
     console.print(f"Saved: {run_path / 'evaluation.json'}")
+
+
+@posters_app.command(name="ingest")
+def posters_ingest(
+    paths: list[str] = typer.Argument(..., help="Poster images/PDFs (or directories) to ingest"),
+    venue: Optional[str] = typer.Option(None, "--venue", help="Venue tag for these exemplars"),
+    vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="Parser VLM provider"),
+    vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="Parser VLM model"),
+    continue_on_error: bool = typer.Option(
+        False, "--continue-on-error", help="Report per-file failures instead of stopping"
+    ),
+) -> None:
+    """Teach the system from real posters: parse layout structures into memory.
+
+    Every ingested poster's band/column/span skeleton becomes a retrieval
+    exemplar that grounds future layout proposals."""
+    import datetime as _dt
+
+    from PIL import Image as PILImage
+
+    from paperbanana.core.utils import find_prompt_dir
+    from paperbanana.poster.agents.layout_parser import LayoutParserAgent
+    from paperbanana.poster.convert import pdf_to_png
+    from paperbanana.poster.memory import PosterExemplar, append_exemplar
+    from paperbanana.providers.registry import ProviderRegistry
+
+    files: list[Path] = []
+    for raw in paths:
+        path = Path(raw).expanduser()
+        if path.is_dir():
+            files.extend(
+                sorted(
+                    f
+                    for f in path.iterdir()
+                    if f.suffix.lower() in (".png", ".jpg", ".jpeg", ".pdf")
+                )
+            )
+        elif path.is_file():
+            files.append(path)
+        else:
+            console.print(f"[red]Error: not found: {path}[/red]")
+            raise typer.Exit(1)
+    if not files:
+        console.print("[red]Error: no poster files found[/red]")
+        raise typer.Exit(1)
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    overrides: dict = {}
+    if vlm_provider:
+        overrides["vlm_provider"] = vlm_provider
+    if vlm_model:
+        overrides["vlm_model"] = vlm_model
+    settings = Settings(**overrides)
+    vlm = ProviderRegistry.create_vlm(settings)
+    parser = LayoutParserAgent(vlm, prompt_dir=settings.prompt_dir or find_prompt_dir())
+
+    async def _ingest_all() -> tuple[int, list[tuple[Path, str]]]:
+        ok, failures = 0, []
+        for file in files:
+            try:
+                if file.suffix.lower() == ".pdf":
+                    import tempfile
+
+                    with tempfile.TemporaryDirectory() as tmp:
+                        png = pdf_to_png(file, Path(tmp) / "poster.png", dpi=110)
+                        image = PILImage.open(png).convert("RGB")
+                else:
+                    image = PILImage.open(file).convert("RGB")
+                parsed = await parser.run(poster_image=image, source_name=file.stem)
+                exemplar = PosterExemplar(
+                    id=f"ingested_{file.stem}",
+                    source="ingested",
+                    venue=venue or parsed.venue,
+                    orientation="landscape" if image.width >= image.height else "portrait",
+                    aspect_ratio=round(image.width / image.height, 3),
+                    n_panels=len(parsed.skeleton.panels),
+                    n_figures=parsed.n_figures,
+                    visual_share=parsed.visual_share,
+                    skeleton=parsed.skeleton,
+                    created=_dt.datetime.now().isoformat(timespec="seconds"),
+                    tags=["ingested"],
+                )
+                append_exemplar(
+                    exemplar,
+                    memory_dir=settings.poster_memory_dir,
+                    max_self_generated=settings.poster_memory_max_self,
+                )
+                console.print(f"  [green]+[/green] {file.name} -> {exemplar.id}")
+                ok += 1
+            except Exception as exc:
+                if not continue_on_error:
+                    console.print(f"[red]Error ingesting {file}: {exc}[/red]")
+                    raise typer.Exit(1) from exc
+                failures.append((file, str(exc)))
+        return ok, failures
+
+    ok, failures = asyncio.run(_ingest_all())
+    console.print(f"Ingested {ok}/{len(files)} posters into memory.")
+    for file, error in failures:
+        console.print(f"  [red]failed[/red] {file.name}: {error[:120]}")
+    if failures:
+        raise typer.Exit(1)
+
+
+@posters_app.command(name="memory")
+def posters_memory(
+    action: str = typer.Argument("list", help="list | purge"),
+    self_generated: bool = typer.Option(
+        False, "--self-generated", help="Purge only self-generated exemplars"
+    ),
+) -> None:
+    """Inspect or purge the poster layout memory."""
+    from paperbanana.poster.memory import load_exemplars, purge_exemplars, resolve_memory_dir
+
+    if action == "purge":
+        removed = purge_exemplars(self_generated_only=self_generated)
+        console.print(f"Removed {removed} exemplar(s) from {resolve_memory_dir()}.")
+        return
+    exemplars = load_exemplars()
+    table = Table(title=f"Poster Memory ({len(exemplars)} exemplars)")
+    table.add_column("Id", overflow="fold")
+    table.add_column("Source")
+    table.add_column("Venue")
+    table.add_column("Orient")
+    table.add_column("Panels")
+    table.add_column("Figures")
+    table.add_column("Quality")
+    by_source: dict = {}
+    for e in exemplars:
+        by_source.setdefault(e.source, []).append(e)
+    for source, members in sorted(by_source.items()):
+        for e in members[:5]:
+            table.add_row(
+                e.id,
+                e.source,
+                e.venue or "—",
+                e.orientation,
+                str(e.n_panels),
+                str(e.n_figures),
+                f"{e.quality:.1f}" if e.quality else "—",
+            )
+        if len(members) > 5:
+            table.add_row(f"… +{len(members) - 5} more", source, "", "", "", "", "")
+    console.print(table)
+    console.print(f"User store: [bold]{resolve_memory_dir()}[/bold]")
 
 
 if __name__ == "__main__":

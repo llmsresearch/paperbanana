@@ -56,6 +56,13 @@ from paperbanana.poster.legalizer import (
     validate_proposal,
 )
 from paperbanana.poster.lessons import format_lessons_block, load_lessons, record_lessons
+from paperbanana.poster.memory import (
+    append_exemplar,
+    exemplar_from_run,
+    format_exemplars_block,
+    load_exemplars,
+    retrieve_exemplars,
+)
 from paperbanana.poster.preflight import (
     DEFAULT_LEGIBILITY_MIN_PT,
     render_preflight_markdown,
@@ -366,7 +373,27 @@ class PosterPipeline:
 
         # Stage 5: build IR + learned structure ---------------------------------
         ir = self._build_ir(assets, storyboard, style, asset_map, spec, qr_url)
-        self._proposer_ctx = {"storyboard": storyboard, "layout_patterns": layout_patterns}
+        exemplars = []
+        if self.settings.poster_exemplar_top_k > 0:
+            exemplars = retrieve_exemplars(
+                load_exemplars(memory_dir=self.settings.poster_memory_dir),
+                orientation=ir.orientation,
+                venue=venue_name,
+                n_figures=len(asset_map),
+                n_panels=len(storyboard.panels) + 1,
+                aspect_ratio=ir.size.width_mm / ir.size.height_mm,
+                k=self.settings.poster_exemplar_top_k,
+            )
+            self._emit(
+                "exemplars_retrieved",
+                ids=[e.id for e in exemplars],
+                sources=[e.source for e in exemplars],
+            )
+        self._proposer_ctx = {
+            "storyboard": storyboard,
+            "layout_patterns": layout_patterns,
+            "exemplars": exemplars,
+        }
         ir = await self._propose_structure(ir, storyboard, layout_patterns, resume=resume)
 
         # Stage 6: refinement loop ----------------------------------------------
@@ -489,6 +516,8 @@ class PosterPipeline:
         (self._run_dir / "poster_output.json").write_text(
             output.model_dump_json(indent=2), encoding="utf-8"
         )
+        if self.settings.poster_memory_promote and preflight.passed:
+            await self._maybe_promote(ir, assets, final_preview)
         for check in preflight.failures:
             run_lessons.append(f"Final preflight failure {check.id}: {check.detail[:200]}")
         if self._shorten_events >= 3:
@@ -679,6 +708,44 @@ class PosterPipeline:
             affiliations=assets.affiliations,
         )
 
+    async def _maybe_promote(self, ir: PosterIR, assets: PaperAssets, preview_path: Path) -> None:
+        """Self-promotion: a judged-good poster's structure joins memory.
+
+        The run's own success feeds the exemplar store (capped, tagged,
+        purgeable) so future proposals learn from it — the living-beacon
+        loop closing on the system's best work.
+        """
+        from paperbanana.poster.evaluation import evaluate_poster
+
+        try:
+            evaluation = await evaluate_poster(
+                self._vlm,
+                preview_path=preview_path,
+                paper_context=f"{assets.title}\n\n{assets.abstract}"[:6000],
+                prompt_dir=Path(self._prompt_dir),
+            )
+        except Exception as exc:
+            # Promotion is an optimization loop, not an output guarantee:
+            # a judge hiccup must not fail a finished poster. Logged, never silent.
+            logger.warning("Self-promotion judging failed; skipping", error=str(exc))
+            self._emit("memory_promotion_skipped", reason=str(exc)[:200])
+            return
+        threshold = self.settings.poster_memory_promote_min_score
+        if evaluation.overall >= threshold:
+            exemplar = exemplar_from_run(ir, evaluation.overall, self.run_id)
+            append_exemplar(
+                exemplar,
+                memory_dir=self.settings.poster_memory_dir,
+                max_self_generated=self.settings.poster_memory_max_self,
+            )
+            self._emit("memory_promoted", exemplar=exemplar.id, judge_overall=evaluation.overall)
+        else:
+            self._emit(
+                "memory_promotion_declined",
+                judge_overall=evaluation.overall,
+                threshold=threshold,
+            )
+
     async def _propose_structure(
         self,
         draft_ir: PosterIR,
@@ -708,7 +775,12 @@ class PosterPipeline:
                 ),
             )
         ir = build_ir_from_proposal(
-            draft_ir, proposal, storyboard, repairs, reproposal_rounds=rounds
+            draft_ir,
+            proposal,
+            storyboard,
+            repairs,
+            reproposal_rounds=rounds,
+            exemplar_ids=[e.id for e in self._proposer_ctx.get("exemplars", [])],
         )
         self._emit(
             "layout_proposed",
@@ -732,6 +804,7 @@ class PosterPipeline:
         budget = self.settings.poster_proposal_repair_rounds
         fatal: list = []
         for attempt in range(budget + 1):
+            ctx = getattr(self, "_proposer_ctx", {})
             proposal = await self.layout_proposer.run(
                 storyboard=storyboard,
                 assets=draft_ir.assets,
@@ -739,6 +812,7 @@ class PosterPipeline:
                 margin_mm=draft_ir.margin_mm,
                 gutter_mm=draft_ir.gutter_mm,
                 layout_patterns=layout_patterns,
+                exemplars_block=format_exemplars_block(ctx.get("exemplars", [])),
                 violation_feedback=feedback,
                 proposal_index=attempt,
             )
