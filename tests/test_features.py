@@ -761,6 +761,24 @@ def test_openai_vlm_falls_back_to_vlm_model():
     assert vlm.model_name == "gpt-5.2"
 
 
+def test_create_vlm_model_override_beats_provider_specific_model():
+    """create_vlm(model_override=...) wins over provider-specific model fields."""
+    from paperbanana.providers.registry import ProviderRegistry
+    from paperbanana.providers.vlm.atlas import AtlasVLM
+
+    settings = Settings(
+        vlm_provider="atlas",
+        atlascloud_api_key="test-atlas-key",
+        atlascloud_vlm_model="qwen/qwen3-vl-30b-a3b-instruct",
+    )
+    vlm = ProviderRegistry.create_vlm(settings, model_override="Qwen/Qwen3-VL-235B-A22B-Instruct")
+
+    assert isinstance(vlm, AtlasVLM)
+    assert vlm.model_name == "Qwen/Qwen3-VL-235B-A22B-Instruct"
+    # The original settings object is not mutated.
+    assert settings.atlascloud_vlm_model == "qwen/qwen3-vl-30b-a3b-instruct"
+
+
 def test_openai_imagen_provider_creation():
     """Registry creates OpenAIImageGen with correct model and base_url."""
     from paperbanana.providers.image_gen.openai_imagen import OpenAIImageGen

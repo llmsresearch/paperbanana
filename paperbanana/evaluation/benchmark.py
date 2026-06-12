@@ -209,7 +209,12 @@ class BenchmarkRunner:
     def _default_judge_factory(self, settings: Settings) -> VLMJudge:
         from paperbanana.core.utils import find_prompt_dir
 
-        vlm = ProviderRegistry.create_vlm(settings)
+        judge_settings = settings
+        if settings.judge_vlm_provider:
+            judge_settings = settings.model_copy(
+                update={"vlm_provider": settings.judge_vlm_provider}
+            )
+        vlm = ProviderRegistry.create_vlm(judge_settings, model_override=settings.judge_vlm_model)
         return VLMJudge(vlm, prompt_dir=find_prompt_dir())
 
     def _default_visualizer_factory(self, settings: Settings) -> VisualizerAgent:
