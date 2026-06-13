@@ -456,6 +456,7 @@ def build_ir_from_proposal(
             column=placement.column,
             col_span=placement.col_span,
             emphasis=placement.emphasis,
+            height_frac=placement.height_frac,
             order=order,
             bbox=None,
         )

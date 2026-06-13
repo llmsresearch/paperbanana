@@ -5138,6 +5138,14 @@ def posters_ingest(
     venue: Optional[str] = typer.Option(None, "--venue", help="Venue tag for these exemplars"),
     vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="Parser VLM provider"),
     vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="Parser VLM model"),
+    quality: Optional[float] = typer.Option(
+        4.5,
+        "--quality",
+        min=1.0,
+        max=5.0,
+        help="Quality rating for these posters (curated/award posters deserve >=4; "
+        "posters rated >=4 also become critic calibration anchors)",
+    ),
     continue_on_error: bool = typer.Option(
         False, "--continue-on-error", help="Report per-file failures instead of stopping"
     ),
@@ -5153,7 +5161,7 @@ def posters_ingest(
     from paperbanana.core.utils import find_prompt_dir
     from paperbanana.poster.agents.layout_parser import LayoutParserAgent
     from paperbanana.poster.convert import pdf_to_png
-    from paperbanana.poster.memory import PosterExemplar, append_exemplar
+    from paperbanana.poster.memory import PosterExemplar, append_exemplar, resolve_memory_dir
     from paperbanana.providers.registry import ProviderRegistry
 
     files: list[Path] = []
@@ -5201,6 +5209,15 @@ def posters_ingest(
                 else:
                     image = PILImage.open(file).convert("RGB")
                 parsed = await parser.run(poster_image=image, source_name=file.stem)
+                # Thumbnail doubles as a critic calibration anchor: the
+                # refinement loop shows top-quality exemplar previews as
+                # "this is what good looks like".
+                thumb_dir = resolve_memory_dir(settings.poster_memory_dir) / "thumbnails"
+                thumb_dir.mkdir(parents=True, exist_ok=True)
+                thumb = image.copy()
+                thumb.thumbnail((1400, 1400))
+                thumb_path = thumb_dir / f"ingested_{file.stem}.png"
+                thumb.save(thumb_path)
                 exemplar = PosterExemplar(
                     id=f"ingested_{file.stem}",
                     source="ingested",
@@ -5211,6 +5228,8 @@ def posters_ingest(
                     n_figures=parsed.n_figures,
                     visual_share=parsed.visual_share,
                     skeleton=parsed.skeleton,
+                    quality=quality,
+                    thumbnail_path=str(thumb_path),
                     created=_dt.datetime.now().isoformat(timespec="seconds"),
                     tags=["ingested"],
                 )

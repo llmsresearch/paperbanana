@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from paperbanana.poster.layout import (
-    MAX_PANEL_GROWTH_FRAC,
     BandOverflowError,
     LayoutError,
     panel_width_mm,
@@ -128,16 +127,36 @@ def test_band_overflow_carries_column_loads(poster_ir: PosterIR):
     assert err.overflows[0].required_mm > err.overflows[0].available_mm
 
 
-def test_panel_growth_is_bounded(poster_ir: PosterIR):
-    """Small content in a tall page grows at most MAX_PANEL_GROWTH_FRAC."""
+def test_columns_fill_to_band_bottom(poster_ir: PosterIR):
+    """Every body column bottom-aligns with its band — no dead space below
+    content (the canvas contract every real poster satisfies)."""
     panels, bands = _header_and_body(3)
     ir = _unplaced(poster_ir, panels, bands)
     placed = place_bands(ir, _measures(ir, 100.0, header=60.0))
-    for p in placed.panels:
-        if p.role == "header":
-            continue
-        natural = 100.0 + 20.0  # measured + padding
-        assert p.bbox.h_mm <= natural * (1 + MAX_PANEL_GROWTH_FRAC) + 0.01
+    body = next(b for b in placed.bands if b.kind == "body")
+    band_bottom = max(p.bbox.y_mm + p.bbox.h_mm for p in placed.panels if p.band_id == "body")
+    for col in range(body.columns):
+        col_panels = [
+            p
+            for p in placed.panels
+            if p.band_id == "body" and p.column <= col < p.column + p.col_span
+        ]
+        col_bottom = max(p.bbox.y_mm + p.bbox.h_mm for p in col_panels)
+        assert col_bottom == pytest.approx(band_bottom, abs=1.0)
+
+
+def test_height_frac_weights_slack_distribution(poster_ir: PosterIR):
+    """The proposer's height_frac steers who gets the column's space:
+    equal content, 3x the share -> visibly larger box."""
+    panels = [make_panel("header", 0, role="header", band_id="header")]
+    panels.append(make_panel("p0", 1, column=0))
+    panels.append(make_panel("p1", 2, column=0))
+    panels[1].height_frac = 0.75
+    panels[2].height_frac = 0.25
+    ir = _unplaced(poster_ir, panels, default_bands(columns=1))
+    placed = place_bands(ir, _measures(ir, 100.0, header=60.0))
+    placed_body = sorted((p for p in placed.panels if p.band_id == "body"), key=lambda p: p.order)
+    assert placed_body[0].bbox.h_mm > placed_body[1].bbox.h_mm * 1.5
 
 
 def test_missing_measurement_raises(poster_ir: PosterIR):

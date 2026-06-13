@@ -272,6 +272,9 @@ class Panel(BaseModel):
     column: int = Field(default=0, ge=0, description="Leftmost occupied column in its band")
     col_span: int = Field(default=1, ge=1)
     emphasis: PanelEmphasis = "normal"
+    height_frac: Optional[float] = Field(
+        default=None, gt=0, le=1, description="Authored share of its column height (learned)"
+    )
     weight: float = Field(default=1.0, gt=0, description="Measured content height cache (mm)")
     bbox: Optional[BBox] = None
     z: int = 0

@@ -11,6 +11,9 @@ PAPER SECTIONS (trimmed):
 AVAILABLE FIGURES AND TABLES (extracted from the paper):
 {figures_listing}
 
+PHYSICAL CANVAS: {canvas}
+SCALE CONTENT TO THE CANVAS: a poster's content volume must match its physical area. Strong real posters are FULL — dense with figures, results, and concrete numbers, not sparse bullets floating in space. On a large board (A0 and up, and especially ultra-wide boards), plan MORE panels (7-9), place MORE of the paper's figures and tables, and write fuller text blocks (3-5 substantial bullets per panel, each a complete finding with its numbers — not a 6-word fragment). A visitor should be able to learn the whole paper from the poster alone.
+
 VENUE NOTES: {venue_notes}
 QR LINK: {qr_url}
 

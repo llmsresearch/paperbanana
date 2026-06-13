@@ -1,11 +1,11 @@
 """Layout proposal contract: what the learned proposer is allowed to say.
 
-The proposer decides STRUCTURE — bands, columns per band, panel
-placement (with spans), emphasis, banner usage, hero figure, callout
-placement. It never authors content: banner text comes from the
-storyboard's ``takeaway``, callout values from its verbatim
-``key_stats``. Geometry in millimetres never appears here; the skyline
-placer derives it from measurements.
+The proposer decides STRUCTURE and COMPOSITION — bands, columns per
+band, panel placement (with spans), per-panel height shares, emphasis,
+banner usage, hero figure, callout placement. It never authors content:
+banner text comes from the storyboard's ``takeaway``, callout values
+from its verbatim ``key_stats``. Geometry in millimetres never appears
+here; the placer converts shares to exact boxes against measurements.
 """
 
 from __future__ import annotations
@@ -29,6 +29,16 @@ class ProposedPlacement(BaseModel):
     column: int = Field(default=0, ge=0)
     col_span: int = Field(default=1, ge=1)
     emphasis: PanelEmphasis = "normal"
+    height_frac: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=1,
+        description=(
+            "Authored share of this panel's column height (real-poster "
+            "skeletons carry these). Share weight for the column's space; "
+            "measured content stays the hard floor."
+        ),
+    )
 
 
 class ProposedCallout(BaseModel):

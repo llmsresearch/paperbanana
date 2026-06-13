@@ -327,6 +327,11 @@ class PosterPipeline:
                 venue_display=spec.display_name,
                 venue_notes=spec.notes or "",
                 columns_hint=layout_schema.columns,
+                canvas=(
+                    f"{gen_w_mm:.0f}mm wide x "
+                    f"{spec.dimensions.generation_size_mm()[1]:.0f}mm tall "
+                    f"({spec.dimensions.generation_orientation()})"
+                ),
                 qr_url=qr_url,
                 design_guidelines=design_guide_with_lessons,
                 layout_patterns=layout_patterns,

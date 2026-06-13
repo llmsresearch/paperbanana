@@ -28,8 +28,6 @@ from pydantic import BaseModel
 
 from paperbanana.poster.types import BBox, Panel, PosterIR
 
-#: Maximum growth of a panel beyond its measured content height.
-MAX_PANEL_GROWTH_FRAC = 0.25
 #: Banner bands are emphasis, not content: cap them at this page fraction.
 MAX_BANNER_FRAC = 0.08
 
@@ -167,15 +165,60 @@ def place_bands(ir: PosterIR, measured_mm: dict[str, float]) -> PosterIR:
                     f"band '{band.id}': {band.columns} columns with {ir.gutter_mm}mm "
                     f"gutters do not fit in {content_w:.0f}mm"
                 )
-            stretch = band_h / band_heights[band.id] if band_heights[band.id] > 0 else 1.0
+            # Justified fill: every column ends at the band bottom — the
+            # canvas contract every real poster in the corpus satisfies.
+            # HOW the column's space is shared is the learned designer's
+            # call: the proposer's height_frac is the share weight, with
+            # measured content as the proportional default and always the
+            # hard floor (shares distribute slack, never compress content).
+            natural = {p.id: measured_mm[p.id] + 2 * PANEL_PADDING_MM for p in members}
+            extra = {p.id: 0.0 for p in members}
+            band_bottom = y_band + band_h
+
+            def _bottoms() -> list[float]:
+                cur = [y_band] * band.columns
+                for panel in members:
+                    start, end = panel.column, panel.column + panel.col_span
+                    y = max(cur[start:end])
+                    if y > y_band:
+                        y += ir.gutter_mm
+                    bottom = y + natural[panel.id] + extra[panel.id]
+                    for c in range(start, end):
+                        cur[c] = bottom
+                return cur
+
+            for _ in range(3):  # spans couple columns; residue converges fast
+                remaining = [band_bottom - b for b in _bottoms()]
+                if max(remaining, default=0.0) < 0.5:
+                    break
+                for c in range(band.columns):
+                    col_members = [p for p in members if p.column <= c < p.column + p.col_span]
+                    if not col_members or remaining[c] <= 0.5:
+                        continue
+                    weights = [
+                        max(p.height_frac or natural[p.id] / band_h, 0.01) for p in col_members
+                    ]
+                    total_w = sum(weights)
+                    avail = remaining[c]
+                    for p, w in zip(col_members, weights):
+                        span_cols = range(p.column, p.column + p.col_span)
+                        grant = min(avail * (w / total_w), min(remaining[cc] for cc in span_cols))
+                        if grant <= 0:
+                            continue
+                        extra[p.id] += grant
+                        for cc in span_cols:
+                            remaining[cc] -= grant
+
             cursors = [y_band] * band.columns
             for panel in members:
                 start, end = panel.column, panel.column + panel.col_span
                 y = max(cursors[start:end])
                 if y > y_band:
                     y += ir.gutter_mm
-                natural_h = measured_mm[panel.id] + 2 * PANEL_PADDING_MM
-                h = min(natural_h * stretch, natural_h * (1 + MAX_PANEL_GROWTH_FRAC))
+                h = natural[panel.id] + extra[panel.id]
+                # Numeric residue from coupled spans must never leak past
+                # the band edge.
+                h = min(h, band_bottom - y)
                 width = col_w * panel.col_span + ir.gutter_mm * (panel.col_span - 1)
                 panel.bbox = BBox(
                     x_mm=ir.margin_mm + start * (col_w + ir.gutter_mm),

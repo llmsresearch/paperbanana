@@ -20,6 +20,7 @@ LAYOUT EXAMPLES FROM REAL POSTERS:
 THE MODEL OF A POSTER:
 - The poster is a stack of full-width BANDS, top to bottom: exactly one "header" band (title/authors — added automatically, just declare it), optionally one "banner" band (the takeaway as a full-width accent strip), one or more "body" bands (each with its own column count, 1-6), optionally a "footer" band.
 - Panels live in body bands at (column, col_span). A panel with col_span 2-3 is a HERO — use one for the most important visual (usually the method overview or headline results figure).
+- "height_frac" on each placement is YOUR composition decision: the panel's share of its column height (per column the shares should sum to ~1.0 — real posters fill their columns completely; look at the exemplar skeletons' height_frac values and imitate their proportions). Figure-led panels deserve large shares; give a panel a small share only if its content is genuinely brief.
 - Reading order = your placements list order: left-to-right within a band, bands top-to-bottom.
 - "emphasis": "accent" fills a panel with the accent color (use for AT MOST one key-results panel).
 - Callouts place a huge verbatim stat (from key_stats, by id) at the top of a panel. 0-2 is tasteful.
