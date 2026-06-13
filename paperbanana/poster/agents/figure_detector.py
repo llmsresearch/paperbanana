@@ -54,12 +54,15 @@ class FigureDetectorAgent(BaseAgent):
         )
         regions = None
         raw, problem = "", ""
-        for attempt in range(2):  # one bounded retry on a garbled response
+        # Some VLMs degenerate into repeating hallucinated regions until the
+        # output is cut mid-array, quasi-deterministically at low temperature
+        # — so the bounded retries climb the temperature to break the loop.
+        for attempt, temperature in enumerate((0.2, 0.5, 0.8)):
             raw = await self.vlm.generate(
                 prompt=prompt,
                 images=[page_image],
                 response_format="json",
-                temperature=0.2,
+                temperature=temperature,
             )
             data = extract_json(raw)
             if isinstance(data, list):
@@ -79,7 +82,7 @@ class FigureDetectorAgent(BaseAgent):
             )
         if regions is None:
             raise ValueError(
-                f"figure detector failed for page {page_number} after 2 attempts "
+                f"figure detector failed for page {page_number} after 3 attempts "
                 f"({problem}): {raw[:400]!r}"
             )
         logger.info("Detected regions", page=page_number, count=len(regions))
