@@ -67,6 +67,7 @@ class PosterExemplar(BaseModel):
     visual_share: float = Field(ge=0, le=1)
     skeleton: LayoutSkeleton
     quality: Optional[float] = Field(default=None, ge=1, le=5)
+    thumbnail_path: Optional[str] = None
     created: str = ""
     tags: list[str] = Field(default_factory=list)
 

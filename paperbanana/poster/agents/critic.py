@@ -35,13 +35,26 @@ class PosterCriticAgent(BaseAgent):
         panel_crops: dict[str, Image.Image],
         preflight: PreflightReport,
         iteration: int,
+        anchor_images: list[Image.Image] | None = None,
+        comprehension_gaps: list[str] | None = None,
         **kwargs: Any,
     ) -> PosterCritique:
         template = self.load_prompt("poster")
+        anchors = anchor_images or []
         panel_ids = list(panel_crops)[:MAX_PANEL_IMAGES]
-        images = [preview] + [panel_crops[pid] for pid in panel_ids]
-        image_listing = "Image 1: full poster preview.\n" + "\n".join(
-            f"Image {i + 2}: zoom of panel '{pid}'." for i, pid in enumerate(panel_ids)
+        images = anchors + [preview] + [panel_crops[pid] for pid in panel_ids]
+        offset = len(anchors)
+        anchor_listing = "".join(
+            f"Image {i + 1}: a REFERENCE poster previously judged excellent (calibration "
+            "anchor — this is what 5/5 looks like; do not critique it).\n"
+            for i in range(len(anchors))
+        )
+        image_listing = (
+            anchor_listing
+            + f"Image {offset + 1}: full poster preview (the poster under review).\n"
+            + "\n".join(
+                f"Image {offset + i + 2}: zoom of panel '{pid}'." for i, pid in enumerate(panel_ids)
+            )
         )
         preflight_failures = (
             "\n".join(
@@ -57,12 +70,18 @@ class PosterCriticAgent(BaseAgent):
             )
             for p in ir.panels_in_order()
         )
+        gaps_block = (
+            "\n".join(f"- {g}" for g in comprehension_gaps)
+            if comprehension_gaps
+            else "(none — a fresh reader answered every quiz question from the poster)"
+        )
         prompt = self.format_prompt(
             template,
             iteration=iteration,
             image_listing=image_listing,
             preflight_failures=preflight_failures,
             panels_summary=panels_summary,
+            comprehension_gaps=gaps_block,
             prompt_label=f"iter_{iteration}",
         )
         raw = await self.vlm.generate(

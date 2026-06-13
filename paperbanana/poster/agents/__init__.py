@@ -7,6 +7,7 @@ from paperbanana.poster.agents.figure_curator import FigureCuratorAgent
 from paperbanana.poster.agents.figure_detector import FigureDetectorAgent
 from paperbanana.poster.agents.layout_proposer import LayoutProposerAgent
 from paperbanana.poster.agents.paper_metadata import PaperMetadataAgent
+from paperbanana.poster.agents.quiz import QuizAgent
 from paperbanana.poster.agents.stylist import PosterStylistAgent
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "PosterContentAgent",
     "PosterCriticAgent",
     "PosterStylistAgent",
+    "QuizAgent",
 ]

@@ -20,6 +20,10 @@ from paperbanana.providers.base import ImageGenProvider, VLMProvider
 logger = structlog.get_logger()
 
 
+class PlotExecutionError(RuntimeError):
+    """Generated plot code failed to execute (strict mode only)."""
+
+
 class VisualizerAgent(BaseAgent):
     """Generates images from descriptions.
 
@@ -62,6 +66,7 @@ class VisualizerAgent(BaseAgent):
         aspect_ratio: Optional[str] = None,
         vector_formats: Optional[list[str]] = None,
         sketch_guided: bool = False,
+        strict: bool = False,
     ) -> str:
         """Generate an image from a description.
 
@@ -77,6 +82,8 @@ class VisualizerAgent(BaseAgent):
                 Only applies to statistical plots; ignored for methodology diagrams.
             sketch_guided: When True, the diagram prompt notes that a
                 user-provided reference sketch guided the plan.
+            strict: Statistical plots only — raise PlotExecutionError on
+                code-execution failure instead of emitting a placeholder.
 
         Returns:
             Path to the generated raster image.
@@ -84,7 +91,13 @@ class VisualizerAgent(BaseAgent):
         self._last_vector_paths = {}
         if diagram_type == DiagramType.STATISTICAL_PLOT:
             return await self._generate_plot(
-                description, raw_data, output_path, iteration, aspect_ratio, vector_formats
+                description,
+                raw_data,
+                output_path,
+                iteration,
+                aspect_ratio,
+                vector_formats,
+                strict=strict,
             )
         else:
             return await self._generate_diagram(
@@ -194,6 +207,7 @@ class VisualizerAgent(BaseAgent):
         iteration: int,
         aspect_ratio: Optional[str] = None,
         vector_formats: Optional[list[str]] = None,
+        strict: bool = False,
     ) -> str:
         """Generate a statistical plot by generating and executing matplotlib code."""
         # Build the description with raw data appended
@@ -234,6 +248,11 @@ class VisualizerAgent(BaseAgent):
         # Execute the code
         success = self._execute_plot_code(code, output_path, aspect_ratio, vector_formats)
         if not success:
+            if strict:
+                raise PlotExecutionError(
+                    f"plot code execution failed (code saved at {code_path}); "
+                    "strict mode forbids placeholder output"
+                )
             logger.error("Plot code execution failed, using placeholder")
             # Create a placeholder image
             placeholder = Image.new("RGB", (1024, 768), color=(255, 255, 255))

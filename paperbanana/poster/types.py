@@ -52,7 +52,7 @@ PanelRole = Literal[
 #: Roles with structural meaning; everything else is presentational.
 STRUCTURAL_ROLES = frozenset({"header", "qr"})
 
-FigureDecision = Literal["reuse", "reauthor", "generate"]
+FigureDecision = Literal["reuse", "reauthor", "generate", "rechart", "reset_table"]
 
 Orientation = Literal["portrait", "landscape"]
 
@@ -549,6 +549,7 @@ class FigureDecisionResult(BaseModel):
     reason: str
     edit_instructions: Optional[str] = None
     generate_brief: Optional[str] = None
+    chart_kind: Optional[Literal["bar", "grouped_bar", "line", "scatter"]] = None
 
     @model_validator(mode="after")
     def validate_decision(self) -> "FigureDecisionResult":

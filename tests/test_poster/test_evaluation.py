@@ -96,3 +96,29 @@ async def test_evaluate_rejects_missing_dimension(preview: Path):
     vlm = _JudgeVLM(json.dumps({"content": {"score": 4, "rationale": "x"}}))
     with pytest.raises(ValueError, match="missing dimension"):
         await evaluate_poster(vlm, preview_path=preview, paper_context="ctx", prompt_dir=PROMPT_DIR)
+
+
+async def test_dual_judge_averages_dimensions(preview: Path):
+    primary = _JudgeVLM(_good_response())  # 4 / 3 / 5
+    secondary = _JudgeVLM(
+        json.dumps(
+            {
+                "content": {"score": 2, "rationale": "Misses the ablation."},
+                "design": {"score": 5, "rationale": "Striking hierarchy."},
+                "coherence": {"score": 3, "rationale": "Results feel detached."},
+            }
+        )
+    )
+    result = await evaluate_poster(
+        primary,
+        preview_path=preview,
+        paper_context="ctx",
+        prompt_dir=PROMPT_DIR,
+        secondary_vlm=secondary,
+    )
+    assert result.judges == 2
+    by_dim = {s.dimension: s.score for s in result.scores}
+    assert by_dim == {"content": 3.0, "design": 4.0, "coherence": 4.0}
+    assert result.overall == pytest.approx(3.67, abs=0.01)
+    assert "judge 2" in result.scores[0].rationale
+    assert secondary.last_images is not None  # second judge saw the poster

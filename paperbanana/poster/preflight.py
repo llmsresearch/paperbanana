@@ -356,14 +356,17 @@ def _check_faithfulness(ir: PosterIR) -> list[PreflightCheck]:
                     detail=f"re-authored figure '{asset.id}' failed the faithfulness gate",
                 )
             )
-        elif asset.provenance.decision == "reauthor":
+        elif asset.provenance.decision in ("reauthor", "rechart", "reset_table"):
             checks.append(
                 PreflightCheck(
                     id=f"faithfulness.{asset.id}",
                     status="pass" if asset.provenance.faithfulness == "verified" else "fail",
                     value=asset.provenance.faithfulness,
                     threshold="verified",
-                    detail=f"re-authored figure '{asset.id}' must pass the faithfulness gate",
+                    detail=(
+                        f"transformed figure '{asset.id}' ({asset.provenance.decision}) "
+                        "must pass the faithfulness gate"
+                    ),
                 )
             )
     return checks

@@ -141,7 +141,19 @@ class _RoutedVLM:
         if "choosing the best LAYOUT" in prompt:
             return json.dumps({"winner": 0, "scores": {"0": 4, "1": 3}, "rationale": "balanced"})
         if "meticulous reviewer" in prompt:
+            assert "COMPREHENSION GAPS" in prompt  # quiz gaps reach the critic
             return json.dumps({"blocking": False, "summary": "Looks good.", "edit_ops": []})
+        if "comprehension questions" in prompt:
+            return json.dumps(
+                [
+                    {"question": "What is automated?", "answer": "Poster generation"},
+                    {"question": "How many phases?", "answer": "Two"},
+                ]
+            )
+        if "Answer each question from the poster alone" in prompt:
+            return json.dumps(["Poster generation", "NOT ON POSTER"])
+        if "Grade each poster answer" in prompt:
+            return json.dumps([True, False])
         if "tightening text" in prompt:
             raise AssertionError("no panel should overflow in this fixture")
         raise AssertionError(f"unrouted mock prompt: {prompt[:120]}")
@@ -226,6 +238,12 @@ async def test_pipeline_end_to_end(paper_pdf: Path, tmp_path: Path, monkeypatch)
     run_dir = Path(output.run_dir)
     assert (run_dir / "storyboard.json").is_file()
     assert (run_dir / "preflight_report.md").is_file()
+
+    # PaperQuiz ran: questions checkpointed, iteration 1 graded, gap recorded.
+    assert (run_dir / "quiz.json").is_file()
+    quiz_result = json.loads((run_dir / "iter_1" / "quiz_result.json").read_text())
+    assert quiz_result["total"] == 2 and quiz_result["correct"] == 1
+    assert quiz_result["gaps"] == ["How many phases?"]
 
 
 def test_pipeline_fails_fast_without_soffice(tmp_path: Path, monkeypatch):

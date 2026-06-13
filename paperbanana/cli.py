@@ -5034,6 +5034,12 @@ def evaluate_poster_cmd(
     ),
     vlm_provider: Optional[str] = typer.Option(None, "--vlm-provider", help="Judge VLM provider"),
     vlm_model: Optional[str] = typer.Option(None, "--vlm-model", help="Judge VLM model"),
+    dual_judge: bool = typer.Option(
+        False,
+        "--dual-judge",
+        help="Average scores from a second judge model (JUDGE_VLM_MODEL / "
+        "poster_judge_vlm_model; same provider)",
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Path to config YAML file"),
 ) -> None:
     """Evaluate a generated poster: PPTEval-aligned VLM judge (Content/Design/
@@ -5078,6 +5084,18 @@ def evaluate_poster_cmd(
     from paperbanana.providers.registry import ProviderRegistry
 
     vlm = ProviderRegistry.create_vlm(settings)
+    secondary_vlm = None
+    if dual_judge or settings.poster_dual_judge:
+        if not settings.poster_judge_vlm_model:
+            console.print(
+                "[red]Error: --dual-judge needs a second judge model — set "
+                "JUDGE_VLM_MODEL (or poster_judge_vlm_model in config) to a model "
+                "different from the primary judge.[/red]"
+            )
+            raise typer.Exit(1)
+        secondary_vlm = ProviderRegistry.create_vlm(
+            settings.model_copy(update={"vlm_model": settings.poster_judge_vlm_model})
+        )
     evaluation = asyncio.run(
         evaluate_poster(
             vlm,
@@ -5087,6 +5105,7 @@ def evaluate_poster_cmd(
             reference_path=Path(reference).expanduser() if reference else None,
             run_dir=run_path,
             venue_spec_dir=settings.venue_spec_dir,
+            secondary_vlm=secondary_vlm,
         )
     )
 
@@ -5095,9 +5114,11 @@ def evaluate_poster_cmd(
     table.add_column("Score (1-5)")
     table.add_column("Rationale", overflow="fold")
     for s in evaluation.scores:
-        table.add_row(s.dimension.title(), f"{s.score:.0f}", s.rationale)
+        table.add_row(s.dimension.title(), f"{s.score:g}", s.rationale)
     table.add_row("Overall", f"[bold]{evaluation.overall:.2f}[/bold]", "")
     console.print(table)
+    if evaluation.judges > 1:
+        console.print(f"Scores averaged across {evaluation.judges} judges.")
     if evaluation.compliance is not None:
         status = "[green]PASSED[/green]" if evaluation.compliance.passed else "[red]FAILED[/red]"
         console.print(

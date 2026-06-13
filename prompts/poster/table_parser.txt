@@ -1,0 +1,21 @@
+Extract the attached table image into structured data, exactly.
+
+Table caption (context): {caption}
+
+Rules:
+- "columns": the header cells, left to right, verbatim.
+- "rows": every data row, each with exactly as many cells as there are columns; cell text verbatim including units, signs, and symbols (±, ×, ≤, Δ). Merge multi-line cells with a space.
+- Copy numbers EXACTLY — never round, never reformat. A wrong digit is catastrophic downstream.
+- "highlight_row": the 0-based row index of the proposed/our method (often bolded or named like the paper's system); null if no row stands out.
+- "title": a short title from the caption (e.g. "Comparison with calibration-based methods"); null if none fits.
+
+Respond with ONLY a JSON object:
+{{
+  "columns": ["Method", "Total bits", "ΔPPL"],
+  "rows": [
+    ["CQ-2c8b", "4.00", "+0.03"],
+    ["TurboAngle K8V4-log", "6.56", "+0.0014"]
+  ],
+  "title": "Comparison with calibration-based quantizers",
+  "highlight_row": 1
+}}

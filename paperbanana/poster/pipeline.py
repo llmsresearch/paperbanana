@@ -44,6 +44,7 @@ from paperbanana.poster.agents.layout_proposer import (
     format_overflow_feedback,
     format_violation_feedback,
 )
+from paperbanana.poster.agents.quiz import QuizAgent, QuizQuestion
 from paperbanana.poster.agents.skeleton_judge import SkeletonJudgeAgent
 from paperbanana.poster.convert import find_soffice, pdf_to_png, pptx_to_pdf, render_panel_crops
 from paperbanana.poster.edits import EditOpError, apply_edit_ops, parse_edit_ops
@@ -62,6 +63,7 @@ from paperbanana.poster.memory import (
     exemplar_from_run,
     format_exemplars_block,
     load_exemplars,
+    resolve_memory_dir,
     retrieve_exemplars,
 )
 from paperbanana.poster.preflight import (
@@ -163,6 +165,7 @@ class PosterPipeline:
         self.layout_proposer = LayoutProposerAgent(self._vlm, **kwargs)
         self.skeleton_judge = SkeletonJudgeAgent(self._vlm, **kwargs)
         self.faithfulness = FaithfulnessAgent(self._vlm, **kwargs)
+        self.quiz = QuizAgent(self._vlm, **kwargs)
 
         logger.info(
             "Poster pipeline initialized",
@@ -296,6 +299,24 @@ class PosterPipeline:
             )
         self._emit("ingest_complete", figures=len(assets.figures), title=assets.title)
 
+        # PaperQuiz: comprehension questions generated ONCE from the paper;
+        # a fresh-context grading pass later checks the rendered poster can
+        # answer them — the reward the critic optimizes beyond looks.
+        quiz_questions: list[QuizQuestion] = []
+        if self.settings.poster_quiz_enabled:
+            cached = self._load_stage("quiz", resume)
+            if cached is not None:
+                quiz_questions = [QuizQuestion(**q) for q in cached]
+            else:
+                quiz_questions = await self.quiz.generate_questions(
+                    assets, n_questions=self.settings.poster_quiz_questions
+                )
+                self._save_stage(
+                    "quiz",
+                    json.dumps([json.loads(q.model_dump_json()) for q in quiz_questions], indent=2),
+                )
+            self._emit("quiz_generated", questions=len(quiz_questions))
+
         # Stage 2: storyboard ----------------------------------------------
         cached = self._load_stage("storyboard", resume)
         if cached is not None:
@@ -347,6 +368,7 @@ class PosterPipeline:
                 self.faithfulness,
                 self._image_gen,
                 self._make_diagram_generator(),
+                self._make_chart_generator(),
                 reauthor_template,
                 style.palette,
                 placed_width_mm=placed_width,
@@ -399,6 +421,9 @@ class PosterPipeline:
         ir = await self._propose_structure(ir, storyboard, layout_patterns, resume=resume)
 
         # Stage 6: refinement loop ----------------------------------------------
+        anchor_images = self._load_anchor_images()
+        if anchor_images:
+            self._emit("critic_anchors_loaded", anchors=len(anchor_images))
         iteration = 0
         preflight = None
         pptx_path = pdf_path = preview_path = None
@@ -428,12 +453,37 @@ class PosterPipeline:
             if iteration > max_iterations:
                 break
 
+            # Grade comprehension on the first and last critic iterations:
+            # failed questions become gaps the critic must close.
+            comprehension_gaps: list[str] = []
+            if quiz_questions and iteration in (1, max_iterations):
+                quiz_result = await self.quiz.grade_poster(
+                    quiz_questions, Image.open(preview_path).convert("RGB")
+                )
+                (iter_dir / "quiz_result.json").write_text(
+                    quiz_result.model_dump_json(indent=2), encoding="utf-8"
+                )
+                self._emit(
+                    "poster_quizzed",
+                    iteration=iteration,
+                    score=f"{quiz_result.correct}/{quiz_result.total}",
+                    gaps=len(quiz_result.gaps),
+                )
+                comprehension_gaps = quiz_result.gaps
+                if quiz_result.gaps and iteration == max_iterations:
+                    run_lessons.append(
+                        f"Poster left {len(quiz_result.gaps)} comprehension gaps: "
+                        + "; ".join(quiz_result.gaps[:3])[:300]
+                    )
+
             critique = await self.critic.run(
                 ir=ir,
                 preview=Image.open(preview_path).convert("RGB"),
                 panel_crops={k: Image.open(v).convert("RGB") for k, v in crops.items()},
                 preflight=preflight,
                 iteration=iteration,
+                anchor_images=anchor_images or None,
+                comprehension_gaps=comprehension_gaps or None,
             )
             (iter_dir / "critique.json").write_text(
                 critique.model_dump_json(indent=2), encoding="utf-8"
@@ -595,6 +645,58 @@ class PosterPipeline:
 
         return generate
 
+    def _make_chart_generator(self):
+        """Strict plot pipeline for RECHART decisions (table -> chart).
+
+        Strict mode: a failed matplotlib execution raises instead of
+        emitting the diagram pipeline's white placeholder — a placeholder
+        chart on a poster would be a silent fallback.
+        """
+        from paperbanana.agents.visualizer import VisualizerAgent
+        from paperbanana.core.types import DiagramType
+
+        visualizer = VisualizerAgent(
+            self._image_gen,
+            self._vlm,
+            prompt_dir=self._prompt_dir,
+            output_dir=str(self._run_dir / "charts"),
+            prompt_recorder=self._prompt_recorder,
+        )
+
+        async def generate(payload: dict, intent: str, out_path: Path) -> Path:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            self._emit("chart_generation_started", output=out_path.name)
+            result = await visualizer.run(
+                description=intent,
+                diagram_type=DiagramType.STATISTICAL_PLOT,
+                raw_data=payload,
+                output_path=str(out_path),
+                iteration=1,
+                strict=True,
+            )
+            self._emit("chart_generation_complete", path=result)
+            return Path(result)
+
+        return generate
+
+    def _load_anchor_images(self, max_anchors: int = 2) -> list[Image.Image]:
+        """Top-judged exemplar previews as critic calibration anchors.
+
+        Only exemplars carrying a thumbnail (self-promoted or ingested
+        with imagery) qualify; an empty list simply means the critic runs
+        un-anchored, which is the cold-start state, not a failure.
+        """
+        threshold = self.settings.poster_memory_promote_min_score
+        candidates = [
+            e
+            for e in load_exemplars(memory_dir=self.settings.poster_memory_dir)
+            if e.thumbnail_path
+            and Path(e.thumbnail_path).is_file()
+            and (e.quality or 0) >= threshold
+        ]
+        candidates.sort(key=lambda e: e.quality or 0, reverse=True)
+        return [Image.open(e.thumbnail_path).convert("RGB") for e in candidates[:max_anchors]]
+
     def _build_ir(
         self,
         assets: PaperAssets,
@@ -735,6 +837,11 @@ class PosterPipeline:
         threshold = self.settings.poster_memory_promote_min_score
         if evaluation.overall >= threshold:
             exemplar = exemplar_from_run(ir, evaluation.overall, self.run_id)
+            thumb_dir = resolve_memory_dir(self.settings.poster_memory_dir) / "thumbnails"
+            thumb_dir.mkdir(parents=True, exist_ok=True)
+            thumb_path = thumb_dir / f"{exemplar.id}.png"
+            shutil.copy2(preview_path, thumb_path)
+            exemplar.thumbnail_path = str(thumb_path)
             append_exemplar(
                 exemplar,
                 memory_dir=self.settings.poster_memory_dir,

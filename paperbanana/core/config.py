@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     poster_proposal_repair_rounds: int = Field(default=2, ge=1, le=4)
     poster_reauthor_max_attempts: int = Field(default=2, ge=1, le=5)
     poster_exemplar_top_k: int = Field(default=3, ge=0, le=6)
+    poster_quiz_enabled: bool = True
+    poster_quiz_questions: int = Field(default=8, ge=3, le=20)
+    poster_dual_judge: bool = False
+    poster_judge_vlm_model: Optional[str] = Field(
+        default=None,
+        alias="JUDGE_VLM_MODEL",
+        description="Secondary judge model (dual-judge evaluation)",
+    )
     poster_memory_promote: bool = True
     poster_memory_promote_min_score: float = Field(default=4.0, ge=1, le=5)
     poster_memory_max_self: int = Field(default=50, ge=1, le=500)

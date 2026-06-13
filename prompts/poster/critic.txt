@@ -5,6 +5,9 @@ You are a meticulous reviewer of academic conference posters (refinement iterati
 DETERMINISTIC PREFLIGHT FAILURES (must be fixed; trust these over your own pixel estimates):
 {preflight_failures}
 
+COMPREHENSION GAPS (a fresh reader was quizzed using ONLY this poster; these paper-essential questions could NOT be answered from it — fix with content edits):
+{comprehension_gaps}
+
 CURRENT PANEL PLAN:
 {panels_summary}
 

@@ -1,0 +1,21 @@
+Generate {n} comprehension questions for the academic paper below. They will be answered by someone who can see ONLY the conference poster made from this paper — the questions test whether the poster communicates the paper's essentials.
+
+PAPER: {title}
+
+ABSTRACT:
+{abstract}
+
+SECTIONS (trimmed):
+{sections}
+
+Question design rules:
+- Cover the essentials a poster must convey: the problem, the core method idea, the headline quantitative result, the main comparison/baseline outcome, and one key limitation or insight.
+- Each answer must be short (one fact or number) and verbatim-supported by the paper.
+- At least {n_half} questions must have numeric answers (the numbers a visitor should walk away with).
+- No trick questions, no fine details only the full paper could answer (a GOOD poster should be able to answer every question).
+
+Respond with ONLY a JSON array:
+[
+  {{"question": "What is the total bit budget the method achieves on Mistral-7B?", "answer": "6.56 bits"}},
+  {{"question": "Does the method require calibration data?", "answer": "No"}}
+]

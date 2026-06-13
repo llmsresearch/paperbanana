@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 from pathlib import Path
 
 import pytest
@@ -134,6 +135,10 @@ async def _diagram_generator_factory(tmp_path: Path):
     return generate
 
 
+async def _chart_stub(payload: dict, intent: str, out_path: pathlib.Path) -> pathlib.Path:
+    raise AssertionError("chart_generator must not be called for this decision")
+
+
 def test_estimate_placed_width():
     # NeurIPS default 1219.2mm, 3 cols, 20 margin, 10 gutter -> (1219.2-40-20)/3 - 20
     assert estimate_placed_width_mm(1219.2, 3, 20, 10) == pytest.approx(366.4, abs=0.1)
@@ -149,6 +154,7 @@ async def test_reuse_decision(tmp_path: Path):
         FaithfulnessAgent(_ScriptedVLM([]), prompt_dir=str(PROMPT_DIR)),
         _GuidedImageGen(),
         await _diagram_generator_factory(tmp_path),
+        _chart_stub,
         REAUTHOR_TEMPLATE,
         PALETTE,
         placed_width_mm=366.4,
@@ -182,6 +188,7 @@ async def test_reauthor_passes_faithfulness(tmp_path: Path):
         FaithfulnessAgent(faith_vlm, prompt_dir=str(PROMPT_DIR)),
         gen,
         await _diagram_generator_factory(tmp_path),
+        _chart_stub,
         REAUTHOR_TEMPLATE,
         PALETTE,
         placed_width_mm=366.4,
@@ -217,6 +224,7 @@ async def test_reauthor_fails_then_hard_error(tmp_path: Path):
             FaithfulnessAgent(faith_vlm, prompt_dir=str(PROMPT_DIR)),
             _GuidedImageGen(),
             await _diagram_generator_factory(tmp_path),
+            _chart_stub,
             REAUTHOR_TEMPLATE,
             PALETTE,
             placed_width_mm=366.4,
@@ -239,6 +247,7 @@ async def test_reauthor_without_guided_edit_provider_errors(tmp_path: Path):
             FaithfulnessAgent(_ScriptedVLM([]), prompt_dir=str(PROMPT_DIR)),
             _TextOnlyImageGen(),
             await _diagram_generator_factory(tmp_path),
+            _chart_stub,
             REAUTHOR_TEMPLATE,
             PALETTE,
             placed_width_mm=366.4,
@@ -256,6 +265,7 @@ async def test_new_figure_generation(tmp_path: Path):
         FaithfulnessAgent(_ScriptedVLM([]), prompt_dir=str(PROMPT_DIR)),
         _GuidedImageGen(),
         await _diagram_generator_factory(tmp_path),
+        _chart_stub,
         REAUTHOR_TEMPLATE,
         PALETTE,
         placed_width_mm=366.4,
@@ -275,6 +285,7 @@ async def test_user_override_skips_curator(tmp_path: Path):
         FaithfulnessAgent(_ScriptedVLM([]), prompt_dir=str(PROMPT_DIR)),
         _GuidedImageGen(),
         await _diagram_generator_factory(tmp_path),
+        _chart_stub,
         REAUTHOR_TEMPLATE,
         PALETTE,
         placed_width_mm=366.4,
@@ -296,9 +307,124 @@ async def test_unknown_figure_reference_raises(tmp_path: Path):
             FaithfulnessAgent(_ScriptedVLM([]), prompt_dir=str(PROMPT_DIR)),
             _GuidedImageGen(),
             await _diagram_generator_factory(tmp_path),
+            _chart_stub,
             REAUTHOR_TEMPLATE,
             PALETTE,
             placed_width_mm=366.4,
             min_dpi=100,
             out_dir=tmp_path / "out",
+        )
+
+
+# ---------------------------------------------------------------------------
+# rechart / reset_table
+
+
+_TABLE_JSON = json.dumps(
+    {
+        "columns": ["Method", "Bits"],
+        "rows": [["Baseline", "16"], ["Ours", "6.56"]],
+        "title": "Main results",
+        "highlight_row": 1,
+    }
+)
+_PASS = json.dumps({"verdict": "pass", "differences": []})
+_FAIL = json.dumps({"verdict": "fail", "differences": ["6.56 vs 6.65"]})
+
+
+async def test_reset_table_renders_and_verifies(tmp_path: Path):
+    assets = _paper_assets(tmp_path)
+    curator_vlm = _ScriptedVLM(
+        [json.dumps({"decision": "reset_table", "reason": "blurry table crop"})]
+    )
+    faith_vlm = _ScriptedVLM([_TABLE_JSON, _PASS])
+    asset_map, decisions = await curate_figures(
+        assets,
+        _storyboard(["fig1"]),
+        FigureCuratorAgent(curator_vlm, prompt_dir=str(PROMPT_DIR)),
+        FaithfulnessAgent(faith_vlm, prompt_dir=str(PROMPT_DIR)),
+        _GuidedImageGen(),
+        await _diagram_generator_factory(tmp_path),
+        _chart_stub,
+        REAUTHOR_TEMPLATE,
+        PALETTE,
+        placed_width_mm=366.4,
+        min_dpi=100,
+        out_dir=tmp_path / "out",
+    )
+    assert decisions[0].decision == "reset_table"
+    prov = asset_map["fig1"].provenance
+    assert prov.decision == "reset_table" and prov.faithfulness == "verified"
+    assert Path(asset_map["fig1"].path).name == "fig1_reset.png"
+    assert Path(asset_map["fig1"].path).is_file()
+
+
+async def test_rechart_calls_chart_generator_with_ground_truth(tmp_path: Path):
+    assets = _paper_assets(tmp_path)
+    curator_vlm = _ScriptedVLM(
+        [
+            json.dumps(
+                {
+                    "decision": "rechart",
+                    "reason": "comparison clearer as chart",
+                    "chart_kind": "bar",
+                }
+            )
+        ]
+    )
+    faith_vlm = _ScriptedVLM([_TABLE_JSON, _PASS])
+    seen_payloads = []
+
+    async def chart_generator(payload, intent, out_path):
+        seen_payloads.append(payload)
+        Image.new("RGB", (1600, 1000), "honeydew").save(out_path)
+        return out_path
+
+    asset_map, decisions = await curate_figures(
+        assets,
+        _storyboard(["fig1"]),
+        FigureCuratorAgent(curator_vlm, prompt_dir=str(PROMPT_DIR)),
+        FaithfulnessAgent(faith_vlm, prompt_dir=str(PROMPT_DIR)),
+        _GuidedImageGen(),
+        await _diagram_generator_factory(tmp_path),
+        chart_generator,
+        REAUTHOR_TEMPLATE,
+        PALETTE,
+        placed_width_mm=366.4,
+        min_dpi=100,
+        out_dir=tmp_path / "out",
+    )
+    assert decisions[0].decision == "rechart"
+    assert asset_map["fig1"].provenance.faithfulness == "verified"
+    assert Path(asset_map["fig1"].path).name == "fig1_chart.png"
+    assert seen_payloads[0]["requested_chart_kind"] == "bar"
+    assert seen_payloads[0]["rows"] == [["Baseline", "16"], ["Ours", "6.56"]]
+
+
+async def test_rechart_exhausts_to_hard_error(tmp_path: Path):
+    assets = _paper_assets(tmp_path)
+    curator_vlm = _ScriptedVLM(
+        [json.dumps({"decision": "rechart", "reason": "chart it", "chart_kind": "bar"})]
+    )
+    faith_vlm = _ScriptedVLM([_TABLE_JSON, _FAIL, _TABLE_JSON, _FAIL])
+
+    async def chart_generator(payload, intent, out_path):
+        Image.new("RGB", (1600, 1000), "honeydew").save(out_path)
+        return out_path
+
+    with pytest.raises(PosterFigureError, match="--figure-decision"):
+        await curate_figures(
+            assets,
+            _storyboard(["fig1"]),
+            FigureCuratorAgent(curator_vlm, prompt_dir=str(PROMPT_DIR)),
+            FaithfulnessAgent(faith_vlm, prompt_dir=str(PROMPT_DIR)),
+            _GuidedImageGen(),
+            await _diagram_generator_factory(tmp_path),
+            chart_generator,
+            REAUTHOR_TEMPLATE,
+            PALETTE,
+            placed_width_mm=366.4,
+            min_dpi=100,
+            out_dir=tmp_path / "out",
+            max_reauthor_attempts=2,
         )

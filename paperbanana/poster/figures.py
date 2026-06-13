@@ -20,6 +20,11 @@ from PIL import Image
 from paperbanana.poster.agents.faithfulness import FaithfulnessAgent
 from paperbanana.poster.agents.figure_curator import FigureCuratorAgent
 from paperbanana.poster.renderer import PANEL_PADDING_MM
+from paperbanana.poster.tables import (
+    parse_table,
+    render_table_matplotlib,
+    table_to_plot_payload,
+)
 from paperbanana.poster.types import (
     FigureAsset,
     FigureDecisionResult,
@@ -80,6 +85,7 @@ async def curate_figures(
     faithfulness: FaithfulnessAgent,
     image_gen,
     diagram_generator: DiagramGenerator,
+    chart_generator,
     reauthor_prompt_template: str,
     palette: dict[str, str],
     placed_width_mm: float,
@@ -146,6 +152,7 @@ async def curate_figures(
                 faithfulness=faithfulness,
                 image_gen=image_gen,
                 diagram_generator=diagram_generator,
+                chart_generator=chart_generator,
                 reauthor_prompt_template=reauthor_prompt_template,
                 palette=palette,
                 placed_width_mm=placed_width_mm,
@@ -212,6 +219,7 @@ async def _execute_decision(
     faithfulness: FaithfulnessAgent,
     image_gen,
     diagram_generator: DiagramGenerator,
+    chart_generator,
     reauthor_prompt_template: str,
     palette: dict[str, str],
     placed_width_mm: float,
@@ -255,6 +263,77 @@ async def _execute_decision(
                 decision_reason=decision.reason,
                 caption_anchored=figure.caption_anchored,
             ),
+        )
+
+    if decision.decision in ("rechart", "reset_table"):
+        last_differences: list[str] = []
+        for attempt in range(1, max_reauthor_attempts + 1):
+            table = await parse_table(
+                crop, faithfulness.vlm, faithfulness.prompt_dir, caption=figure.caption
+            )
+            if decision.decision == "reset_table":
+                path = out_dir / f"{figure.id}_reset.png"
+                render_table_matplotlib(table, palette, path, placed_width_mm)
+            else:
+                intent = (
+                    f"A clean {decision.chart_kind or 'bar'} chart for a conference poster "
+                    f"showing: {table.title or figure.caption}. Use EXACTLY the values in "
+                    "the raw data (no rounding); highlight the row marked highlight_row "
+                    "with the accent color; large axis labels readable from 2 meters."
+                )
+                path = await chart_generator(
+                    table_to_plot_payload(table, decision.chart_kind),
+                    intent,
+                    out_dir / f"{figure.id}_chart.png",
+                )
+            with Image.open(path) as rendered_check:
+                rendered = rendered_check.convert("RGB")
+            verdict = await faithfulness.run(
+                original=crop,
+                reauthored=rendered,
+                caption=(
+                    figure.caption
+                    + " [the second image is a deliberate "
+                    + ("chart conversion" if decision.decision == "rechart" else "re-typeset")
+                    + " of the original table: layout/format differences are expected; "
+                    "verify ONLY that every numeric value and label matches the original]"
+                ),
+            )
+            if verdict.verdict == "pass":
+                logger.info(
+                    "Table transformed",
+                    figure=figure.id,
+                    decision=decision.decision,
+                    attempt=attempt,
+                )
+                return FigureAsset(
+                    id=figure.id,
+                    path=str(path),
+                    width_px=rendered.width,
+                    height_px=rendered.height,
+                    provenance=FigureProvenance(
+                        origin="paper",
+                        paper_figure_id=figure.id,
+                        source_page=figure.page,
+                        source_bbox_norm=figure.bbox_norm,
+                        decision=decision.decision,
+                        decision_reason=decision.reason,
+                        caption_anchored=figure.caption_anchored,
+                        faithfulness="verified",
+                    ),
+                )
+            last_differences = verdict.differences
+            logger.warning(
+                "Table transformation failed faithfulness gate",
+                figure=figure.id,
+                decision=decision.decision,
+                attempt=attempt,
+                differences=verdict.differences,
+            )
+        raise PosterFigureError(
+            f"figure '{figure.id}' ({decision.decision}) failed the faithfulness gate "
+            f"{max_reauthor_attempts} time(s); last violations: {last_differences}. "
+            f"Re-run with --figure-decision {figure.id}=reuse to place the original crop."
         )
 
     # decision == "reauthor"

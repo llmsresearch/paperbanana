@@ -10,12 +10,17 @@ The attached image is the figure exactly as cropped from the paper. Posters are 
 Decide ONE of:
 - "reuse": the crop is poster-ready as-is — text inside it is already large relative to the figure, it is clean and uncluttered, AND its effective DPI meets the minimum. Tables with small dense text are almost never reusable.
 - "reauthor": the figure's DATA and structure are right, but it needs poster re-rendering — e.g. larger axis/label fonts, thicker lines, simplified or relocated legend, fewer gridlines, higher resolution. Write precise edit_instructions for an image model that will redraw it. The instructions MUST forbid changing any data, trends, values, category names, or numerical results.
-- "generate": the figure cannot be salvaged by restyling (e.g. a dense table better shown as a chart, or an illegible composite) and should be replaced by a newly designed visual. Write a generate_brief describing the replacement, grounded ONLY in what the caption and visible content actually show.
+- "generate": the figure cannot be salvaged by restyling (e.g. an illegible composite) and should be replaced by a newly designed visual. Write a generate_brief describing the replacement, grounded ONLY in what the caption and visible content actually show.
+- "rechart" (TABLES ONLY): the table's key comparison would be far clearer as a chart — typical for result/comparison tables with one or two numeric columns across methods/models. Set chart_kind to one of "bar", "grouped_bar", "line", "scatter". The system extracts the exact values and renders the chart; values are verified against the table.
+- "reset_table" (TABLES ONLY): the table must stay tabular (config lists, many text columns) but the crop is too small/dense for poster reading. The system re-typesets it cleanly at print resolution with the key row highlighted.
+
+For TABLES, strongly prefer "rechart" (best) or "reset_table" over "reauthor" — image-model re-rendering of dense numeric tables risks digit errors; structured extraction does not.
 
 Respond with ONLY a JSON object:
 {{
-  "decision": "reuse" | "reauthor" | "generate",
+  "decision": "reuse" | "reauthor" | "generate" | "rechart" | "reset_table",
   "reason": "one or two sentences grounded in legibility and DPI",
   "edit_instructions": "required iff decision is reauthor",
-  "generate_brief": "required iff decision is generate"
+  "generate_brief": "required iff decision is generate",
+  "chart_kind": "required iff decision is rechart: bar | grouped_bar | line | scatter"
 }}
