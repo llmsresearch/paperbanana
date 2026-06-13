@@ -454,3 +454,39 @@ async def test_table_parse_garbage_retries_then_hard_error(tmp_path: Path):
             out_dir=tmp_path / "out",
             max_reauthor_attempts=2,
         )
+
+
+async def test_curator_normalizes_blank_optional_fields(tmp_path: Path):
+    """Models echo the full JSON contract with unused keys as "" (seen
+    live: reset_table with chart_kind="") — blanks must read as absent."""
+    assets = _paper_assets(tmp_path)
+    curator_vlm = _ScriptedVLM(
+        [
+            json.dumps(
+                {
+                    "decision": "reset_table",
+                    "reason": "too dense",
+                    "edit_instructions": "",
+                    "generate_brief": "",
+                    "chart_kind": "",
+                }
+            )
+        ]
+    )
+    faith_vlm = _ScriptedVLM([_TABLE_JSON, _PASS])
+    asset_map, decisions = await curate_figures(
+        assets,
+        _storyboard(["fig1"]),
+        FigureCuratorAgent(curator_vlm, prompt_dir=str(PROMPT_DIR)),
+        FaithfulnessAgent(faith_vlm, prompt_dir=str(PROMPT_DIR)),
+        _GuidedImageGen(),
+        await _diagram_generator_factory(tmp_path),
+        _chart_stub,
+        REAUTHOR_TEMPLATE,
+        PALETTE,
+        placed_width_mm=366.4,
+        min_dpi=100,
+        out_dir=tmp_path / "out",
+    )
+    assert decisions[0].decision == "reset_table" and decisions[0].chart_kind is None
+    assert asset_map["fig1"].provenance.faithfulness == "verified"

@@ -53,4 +53,9 @@ class FigureCuratorAgent(BaseAgent):
                 f"figure curator returned no JSON object for {figure.id}: {raw[:400]!r}"
             )
         data["figure_id"] = figure.id
+        # Models routinely echo the full contract with unused keys as ""
+        # (seen live: reset_table with chart_kind="") — blank means absent.
+        for key in ("edit_instructions", "generate_brief", "chart_kind"):
+            if isinstance(data.get(key), str) and not data[key].strip():
+                data[key] = None
         return FigureDecisionResult(**data)
