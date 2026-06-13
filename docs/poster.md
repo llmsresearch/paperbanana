@@ -1,62 +1,62 @@
 # Poster Generation
 
 `paperbanana poster` turns a paper PDF into a venue-compliant conference
-poster: an **editable .pptx**, a **press-ready PDF** at the venue's physical
-size, a **preview PNG**, and a **preflight report** covering print fidelity
-and venue compliance.
+poster: a high-resolution **PNG** and a **print-ready PDF** at the venue's
+exact physical size, plus the grounded facts and a faithfulness audit.
 
 ```bash
 pip install -e ".[google,poster]"
-brew install --cask libreoffice   # required: pptx -> PDF conversion
-
 paperbanana poster --paper paper.pdf --venue neurips --qr-url https://arxiv.org/abs/XXXX.XXXXX
 ```
 
-## What makes it different
+No LibreOffice required — the PDF is written directly at the venue's
+physical dimensions.
 
-1. **Figures are never just copied.** Every figure/table the storyboard
-   places is judged against print physics (its computed DPI at the planned
-   placement, legibility at 1.5–2 m viewing distance) and then:
-   - **reuse** — placed as cropped from the paper (only if print-quality),
-   - **reauthor** — re-rendered via image-conditioned generation (larger
-     labels, simplified legends, palette harmonization) behind a strict
-     **data-faithfulness gate**: a verifier compares original vs.
-     re-authored and the run fails rather than ship a figure whose data
-     changed, or
-   - **generate** — replaced/added by a newly generated diagram via the
-     PaperBanana diagram pipeline (e.g. an overview figure the paper lacks).
+## Architecture: generate by design, verify against the paper
 
-   Every figure carries provenance (source page/bbox, decision, reason,
-   faithfulness status) in `poster_ir.json`. Override any decision with
-   `--figure-decision fig3=reuse` (repeatable).
+The poster is **designed by an image model at full power** — the same kind
+of model PaperBanana already uses for figures — and then wrapped with the
+verification a one-shot model call cannot do for itself:
 
-2. **Venue regulation bank.** Poster rules are versioned YAML specs with
-   cited official sources: `data/venue_specs/<venue>/<year>.yaml`
-   (built-ins: neurips, icml, cvpr, acl). List them with
-   `paperbanana venues specs`. Add your own venue by dropping a YAML in
-   `~/.config/paperbanana/venue_specs/<venue>/<year>.yaml` (or set
-   `PAPERBANANA_VENUE_SPEC_DIR`). Specs drive both generation (page size,
-   orientation) and the compliance checks.
+1. **Ground.** A VLM extracts only the paper's *verified* facts (title,
+   authors, takeaway, method, the exact result numbers). Only these reach
+   the design prompt, with an explicit instruction to invent no model,
+   dataset, baseline, or number that is not listed.
+2. **Generate.** The image model produces the whole poster at the venue's
+   aspect and the largest legal resolution — varied color, real typography,
+   integrated figures, big numbers — the design quality a hand-coded layout
+   engine cannot reach.
+3. **Audit.** A VLM re-reads the *rendered poster* against the paper and
+   lists every claim that contradicts or is unsupported by it (wrong
+   numbers, invented names, fabricated metadata).
+4. **Repair.** Findings are fed back and the poster is regenerated, bounded
+   by `--repair-rounds`.
+5. **Comply.** Deterministic checks on the rendered artifact: physical size
+   and orientation vs. the venue spec, and print DPI. This is the only
+   place determinism survives — physics and verification, never design.
 
-3. **Deterministic geometry + preflight.** The VLM decides content, order,
-   and emphasis; pure-Python code assigns physical coordinates (mm), so
-   no-overlap/no-overflow/minimum-font invariants are enforced, not hoped
-   for. Preflight checks: page size & orientation vs. spec, per-level font
-   minima (venue rules merged with built-in legibility floors), each
-   image's effective DPI at printed size, required elements, WCAG contrast,
-   text overflow, PDF/PNG file rules. The CLI exits non-zero if preflight
-   fails.
+This is the project's thesis applied to posters: **amplify the model, add
+the grounding/verification it lacks.** The generator is a swappable
+commodity; the moat is trust, and it sharpens as models improve.
 
-## Pipeline
+## Figures (`--figures`)
 
-```
-ingest (text + VLM figure detection w/ caption anchoring to the PDF text layer)
-  -> storyboard (panels, reading order, weights)
-  -> style tokens (palette, typography >= venue/legibility minima)
-  -> figure curation (reuse / reauthor+faithfulness gate / generate)
-  -> deterministic layout -> pptx render -> LibreOffice PDF -> preview + per-panel crops
-  -> preflight + VLM critic (panel zoom-ins) -> structured edit ops -> iterate
-```
+`--figures generated` (default today): the model draws the figures; the
+audit guards their numbers. `--figures real` / `--figures auto` (next
+milestone) embed the paper's *real* extracted figures, deciding per figure
+whether the paper's asset or a PaperBanana-generated faithful one is better
+(`--figure figN=real|generate|reauthor` to override). A poster figure is
+then always either the paper's real figure or a PaperBanana-faithful one —
+never the image model's fabrication.
+
+## Venue regulation bank
+
+Poster rules are versioned YAML specs with cited official sources:
+`data/venue_specs/<venue>/<year>.yaml` (built-ins: neurips, icml, cvpr,
+acl, iclr, aaai). List them with `paperbanana venues specs`; add your own
+under `~/.config/paperbanana/venue_specs/<venue>/<year>.yaml` (or set
+`PAPERBANANA_VENUE_SPEC_DIR`). Specs drive both generation (physical size,
+orientation) and the compliance checks.
 
 ## CLI
 
@@ -65,64 +65,44 @@ paperbanana poster \
   --paper paper.pdf \
   --venue neurips \              # see: paperbanana venues specs
   --year 2025 \                  # default: latest spec
-  --qr-url https://example.org \ # QR code on the poster
-  --figure-decision fig2=reauthor --figure-decision tab1=generate \
-  --iterations 2 \               # critic refinement rounds
-  --resume outputs/poster_20260612_101500_ab12cd   # resume a previous run
+  --qr-url https://example.org \ # scannable QR composited on the poster
+  --figures generated \          # generated | real | auto
+  --repair-rounds 1              # faithfulness repair regenerations
 ```
 
-Useful flags: `--budget` (USD cap), `--save-prompts`, `--vlm-model`,
-`--image-model`, `--config`, `-v/--verbose`.
+Useful flags: `--budget` (USD cap), `--vlm-provider/--vlm-model`,
+`--image-provider/--image-model`, `--config`, `-v/--verbose`.
 
 ## Outputs (`outputs/poster_<ts>_<id>/`)
 
 | File | What it is |
 |---|---|
-| `poster.pptx` | Editable deck at physical page size (open in PowerPoint/Keynote) |
-| `poster.pdf` | Press-ready PDF — send this to the print shop |
-| `preview.png` | Raster preview |
-| `poster_ir.json` | Full IR: panels, geometry, style, per-figure provenance |
-| `preflight_report.md` / `.json` | Print-fidelity + compliance report |
-| `paper_assets/` | Extracted text/figures from the paper |
-| `curated_figures/` | Re-authored figure outputs |
-| `subruns/` | Nested diagram-generation runs (GENERATE decisions) |
-| `iter_N/` | Per-iteration pptx/PDF/preview/panel crops/critique |
-
-## Print scale
-
-PowerPoint caps pages at 56 inches. Venues larger than that (e.g. CVPR's
-84"x42") are designed at 1/2 scale (`print_scale: 2` in the IR, fonts
-halved on the design page) — tell the print shop to **print at 200%**, the
-standard large-format practice. The CLI prints a reminder when this
-applies; preflight always evaluates the *printed* dimensions.
+| `poster.png` | High-resolution poster image |
+| `poster.pdf` | Print-ready PDF at the venue's physical size — send to the print shop |
+| `grounding.txt` | The verified paper facts the design was built from |
+| `audit.json` | Faithfulness findings + repair rounds |
+| `poster_output.json` | Run metadata: venue, physical size, compliance |
+| `poster_v1.png`, `poster_v2.png` | Pre- and post-repair drafts |
 
 ## Failure behavior (no fallbacks)
 
-The poster head fails loudly instead of degrading: missing LibreOffice,
-an unknown venue/year, text that cannot fit at the minimum font sizes
-after bounded rewrite attempts, and re-authored figures that cannot pass
-the faithfulness gate all stop the run with a specific error and the
-override to use (`--figure-decision figN=reuse`).
+The poster head fails loudly instead of degrading: an unknown venue/year
+stops the run with a specific error, and `--figures real|auto` raises a
+clear "not yet available" until that milestone lands rather than silently
+falling back to generated.
 
 ## MCP
 
-The MCP server exposes `generate_poster(paper_pdf, venue, year, qr_url,
-figure_decisions, iterations, output_dir, config)` returning artifact
-paths plus the preflight summary as JSON.
-
-## Design knowledge
-
-Generation is conditioned on a poster design guide
-(`data/guidelines/poster_style_guide.md`: five-second rule, 600-800 word
-budget, ~40-50% figure share, narrative order, visual hierarchy), injected
-into the content planner and stylist. A venue style pack can override it
-by shipping its own `poster_style_guide.md` — the hook where per-venue
-learned design knowledge plugs in.
+The MCP server exposes
+`generate_poster(paper_pdf, venue, year, qr_url, figures, figure_overrides,
+repair_rounds, output_dir, config)` returning the PNG/PDF paths, venue and
+physical size, the audit findings, and the compliance summary as JSON —
+peer to the figure-side `generate_diagram` / `generate_plot` tools.
 
 ## Evaluation & benchmarking
 
 ```bash
-paperbanana evaluate-poster --run-dir outputs/poster_<id> [--reference author_poster.png]
+paperbanana evaluate-poster --run-dir outputs/poster_<id> [--reference author_poster.png] [--dual-judge]
 ```
 
 Two components, deliberately separated:
@@ -130,35 +110,27 @@ Two components, deliberately separated:
 - **VLM judge** — Content / Design / Coherence on a 1-5 scale, using the
   PPTEval rubric so scores are directly comparable with Paper2Poster
   (PosterAgent-4o: 3.72 overall vs 3.77 for human posters) and successor
-  baselines. Pass `--reference` to calibrate against the author's poster.
-- **Deterministic compliance** — the venue preflight recomputed from the
-  run's `poster_ir.json`; never judged by a model.
+  baselines. `--reference` calibrates against the author's poster;
+  `--dual-judge` averages a second judge model.
+- **Deterministic compliance** — image-level venue checks (dimensions,
+  orientation, DPI) recomputed from the rendered poster; never judged by a
+  model.
 
 Benchmark roadmap: run the harness over the Paper2Poster benchmark
-(100 paper-poster pairs from NeurIPS/ICML/ICLR 2022-24, on HuggingFace as
-`Paper2Poster/Paper2Poster`) judging generated vs author posters, plus a
-PaperQuiz-style comprehension test (VLM answers paper questions seeing
-only the poster). The differentiating metrics PaperBanana adds on top:
-print-fidelity (font-at-distance, effective DPI) and venue compliance —
-dimensions no published system measures.
+(100 paper-poster pairs from NeurIPS/ICML/ICLR, on HuggingFace as
+`Paper2Poster/Paper2Poster`) judging generated vs author posters, plus the
+PaperQuiz comprehension test (a fresh VLM answers paper questions seeing
+only the poster). The metrics PaperBanana adds on top: faithfulness
+(audit findings vs the paper) and venue compliance — dimensions no
+published system measures.
 
-## Roadmap: poster exemplar corpus
+## Roadmap
 
-The figure pipeline's core idea — retrieval over curated reference sets —
-generalizes to posters. Planned architecture (mirrors
-`data/reference_sets/` + `guidelines/synthesis.py`):
-
-1. **Corpus**: `data/reference_sets/posters/<venue>/` with award-winning /
-   permissively-licensed conference posters (image + paper link + venue +
-   year metadata). Venues publish e-poster galleries (NeurIPS/CVPR virtual
-   sites) — licensing per poster must be checked before redistribution, so
-   the corpus ships as an index + fetch script, not bundled images.
-2. **Synthesis**: a map-reduce VLM pass (the existing
-   `guidelines/synthesis.py` pattern) extracts per-venue layout statistics
-   — column counts, figure-area share, word counts, palette families — and
-   writes them into each venue pack's `poster_style_guide.md`. Knowledge
-   becomes reviewable text, not opaque embeddings.
-3. **Retrieval**: at generation time the content planner additionally sees
-   2-3 exemplar storyboards (panel structures extracted from corpus
-   posters of the same venue), the same role the Retriever plays for
-   figures.
+- **Real-figure embedding** (`--figures real|auto`): extract the paper's
+  figures, decide per figure (paper asset vs PaperBanana-generated), and
+  composite into reserved slots in the generated design.
+- **Print resolution**: tile/upscale beyond the single-image ~4K budget so
+  large boards exceed the figure-DPI minimum (currently a compliance
+  *warning* on big boards).
+- **Design corpus**: condition generation on retrieved real venue posters
+  (style exemplars), the same retrieval idea the figure pipeline uses.

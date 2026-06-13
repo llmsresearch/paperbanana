@@ -308,7 +308,7 @@ Plots are rendered via VLM-generated matplotlib code — no image-generation pro
 
 ### `paperbanana poster` -- Conference Posters
 
-Turn a paper PDF into a venue-compliant conference poster: an editable `.pptx`, a press-ready PDF at the venue's physical poster size, a preview PNG, and a print-fidelity/compliance preflight report. Requires `pip install 'paperbanana[poster]'` and LibreOffice (`brew install --cask libreoffice`).
+Turn a paper PDF into a venue-compliant conference poster: a high-resolution PNG and a print-ready PDF at the venue's exact physical size. Requires `pip install 'paperbanana[poster]'` — no LibreOffice.
 
 ```bash
 paperbanana poster \
@@ -317,19 +317,18 @@ paperbanana poster \
   --qr-url https://arxiv.org/abs/XXXX.XXXXX
 ```
 
-Figures are never just copied from the paper: each one is judged against print physics (effective DPI at its placement, legibility at 2 m) and either **reused**, **re-authored** for poster scale behind a strict data-faithfulness gate, or **replaced by a newly generated diagram**. Override per figure with `--figure-decision fig3=reuse`.
+The poster is **designed by an image model at full power**, then verified the way a one-shot model can't do for itself: only the paper's **grounded facts** reach the prompt, a **faithfulness audit** re-reads the rendered poster against the paper and flags every hallucinated number/name, and bounded **repair** regenerates to fix them. Deterministic checks then confirm physical size, orientation, and print DPI. Amplify the model; add the grounding/verification it lacks.
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--paper` | `-p` | Path to the paper PDF (required) |
 | `--venue` | | Venue with a poster spec (`paperbanana venues specs`) |
 | `--year` | | Venue spec year (default: latest) |
-| `--qr-url` | | URL rendered as a QR code on the poster |
-| `--figure-decision` | | Per-figure override: `figN=reuse\|reauthor\|generate` (repeatable) |
-| `--iterations` | `-n` | Critic refinement iterations (default: 2) |
-| `--resume` | | Resume a previous poster run directory |
+| `--qr-url` | | URL composited as a scannable QR code |
+| `--figures` | | `generated` (default) · `real` · `auto` (real/auto: next milestone) |
+| `--repair-rounds` | `-n` | Faithfulness repair regenerations (default: 1) |
 
-Venue regulations live in a versioned bank (`data/venue_specs/<venue>/<year>.yaml`, with cited official sources); list with `paperbanana venues specs`, extend by dropping a YAML under `~/.config/paperbanana/venue_specs/`. See [docs/poster.md](docs/poster.md) for the full pipeline, output layout, and the print-scale rule for venues larger than PowerPoint's 56-inch page cap.
+Venue regulations live in a versioned bank (`data/venue_specs/<venue>/<year>.yaml`, with cited official sources); list with `paperbanana venues specs`, extend by dropping a YAML under `~/.config/paperbanana/venue_specs/`. See [docs/poster.md](docs/poster.md) for the full architecture, outputs, and evaluation.
 
 ### `paperbanana venues` -- Custom Venue Style Packs
 

@@ -127,7 +127,7 @@ def _render_section(title: str, results: list[CheckResult]) -> None:
 
 _OPTIONAL_PACKAGES = [
     ("PDF (pymupdf)", "pymupdf", "pdf"),
-    ("Poster (python-pptx)", "python-pptx", "poster"),
+    ("Poster (reportlab)", "reportlab", "poster"),
     ("Poster (qrcode)", "qrcode", "poster"),
     ("Studio (gradio)", "gradio", "studio"),
     ("OpenAI", "openai", "openai"),

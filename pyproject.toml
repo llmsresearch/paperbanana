@@ -63,12 +63,12 @@ dev = [
     "ruff>=0.4",
     "pymupdf>=1.24",
     "gradio>=4.44",
-    "python-pptx>=1.0",
+    "reportlab>=4.0",
     "qrcode>=7.4",
 ]
 pdf = ["pymupdf>=1.24"]
 poster = [
-    "python-pptx>=1.0",
+    "reportlab>=4.0",
     "pymupdf>=1.24",
     "qrcode>=7.4",
 ]
