@@ -428,3 +428,29 @@ async def test_rechart_exhausts_to_hard_error(tmp_path: Path):
             out_dir=tmp_path / "out",
             max_reauthor_attempts=2,
         )
+
+
+async def test_table_parse_garbage_retries_then_hard_error(tmp_path: Path):
+    """A parse that violates the TableData contract is a failed attempt,
+    not an uncaught ValidationError (seen live: the parser returned paper
+    metadata instead of the table)."""
+    assets = _paper_assets(tmp_path)
+    curator_vlm = _ScriptedVLM([json.dumps({"decision": "reset_table", "reason": "blurry table"})])
+    garbage = json.dumps({"author": "Anonymous", "keywords": ["quantization"]})
+    faith_vlm = _ScriptedVLM([garbage, garbage])
+    with pytest.raises(PosterFigureError, match="table parse failed"):
+        await curate_figures(
+            assets,
+            _storyboard(["fig1"]),
+            FigureCuratorAgent(curator_vlm, prompt_dir=str(PROMPT_DIR)),
+            FaithfulnessAgent(faith_vlm, prompt_dir=str(PROMPT_DIR)),
+            _GuidedImageGen(),
+            await _diagram_generator_factory(tmp_path),
+            _chart_stub,
+            REAUTHOR_TEMPLATE,
+            PALETTE,
+            placed_width_mm=366.4,
+            min_dpi=100,
+            out_dir=tmp_path / "out",
+            max_reauthor_attempts=2,
+        )

@@ -9,7 +9,7 @@ Rules:
 - "highlight_row": the 0-based row index of the proposed/our method (often bolded or named like the paper's system); null if no row stands out.
 - "title": a short title from the caption (e.g. "Comparison with calibration-based methods"); null if none fits.
 
-Respond with ONLY a JSON object:
+Respond with ONLY a JSON object with exactly the keys "columns", "rows", "title", "highlight_row" — no other keys, no metadata about the paper. Read the data out of the ATTACHED IMAGE only:
 {{
   "columns": ["Method", "Total bits", "ΔPPL"],
   "rows": [

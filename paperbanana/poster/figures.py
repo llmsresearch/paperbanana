@@ -16,6 +16,7 @@ from typing import Awaitable, Callable, Optional
 
 import structlog
 from PIL import Image
+from pydantic import ValidationError
 
 from paperbanana.poster.agents.faithfulness import FaithfulnessAgent
 from paperbanana.poster.agents.figure_curator import FigureCuratorAgent
@@ -268,9 +269,23 @@ async def _execute_decision(
     if decision.decision in ("rechart", "reset_table"):
         last_differences: list[str] = []
         for attempt in range(1, max_reauthor_attempts + 1):
-            table = await parse_table(
-                crop, faithfulness.vlm, faithfulness.prompt_dir, caption=figure.caption
-            )
+            # A malformed parse (model ignored the contract, or the crop is
+            # not actually a table) is a failed attempt like any other —
+            # retried, then escalated with override guidance, never a crash.
+            try:
+                table = await parse_table(
+                    crop, faithfulness.vlm, faithfulness.prompt_dir, caption=figure.caption
+                )
+            except (ValueError, ValidationError) as exc:
+                last_differences = [f"table parse failed: {str(exc)[:200]}"]
+                logger.warning(
+                    "Table parse failed",
+                    figure=figure.id,
+                    decision=decision.decision,
+                    attempt=attempt,
+                    error=str(exc)[:300],
+                )
+                continue
             if decision.decision == "reset_table":
                 path = out_dir / f"{figure.id}_reset.png"
                 render_table_matplotlib(table, palette, path, placed_width_mm)
