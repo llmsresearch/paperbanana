@@ -9,7 +9,6 @@ import pytest
 from PIL import Image
 
 from paperbanana.poster.evaluation import evaluate_poster
-from paperbanana.poster.types import PosterIR
 
 PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts"
 SPEC_DIR = Path(__file__).resolve().parents[2] / "data" / "venue_specs"
@@ -49,7 +48,7 @@ def preview(tmp_path: Path) -> Path:
 async def test_evaluate_scores_and_overall(preview: Path):
     vlm = _JudgeVLM(_good_response())
     result = await evaluate_poster(
-        vlm, preview_path=preview, paper_context="Some paper text", prompt_dir=PROMPT_DIR
+        vlm, poster_path=preview, paper_context="Some paper text", prompt_dir=PROMPT_DIR
     )
     assert {s.dimension for s in result.scores} == {"content", "design", "coherence"}
     assert result.overall == pytest.approx(4.0)
@@ -64,7 +63,7 @@ async def test_evaluate_with_reference_sends_two_images(preview: Path, tmp_path:
     vlm = _JudgeVLM(_good_response())
     result = await evaluate_poster(
         vlm,
-        preview_path=preview,
+        poster_path=preview,
         paper_context="ctx",
         prompt_dir=PROMPT_DIR,
         reference_path=ref,
@@ -73,17 +72,21 @@ async def test_evaluate_with_reference_sends_two_images(preview: Path, tmp_path:
     assert len(vlm.last_images) == 2
 
 
-async def test_evaluate_with_run_dir_compliance(
-    preview: Path, tmp_path: Path, poster_ir: PosterIR, monkeypatch
-):
+async def test_evaluate_with_run_dir_compliance(preview: Path, tmp_path: Path, monkeypatch):
     monkeypatch.chdir(Path(__file__).resolve().parents[2])  # builtin specs resolve relatively
     run_dir = tmp_path / "poster_run"
     run_dir.mkdir()
-    (run_dir / "poster_ir.json").write_text(poster_ir.model_dump_json(), encoding="utf-8")
+    # The generative run records venue + physical size in poster_output.json.
+    (run_dir / "poster_output.json").write_text(
+        json.dumps({"venue": "neurips", "venue_spec_year": 2025, "size_mm": [1219.2, 914.4]}),
+        encoding="utf-8",
+    )
+    # 4K-ish 4:3 raster at the board aspect (~80 DPI on a 48in board -> warn, not fail).
+    Image.new("RGB", (3840, 2880), "white").save(run_dir / "poster.png")
     vlm = _JudgeVLM(_good_response())
     result = await evaluate_poster(
         vlm,
-        preview_path=preview,
+        poster_path=run_dir / "poster.png",
         paper_context="ctx",
         prompt_dir=PROMPT_DIR,
         run_dir=run_dir,
@@ -95,7 +98,7 @@ async def test_evaluate_with_run_dir_compliance(
 async def test_evaluate_rejects_missing_dimension(preview: Path):
     vlm = _JudgeVLM(json.dumps({"content": {"score": 4, "rationale": "x"}}))
     with pytest.raises(ValueError, match="missing dimension"):
-        await evaluate_poster(vlm, preview_path=preview, paper_context="ctx", prompt_dir=PROMPT_DIR)
+        await evaluate_poster(vlm, poster_path=preview, paper_context="ctx", prompt_dir=PROMPT_DIR)
 
 
 async def test_dual_judge_averages_dimensions(preview: Path):
@@ -111,7 +114,7 @@ async def test_dual_judge_averages_dimensions(preview: Path):
     )
     result = await evaluate_poster(
         primary,
-        preview_path=preview,
+        poster_path=preview,
         paper_context="ctx",
         prompt_dir=PROMPT_DIR,
         secondary_vlm=secondary,

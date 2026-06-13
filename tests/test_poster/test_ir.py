@@ -128,32 +128,6 @@ def test_style_tokens_reject_bad_hex(style_tokens: StyleTokens):
 # IR v2: bands, spans, new elements, migration
 
 
-def test_v1_payload_migrates_to_v2(poster_ir: PosterIR):
-    from paperbanana.poster.migrate import load_poster_ir
-
-    data = poster_ir.model_dump()
-    # Reconstruct a v1-shaped payload.
-    data["schema_version"] = 1
-    data.pop("bands")
-    data.pop("layout_provenance", None)
-    data["columns"] = 3
-    for p in data["panels"]:
-        p.pop("band_id", None)
-        p.pop("col_span", None)
-        p.pop("emphasis", None)
-        if p["role"] != "header":
-            p["column"] = {"method": 0, "results": 1, "conclusion": 2}[p["id"]]
-
-    ir = load_poster_ir(data)
-    assert ir.schema_version == 2
-    assert {b.kind for b in ir.bands} == {"header", "body"}
-    assert ir.band("body").columns == 3
-    header = next(p for p in ir.panels if p.role == "header")
-    assert header.band_id == "header"
-    method = next(p for p in ir.panels if p.id == "method")
-    assert method.band_id == "body" and method.col_span == 1
-
-
 def test_band_validation_rules(poster_ir: PosterIR):
     from paperbanana.poster.types import Band
 

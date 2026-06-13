@@ -3,8 +3,9 @@
 The judged dimensions (Content, Design, Coherence, 1-5) are aligned with
 PPTEval — the rubric used by Paper2Poster and successors — so scores are
 directly comparable with published baselines. Compliance is NOT judged:
-it is recomputed deterministically from the IR and the venue spec, which
-is the part of poster quality a VLM judge is provably bad at.
+it is recomputed deterministically from the rendered poster image and the
+venue spec (dimensions / orientation / DPI), which is the part of poster
+quality a VLM judge is provably bad at.
 """
 
 from __future__ import annotations
@@ -18,9 +19,7 @@ from PIL import Image
 from pydantic import BaseModel, Field
 
 from paperbanana.core.utils import extract_json
-from paperbanana.poster.migrate import load_poster_ir
-from paperbanana.poster.preflight import run_preflight
-from paperbanana.poster.types import PreflightReport
+from paperbanana.poster.compliance import ComplianceReport, check_poster_compliance
 from paperbanana.poster.venue_spec import load_venue_spec
 
 logger = structlog.get_logger()
@@ -39,7 +38,7 @@ class PosterEvaluation(BaseModel):
 
     scores: list[PosterDimensionScore]
     overall: float = Field(ge=1, le=5)
-    compliance: Optional[PreflightReport] = None
+    compliance: Optional[ComplianceReport] = None
     reference_used: bool = False
     judges: int = 1
 
@@ -47,7 +46,7 @@ class PosterEvaluation(BaseModel):
     def from_scores(
         cls,
         scores: list[PosterDimensionScore],
-        compliance: Optional[PreflightReport],
+        compliance: Optional[ComplianceReport],
         reference_used: bool,
         judges: int = 1,
     ) -> "PosterEvaluation":
@@ -84,7 +83,7 @@ async def _judge_once(vlm, prompt: str, images: list) -> list[PosterDimensionSco
 
 async def evaluate_poster(
     vlm,
-    preview_path: Path,
+    poster_path: Path,
     paper_context: str,
     prompt_dir: Path,
     reference_path: Optional[Path] = None,
@@ -96,20 +95,21 @@ async def evaluate_poster(
 
     Args:
         vlm: VLM provider used as judge.
-        preview_path: Rendered poster preview image.
+        poster_path: Rendered poster image (PNG).
         paper_context: Paper abstract/method text grounding the content
             dimension.
         prompt_dir: Prompts root (expects ``poster/evaluate.txt``).
         reference_path: Optional author/reference poster image for
             comparative judging.
         run_dir: Optional poster run directory; when given, compliance is
-            recomputed from its ``poster_ir.json`` and venue spec.
+            recomputed from its ``poster_output.json`` (venue + physical
+            size) and the rendered image, against the venue spec.
         venue_spec_dir: Optional user venue-spec directory.
         secondary_vlm: Optional second judge; per-dimension scores are
             averaged across both judges (variance reduction, not a vote).
     """
     template = (Path(prompt_dir) / "poster" / "evaluate.txt").read_text(encoding="utf-8")
-    images = [Image.open(preview_path).convert("RGB")]
+    images = [Image.open(poster_path).convert("RGB")]
     reference_note = "Only the generated poster is attached."
     if reference_path is not None:
         images.append(Image.open(reference_path).convert("RGB"))
@@ -141,19 +141,21 @@ async def evaluate_poster(
         ]
         n_judges = 2
 
-    compliance: Optional[PreflightReport] = None
+    compliance: Optional[ComplianceReport] = None
     if run_dir is not None:
-        ir_path = Path(run_dir) / "poster_ir.json"
-        if not ir_path.is_file():
-            raise FileNotFoundError(f"no poster_ir.json in {run_dir}; cannot check compliance")
-        ir = load_poster_ir(json.loads(ir_path.read_text(encoding="utf-8")))
-        spec = load_venue_spec(ir.venue, ir.venue_spec_year, extra_dir=venue_spec_dir)
+        meta_path = Path(run_dir) / "poster_output.json"
+        if not meta_path.is_file():
+            raise FileNotFoundError(
+                f"no poster_output.json in {run_dir}; cannot check compliance"
+            )
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        spec = load_venue_spec(meta["venue"], meta["venue_spec_year"], extra_dir=venue_spec_dir)
+        w_mm, h_mm = meta["size_mm"]
+        with Image.open(poster_path) as img:
+            w_px, h_px = img.width, img.height
         pdf_path = Path(run_dir) / "poster.pdf"
-        compliance = run_preflight(
-            ir,
-            spec,
-            pdf_path=pdf_path if pdf_path.is_file() else None,
-            png_path=Path(preview_path),
+        compliance = check_poster_compliance(
+            spec, w_px, h_px, w_mm, h_mm, pdf_path=pdf_path if pdf_path.is_file() else None
         )
 
     evaluation = PosterEvaluation.from_scores(
