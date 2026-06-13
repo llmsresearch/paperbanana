@@ -43,5 +43,5 @@ Respond with ONLY a JSON object exactly matching this contract (NOTE: this examp
 Rules:
 - Place EVERY panel exactly once. panel_id must match the list above. Never invent panels, stats, or figures.
 - use_banner=true only if a takeaway exists. callout key_stat_id must be one of the listed ids.
-- columns: 2-4 for body bands on landscape pages, 1-3 on portrait. col_span <= the band's columns.
+- columns: pick the count whose column width (page width minus margins and gutters, divided by columns) lands between roughly 300 and 550mm — typically 1-3 on portrait, 3-4 on standard landscape (~4:3), and 5-6 on ultra-wide boards (aspect 2:1 or wider). col_span <= the band's columns.
 - "rationale": 1-2 sentences on the focal point and flow.
