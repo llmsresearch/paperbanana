@@ -4859,20 +4859,21 @@ def poster(
         None, "--year", help="Venue spec year (default: latest available)"
     ),
     qr_url: Optional[str] = typer.Option(
-        None, "--qr-url", help="URL rendered as a QR code on the poster"
+        None, "--qr-url", help="URL rendered as a scannable QR code on the poster"
     ),
-    figure_decision: Optional[list[str]] = typer.Option(
+    figures: str = typer.Option(
+        "generated",
+        "--figures",
+        help="Figure policy: generated (model draws), real (embed paper figures), "
+        "auto (decide per figure). real/auto land in the next milestone.",
+    ),
+    repair_rounds: Optional[int] = typer.Option(
         None,
-        "--figure-decision",
-        help=("Override the curator for a figure: figN=reuse|reauthor|generate. Repeatable."),
-    ),
-    iterations: Optional[int] = typer.Option(
-        None, "--iterations", "-n", help="Critic refinement iterations (default: 2)"
+        "--repair-rounds",
+        "-n",
+        help="Max faithfulness repair regenerations after the audit (default: 1)",
     ),
     output_dir: Optional[str] = typer.Option(None, "--output-dir", help="Run output directory"),
-    resume: Optional[str] = typer.Option(
-        None, "--resume", help="Resume a previous poster run directory"
-    ),
     budget: Optional[float] = typer.Option(
         None, "--budget", help="Budget cap in USD; pipeline aborts when exceeded"
     ),
@@ -4898,20 +4899,9 @@ def poster(
     if not paper_path.is_file():
         console.print(f"[red]Error: paper PDF not found: {paper_path}[/red]")
         raise typer.Exit(1)
-
-    overrides_map: dict[str, str] = {}
-    for entry in figure_decision or []:
-        if "=" not in entry:
-            console.print(
-                f"[red]Error: --figure-decision expects figN=reuse|reauthor|generate, "
-                f"got '{entry}'[/red]"
-            )
-            raise typer.Exit(1)
-        fid, decision = entry.split("=", 1)
-        if decision not in ("reuse", "reauthor", "generate"):
-            console.print(f"[red]Error: unknown figure decision '{decision}'[/red]")
-            raise typer.Exit(1)
-        overrides_map[fid.strip()] = decision.strip()
+    if figures not in ("generated", "real", "auto"):
+        console.print(f"[red]Error: --figures must be generated|real|auto, got '{figures}'[/red]")
+        raise typer.Exit(1)
 
     overrides: dict = {}
     if output_dir:
@@ -4928,8 +4918,6 @@ def poster(
         overrides["image_model"] = image_model
     if save_prompts is not None:
         overrides["save_prompts"] = save_prompts
-    if iterations is not None:
-        overrides["poster_refinement_iterations"] = iterations
 
     if config:
         settings = Settings.from_yaml(config, **overrides)
@@ -4939,80 +4927,69 @@ def poster(
         load_dotenv()
         settings = Settings(**overrides)
 
-    from paperbanana.poster.convert import SofficeNotFoundError
-    from paperbanana.poster.figures import PosterFigureError
-    from paperbanana.poster.pipeline import PosterPipeline
-    from paperbanana.poster.renderer import TextOverflowError
+    from paperbanana.poster.generative import GenerativePosterPipeline
     from paperbanana.poster.venue_spec import UnknownVenueSpecError
 
     def progress(event: str, payload: dict) -> None:
         labels = {
-            "ingest_started": "Ingesting paper",
-            "ingest_complete": "Paper ingested",
-            "storyboard_complete": "Storyboard planned",
-            "style_complete": "Style tokens set",
-            "diagram_generation_started": "Generating new diagram",
-            "diagram_generation_complete": "Diagram generated",
-            "figures_complete": "Figures curated",
-            "panel_text_shortened": "Tightened panel text",
-            "iteration_rendered": "Iteration rendered",
-            "critique_complete": "Critique complete",
+            "ingest_complete": "Paper text extracted",
+            "grounding_complete": "Verified facts grounded",
+            "generating": "Generating poster",
+            "audit_complete": "Faithfulness audit done",
             "poster_complete": "Poster complete",
         }
         label = labels.get(event, event)
         detail = ""
         if verbose and payload:
             detail = "  [dim]" + ", ".join(f"{k}={v}" for k, v in payload.items()) + "[/dim]"
-        elif event == "figures_complete":
-            detail = (
-                "  [dim]"
-                + ", ".join(f"{k}: {v}" for k, v in payload.get("decisions", {}).items())
-                + "[/dim]"
-            )
-        elif event == "iteration_rendered" and not payload.get("preflight_passed", True):
-            detail = "  [yellow]" + ", ".join(payload.get("failures", [])) + "[/yellow]"
+        elif event == "audit_complete":
+            n = payload.get("findings", 0)
+            detail = f"  [yellow]{n} discrepancies[/yellow]" if n else "  [green]clean[/green]"
         console.print(f"  [dim]●[/dim] {label}{detail}")
 
     try:
-        pipeline = PosterPipeline(settings=settings, progress_callback=progress)
+        pipeline = GenerativePosterPipeline(settings=settings, progress_callback=progress)
         output = asyncio.run(
             pipeline.generate(
                 paper_path,
                 venue=venue,
                 year=year,
                 qr_url=qr_url,
-                figure_overrides=overrides_map or None,
-                resume_dir=Path(resume).expanduser() if resume else None,
+                figures=figures,
+                repair_rounds=repair_rounds if repair_rounds is not None else 1,
             )
         )
-    except (
-        SofficeNotFoundError,
-        UnknownVenueSpecError,
-        PosterFigureError,
-        TextOverflowError,
-    ) as e:
+    except UnknownVenueSpecError as e:
         console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
+    except NotImplementedError as e:
+        console.print(f"[yellow]{e}[/yellow]")
         raise typer.Exit(1) from e
 
     console.print()
     console.print("[bold green]Poster generated[/bold green]")
-    console.print(f"  pptx (editable):    {output.pptx_path}")
-    console.print(f"  PDF (press-ready):  {output.pdf_path}")
-    console.print(f"  preview:            {output.preview_path}")
-    console.print(f"  preflight report:   {Path(output.run_dir) / 'preflight_report.md'}")
-    if output.metadata.get("print_scale", 1) > 1:
-        scale = output.metadata["print_scale"]
+    console.print(f"  PNG:                {output.png_path}")
+    console.print(f"  PDF (print-ready):  {output.pdf_path}")
+    console.print(
+        f"  size:               {output.size_mm[0]:.0f}x{output.size_mm[1]:.0f}mm "
+        f"({output.venue} {output.venue_spec_year})"
+    )
+    if output.audit_findings:
         console.print(
-            f"  [yellow]print at {scale * 100}%[/yellow] — the file is designed at "
-            f"1/{scale} physical size (pptx page-size cap)"
+            f"  [yellow]audit: {len(output.audit_findings)} unresolved finding(s)[/yellow] "
+            f"after {output.repair_rounds} repair round(s) — see {output.run_dir}/audit.json"
         )
-    if output.preflight.passed:
-        console.print("  [green]preflight: PASSED[/green]")
-        for check in output.preflight.warnings:
+    else:
+        console.print("  [green]audit: clean (no contradictions vs the paper)[/green]")
+    if output.cost_usd:
+        console.print(f"  cost:               ${output.cost_usd:.2f}")
+    if output.compliance.passed:
+        console.print("  [green]compliance: PASSED[/green]")
+        for check in output.compliance.warnings:
             console.print(f"  [yellow]warn: {check.id} — {check.detail}[/yellow]")
     else:
-        console.print("  [red]preflight: FAILED[/red]")
-        for check in output.preflight.failures:
+        console.print("  [red]compliance: FAILED[/red]")
+        for check in output.compliance.failures:
             console.print(
                 f"  [red]fail: {check.id} — {check.value} (required {check.threshold})[/red]"
             )

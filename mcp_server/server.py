@@ -1010,92 +1010,93 @@ async def generate_poster(
     venue: str = "neurips",
     year: int | None = None,
     qr_url: str | None = None,
-    figure_decisions: dict[str, str] | None = None,
-    iterations: int | None = None,
+    figures: str = "generated",
+    figure_overrides: dict[str, str] | None = None,
+    repair_rounds: int | None = None,
     output_dir: str = "outputs",
     config: str | None = None,
 ) -> str:
     """Generate a venue-compliant conference poster from a paper PDF.
 
-    Produces an editable .pptx, a press-ready PDF at the venue's physical
-    poster size, a preview PNG, and a print/compliance preflight report.
-    Figures from the paper are not just copied: each is judged against
-    print legibility and either reused, re-authored (data-faithfulness
-    gated), or replaced with a newly generated diagram.
-
-    Requires LibreOffice (soffice) for pptx -> PDF conversion.
+    The poster is designed by an image model at full power, then verified:
+    only the paper's grounded facts reach the prompt, and a faithfulness
+    audit checks the rendered poster against the paper and drives bounded
+    repair. Output is a PNG and a print-ready PDF at the venue's exact
+    physical size (no LibreOffice required).
 
     Args:
         paper_pdf: Path to the source paper PDF.
         venue: Venue with a poster spec (see ``paperbanana venues specs``;
-            built-ins: neurips, icml, cvpr, acl).
+            built-ins: neurips, icml, cvpr, acl, iclr, aaai).
         year: Venue spec year (default: latest available).
-        qr_url: Optional URL rendered as a QR code on the poster.
-        figure_decisions: Optional per-figure overrides, e.g.
-            ``{"fig3": "reuse"}`` with values reuse|reauthor|generate.
-        iterations: Critic refinement iterations (default from settings: 2).
+        qr_url: Optional URL composited as a scannable QR code.
+        figures: Figure policy — "generated" (model draws), "real" (embed
+            the paper's figures), or "auto" (decide per figure). real/auto
+            land in the next milestone.
+        figure_overrides: Optional per-figure overrides, e.g.
+            ``{"fig3": "real"}`` with values real|generate|reauthor.
+        repair_rounds: Max faithfulness repair regenerations after the
+            audit (default 1).
         output_dir: Directory for the run outputs.
         config: Optional path to a config YAML file.
 
     Returns:
-        JSON with artifact paths, figure decisions, and the preflight
-        summary (passed flag plus any failures/warnings).
+        JSON with PNG/PDF paths, venue + physical size, the audit findings,
+        and the compliance summary (passed flag plus failures/warnings).
     """
-    from paperbanana.poster.convert import SofficeNotFoundError
-    from paperbanana.poster.figures import PosterFigureError
-    from paperbanana.poster.pipeline import PosterPipeline
-    from paperbanana.poster.renderer import TextOverflowError
+    from paperbanana.poster.generative import GenerativePosterPipeline
     from paperbanana.poster.venue_spec import UnknownVenueSpecError
 
     _load_dotenv_best_effort()
-    overrides: dict = {"output_dir": output_dir}
-    if iterations is not None:
-        overrides["poster_refinement_iterations"] = iterations
-    settings = Settings.from_yaml(config, **overrides) if config else Settings(**overrides)
+    settings = (
+        Settings.from_yaml(config, output_dir=output_dir)
+        if config
+        else Settings(output_dir=output_dir)
+    )
 
     def _on_progress(event: str, payload: dict) -> None:
         logger.info("mcp_progress", tool="generate_poster", progress_event=event, **payload)
 
     try:
-        pipeline = PosterPipeline(settings=settings, progress_callback=_on_progress)
+        pipeline = GenerativePosterPipeline(settings=settings, progress_callback=_on_progress)
         output = await pipeline.generate(
             Path(paper_pdf),
             venue=venue,
             year=year,
             qr_url=qr_url,
-            figure_overrides=figure_decisions,
+            figures=figures,  # type: ignore[arg-type]
+            figure_overrides=figure_overrides,
+            repair_rounds=repair_rounds if repair_rounds is not None else 1,
         )
     except (
-        SofficeNotFoundError,
         UnknownVenueSpecError,
-        PosterFigureError,
-        TextOverflowError,
+        NotImplementedError,
         FileNotFoundError,
         ValueError,
         RuntimeError,
     ) as e:
-        return _json_result({"error": str(e), "preflight_passed": False})
+        return _json_result({"error": str(e), "compliance_passed": False})
 
     return _json_result(
         {
             "run_dir": output.run_dir,
-            "pptx_path": output.pptx_path,
+            "png_path": output.png_path,
             "pdf_path": output.pdf_path,
-            "preview_path": output.preview_path,
-            "preflight_passed": output.preflight.passed,
-            "preflight_failures": [
+            "venue": output.venue,
+            "venue_spec_year": output.venue_spec_year,
+            "size_mm": list(output.size_mm),
+            "figures_policy": output.figures_policy,
+            "audit_findings": output.audit_findings,
+            "repair_rounds": output.repair_rounds,
+            "compliance_passed": output.compliance.passed,
+            "compliance_failures": [
                 {"id": c.id, "value": c.value, "threshold": c.threshold, "detail": c.detail}
-                for c in output.preflight.failures
+                for c in output.compliance.failures
             ],
-            "preflight_warnings": [
-                {"id": c.id, "detail": c.detail} for c in output.preflight.warnings
+            "compliance_warnings": [
+                {"id": c.id, "detail": c.detail} for c in output.compliance.warnings
             ],
-            "figure_decisions": {
-                d.figure_id: {"decision": d.decision, "reason": d.reason}
-                for d in output.figure_decisions
-            },
-            "iterations": output.iterations,
-            "metadata": output.metadata,
+            "cost_usd": output.cost_usd,
         }
     )
 
