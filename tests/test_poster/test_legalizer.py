@@ -145,6 +145,40 @@ def test_span_overflow_is_clamped_and_logged():
     assert any(a.op == "clamp_col_span" for a in actions)
 
 
+def _storyboard_with_figure() -> Storyboard:
+    sb = _storyboard()
+    sb.panels[1].figure_ids = ["fig1"]  # method panel carries a figure
+    return sb
+
+
+def test_text_panel_wide_span_is_clamped_but_figure_hero_is_not():
+    proposal = _proposal(
+        placements=[
+            # text panel illegally spanning 2 columns -> clamp to 1
+            ProposedPlacement(panel_id="motivation", band_id="body", column=0, col_span=2),
+            # figure panel spanning 2 columns -> legal hero, untouched
+            ProposedPlacement(panel_id="method", band_id="body", column=1, col_span=2),
+            ProposedPlacement(panel_id="results", band_id="body", column=0),
+        ],
+        bands=[
+            ProposedBand(id="header", kind="header"),
+            ProposedBand(id="body", kind="body", columns=3),
+        ],
+    )
+    sb = _storyboard_with_figure()
+    violations = _validate(proposal, storyboard=sb)
+    assert any(
+        v.code == "clamp_text_span" and v.target == "motivation" and not v.fatal for v in violations
+    )
+    assert not any(v.target == "method" and v.code == "clamp_text_span" for v in violations)
+    repaired, actions = repair(proposal, violations, PAGE_W, MARGIN, GUTTER)
+    motivation = next(p for p in repaired.placements if p.panel_id == "motivation")
+    method = next(p for p in repaired.placements if p.panel_id == "method")
+    assert motivation.col_span == 1  # text clamped
+    assert method.col_span == 2  # figure hero preserved
+    assert any(a.op == "clamp_text_span" for a in actions)
+
+
 def test_too_many_columns_reduced_for_min_width():
     proposal = _proposal(
         bands=[

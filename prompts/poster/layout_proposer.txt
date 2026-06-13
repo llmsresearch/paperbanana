@@ -34,6 +34,8 @@ DESIGN JUDGMENT (what separates award posters):
 CAPACITY ARITHMETIC (do this before answering): each body column holds roughly (page height minus header/banner bands) of content. Text needs ~1mm of column height per 2 characters at body size; a figure needs (column width x its h/w aspect) mm, capped at 40% of page height. Sum each column's panels — if any column's sum exceeds its budget, your structure is wrong before it is rendered.
 
 COLUMN DISTRIBUTION RULES (hard):
+- Only a FIGURE panel may span 2+ columns (a hero). Text-only panels (motivation, conclusion, references, etc.) are always col_span 1 — a wide text panel becomes an unreadable wall and congests the columns it crosses.
+- Never overlap two wide spans through the same column.
 - Spread panels across ALL columns of a band. Never stack most panels in column 0.
 - Text-heavy panels (>800 chars) get their own column or a 2-wide band slot; do not stack two of them in one column.
 - Stacked body bands SHRINK every column's height budget — prefer ONE body band unless a full-width hero genuinely needs its own band.

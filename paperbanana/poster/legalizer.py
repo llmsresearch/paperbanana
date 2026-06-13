@@ -141,6 +141,7 @@ def validate_proposal(
         )
 
     sb_ids = {p.id for p in storyboard.panels}
+    figure_panel_ids = {p.id for p in storyboard.panels if p.figure_ids}
     placed_ids: set[str] = set()
     content_w = page_width_mm - 2 * margin_mm
     for placement in proposal.placements:
@@ -194,6 +195,18 @@ def validate_proposal(
                         f"occupies columns [{placement.column}, "
                         f"{placement.column + placement.col_span}) of {band.columns}"
                     ),
+                )
+            )
+        # Only figure panels earn a wide span (a hero). A text panel spanning
+        # multiple columns balloons its width, congests the columns it crosses,
+        # and reads as a wall of text — clamp it to one column.
+        elif placement.col_span > 1 and placement.panel_id not in figure_panel_ids:
+            violations.append(
+                Violation(
+                    code="clamp_text_span",
+                    fatal=False,
+                    target=placement.panel_id,
+                    detail=f"text panel spans {placement.col_span} columns; clamping to 1",
                 )
             )
     missing = sb_ids - placed_ids
@@ -351,7 +364,7 @@ def repair(
                         reason=violation.detail,
                     )
                 )
-        elif violation.code in ("clamp_col_span", "promote_full_span"):
+        elif violation.code in ("clamp_col_span", "promote_full_span", "clamp_text_span"):
             bands_by_id = {b["id"]: b for b in data["bands"]}
             for placement in data["placements"]:
                 if placement["panel_id"] != violation.target:
@@ -363,6 +376,8 @@ def repair(
                 if violation.code == "promote_full_span":
                     placement["column"] = 0
                     placement["col_span"] = band["columns"]
+                elif violation.code == "clamp_text_span":
+                    placement["col_span"] = 1
                 else:
                     placement["column"] = min(placement["column"], band["columns"] - 1)
                     placement["col_span"] = max(

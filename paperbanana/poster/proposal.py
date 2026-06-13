@@ -61,6 +61,7 @@ RepairOp = Literal[
     "add_header_band",
     "add_banner_band",
     "clamp_col_span",
+    "clamp_text_span",
     "clamp_column",
     "reduce_band_columns",
     "reorder_bands",
