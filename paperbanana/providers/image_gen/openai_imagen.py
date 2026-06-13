@@ -19,11 +19,17 @@ def _is_gpt_image_2(model: str) -> bool:
     return model.lower() == "gpt-image-2"
 
 
+#: gpt-image-2 total-pixel budget: exactly 4K UHD. 3840x2160 is accepted,
+#: 3840x2176 is rejected (probed June 2026 on Azure).
+GPT_IMAGE_2_PIXEL_BUDGET = 3840 * 2160
+
+
 def legal_gpt_image_2_dims(width: int, height: int) -> tuple[int, int]:
     """Clamp arbitrary pixel dims to a size gpt-image-2 accepts.
 
     API constraints (discovered empirically, June 2026): width and height
-    divisible by 16, longest edge <= 3840, aspect ratio <= 3:1.
+    divisible by 16, longest edge <= 3840, aspect ratio <= 3:1, and total
+    pixels <= 3840*2160 (the 4K-UHD budget).
     """
     import math
 
@@ -33,11 +39,15 @@ def legal_gpt_image_2_dims(width: int, height: int) -> tuple[int, int]:
     elif h / w > 3.0:
         w = h / 3.0
     scale = min(1.0, 3840.0 / max(w, h))
+    if w * h * scale * scale > GPT_IMAGE_2_PIXEL_BUDGET:
+        scale = (GPT_IMAGE_2_PIXEL_BUDGET / (w * h)) ** 0.5
     w *= scale
     h *= scale
-    wi = min(3840, max(256, round(w / 16) * 16))
-    hi = min(3840, max(256, round(h / 16) * 16))
-    # Rounding can push the ratio back over 3:1; grow the short side to fix.
+    # Snap DOWN to /16 so the snap itself can never re-exceed the budget.
+    wi = min(3840, max(256, math.floor(w / 16) * 16))
+    hi = min(3840, max(256, math.floor(h / 16) * 16))
+    # Flooring can push the ratio back over 3:1; grow the short side to fix
+    # (only reachable at extreme aspects, far below the pixel budget).
     if wi / hi > 3.0:
         hi = math.ceil(wi / 3.0 / 16) * 16
     elif hi / wi > 3.0:

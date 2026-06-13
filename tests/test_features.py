@@ -979,15 +979,31 @@ def test_openai_imagen_size_mapping():
 
 
 def test_gpt_image_2_dims_legalized():
-    """gpt-image-2 sizes are clamped to API rules: /16, <=3840 edge, <=3:1 ratio."""
-    from paperbanana.providers.image_gen.openai_imagen import legal_gpt_image_2_dims
+    """gpt-image-2 sizes are clamped to API rules: /16, <=3840 edge, <=3:1
+    ratio, <=3840*2160 total pixels."""
+    from paperbanana.providers.image_gen.openai_imagen import (
+        GPT_IMAGE_2_PIXEL_BUDGET,
+        legal_gpt_image_2_dims,
+    )
 
-    for w, h in [(4096, 1258), (3840, 1168), (2003, 615), (100, 5000), (1024, 1024)]:
+    cases = [
+        (4096, 1258),
+        (3840, 1168),
+        (2003, 615),
+        (100, 5000),
+        (1024, 1024),
+        (3840, 2656),  # rejected live: over the pixel budget
+        (4000, 4000),
+        (3840, 2161),
+    ]
+    for w, h in cases:
         lw, lh = legal_gpt_image_2_dims(w, h)
         assert lw % 16 == 0 and lh % 16 == 0
         assert max(lw, lh) <= 3840
         assert max(lw / lh, lh / lw) <= 3.0 + 1e-9
+        assert lw * lh <= GPT_IMAGE_2_PIXEL_BUDGET
     assert legal_gpt_image_2_dims(1024, 1024) == (1024, 1024)
+    assert legal_gpt_image_2_dims(3840, 2160) == (3840, 2160)  # budget edge stays
 
 
 @pytest.mark.asyncio
