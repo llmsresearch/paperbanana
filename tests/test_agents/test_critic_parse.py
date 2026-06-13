@@ -66,6 +66,26 @@ class TestExtractJsonRobustness:
     def test_genuinely_invalid_returns_none(self):
         assert extract_json("I could not evaluate the image, sorry.") is None
 
+    def test_array_with_trailing_prose_stays_an_array(self):
+        # Seen live: an array of detections followed by commentary was
+        # collapsed to its first element because the object scan ran first.
+        text = '[{"kind": "figure"}, {"kind": "table"}]\nThese are all the regions.'
+        assert extract_json(text) == [{"kind": "figure"}, {"kind": "table"}]
+
+    def test_prose_then_array(self):
+        text = 'Here are the regions:\n[{"kind": "figure"}, {"kind": "table"}]'
+        assert extract_json(text) == [{"kind": "figure"}, {"kind": "table"}]
+
+    def test_object_containing_array_with_prose_stays_an_object(self):
+        text = 'Result: {"items": [1, 2], "ok": true} as requested.'
+        assert extract_json(text) == {"items": [1, 2], "ok": True}
+
+    def test_truncated_array_falls_back_to_first_complete_object(self):
+        # A mid-array truncation has no parseable array; surfacing the first
+        # complete object lets callers detect the wrong shape and retry.
+        text = '[{"kind": "figure", "bbox": [1, 2, 3, 4]}, {"kind": "table", "bbox": [5,'
+        assert extract_json(text) == {"kind": "figure", "bbox": [1, 2, 3, 4]}
+
 
 class TestCriticParseResponse:
     """CriticAgent._parse_response should not crash on malformed input."""

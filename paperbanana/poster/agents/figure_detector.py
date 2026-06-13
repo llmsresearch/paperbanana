@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional
 
 import structlog
 from PIL import Image
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from paperbanana.agents.base import BaseAgent
 from paperbanana.core.utils import extract_json
@@ -52,17 +52,35 @@ class FigureDetectorAgent(BaseAgent):
             page_number=page_number,
             prompt_label=f"page_{page_number}",
         )
-        raw = await self.vlm.generate(
-            prompt=prompt,
-            images=[page_image],
-            response_format="json",
-            temperature=0.2,
-        )
-        data = extract_json(raw)
-        if data is None or not isinstance(data, list):
-            raise ValueError(
-                f"figure detector returned no JSON array for page {page_number}: {raw[:400]!r}"
+        regions = None
+        raw, problem = "", ""
+        for attempt in range(2):  # one bounded retry on a garbled response
+            raw = await self.vlm.generate(
+                prompt=prompt,
+                images=[page_image],
+                response_format="json",
+                temperature=0.2,
             )
-        regions = _REGIONS_ADAPTER.validate_python(data)
+            data = extract_json(raw)
+            if isinstance(data, list):
+                try:
+                    regions = _REGIONS_ADAPTER.validate_python(data)
+                    break
+                except ValidationError as exc:
+                    problem = f"regions failed validation: {str(exc)[:200]}"
+            else:
+                problem = "no JSON array in response"
+            logger.warning(
+                "Figure detection attempt garbled",
+                page=page_number,
+                attempt=attempt + 1,
+                problem=problem,
+                raw_preview=raw[:200],
+            )
+        if regions is None:
+            raise ValueError(
+                f"figure detector failed for page {page_number} after 2 attempts "
+                f"({problem}): {raw[:400]!r}"
+            )
         logger.info("Detected regions", page=page_number, count=len(regions))
         return regions

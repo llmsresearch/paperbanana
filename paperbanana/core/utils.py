@@ -180,8 +180,8 @@ def _try_parse_json(text: str) -> dict | list | None:
         return None
 
 
-def _scan_bracket_json(text: str, open_ch: str, close_ch: str) -> dict | list | None:
-    """Find the first valid JSON substring delimited by matching brackets."""
+def _scan_bracket_json(text: str, open_ch: str, close_ch: str) -> tuple[int, dict | list] | None:
+    """First valid JSON substring delimited by matching brackets, with its start offset."""
     pos = 0
     while (start := text.find(open_ch, pos)) != -1:
         depth, in_str, esc = 0, False, False
@@ -204,7 +204,7 @@ def _scan_bracket_json(text: str, open_ch: str, close_ch: str) -> dict | list | 
                 if depth == 0:
                     result = _try_parse_json(text[start : i + 1])
                     if result is not None:
-                        return result
+                        return start, result
                     break
         pos = start + 1
     return None
@@ -226,10 +226,16 @@ def extract_json(text: str | None) -> dict | list | None:
             result = _try_parse_json(m.group(1).strip())
             if result is not None:
                 return result
-    for open_ch, close_ch in [("{", "}"), ("[", "]")]:
-        result = _scan_bracket_json(text, open_ch, close_ch)
-        if result is not None:
-            return result
+    # Of the first parseable object and the first parseable array, keep the
+    # one that starts earliest: an array response must not be collapsed to
+    # its first element object (and vice versa).
+    candidates = [
+        found
+        for pair in (("{", "}"), ("[", "]"))
+        if (found := _scan_bracket_json(text, *pair)) is not None
+    ]
+    if candidates:
+        return min(candidates, key=lambda c: c[0])[1]
     return None
 
 
