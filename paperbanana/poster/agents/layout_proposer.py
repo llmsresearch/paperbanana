@@ -62,9 +62,23 @@ class LayoutProposerAgent(BaseAgent):
             )
             or "(none — callouts are not possible)"
         )
+        # Deterministic measurement the model must not be trusted to derive:
+        # the per-column width each column count yields on THIS page.
+        width_table = ", ".join(
+            f"{n} cols -> {(size.width_mm - 2 * margin_mm - (n - 1) * gutter_mm) / n:.0f}mm wide"
+            for n in range(2, 7)
+        )
+        page_desc = (
+            f"{size.width_mm:.0f}x{size.height_mm:.0f}mm {size.orientation} "
+            f"(aspect {size.width_mm / size.height_mm:.2f}:1). "
+            f"Column widths on this page: {width_table}. "
+            "Pick the column count whose width lands in the 300-550mm range; on pages "
+            "wider than 2:1 that means 5-6 columns. Remember every figure renders at "
+            "its column's width — wider columns make figures TALLER."
+        )
         prompt = self.format_prompt(
             template,
-            page=f"{size.width_mm:.0f}x{size.height_mm:.0f}mm {size.orientation}",
+            page=page_desc,
             margin_mm=f"{margin_mm:.0f}",
             gutter_mm=f"{gutter_mm:.0f}",
             panels_summary="\n".join(panels_summary),
@@ -101,9 +115,10 @@ def format_overflow_feedback(overflows, page_deficit_mm: float) -> str:
         f"YOUR PREVIOUS STRUCTURE OVERFLOWED THE PAGE by {page_deficit_mm:.0f}mm "
         "after content was measured. The content volume is FIXED — you must "
         "spread it over more parallel columns, not more stacked bands. "
-        "Concretely: use ONE body band with MORE columns (4 is fine), avoid "
-        "multiple stacked body bands, shrink the hero span to 2 columns or "
-        "drop it, and skip the banner if space is tight. Measured loads:",
+        "Concretely: use ONE body band with MORE COLUMNS THAN YOUR LAST PROPOSAL "
+        "(narrower columns also make figures shorter), avoid multiple stacked "
+        "body bands, shrink the hero span to 2 columns or drop it, and skip the "
+        "banner if space is tight. Measured loads:",
     ]
     for o in overflows:
         lines.append(
