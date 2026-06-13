@@ -145,9 +145,7 @@ async def evaluate_poster(
     if run_dir is not None:
         meta_path = Path(run_dir) / "poster_output.json"
         if not meta_path.is_file():
-            raise FileNotFoundError(
-                f"no poster_output.json in {run_dir}; cannot check compliance"
-            )
+            raise FileNotFoundError(f"no poster_output.json in {run_dir}; cannot check compliance")
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         spec = load_venue_spec(meta["venue"], meta["venue_spec_year"], extra_dir=venue_spec_dir)
         w_mm, h_mm = meta["size_mm"]

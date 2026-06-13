@@ -1,0 +1,6 @@
+{
+  "findings": [
+    "POSTER SAYS \"25,000 Total number of images in the ADE20K dataset\" | PAPER SAYS \"Totally there are 25k images\""
+  ],
+  "repair_rounds": 1
+}

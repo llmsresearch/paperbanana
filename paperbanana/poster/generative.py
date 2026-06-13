@@ -63,15 +63,69 @@ number that is not listed here. Every number on the poster must match these exac
 {repair}"""
 
 AUDIT_PROMPT = """You are a strict FAITHFULNESS AUDITOR for a conference poster. Below is the source
-paper (ground truth); the attached image is a generated poster for it. List every claim VISIBLE ON
-THE POSTER that is CONTRADICTED BY or NOT SUPPORTED BY the paper — wrong numbers, invented
-model/dataset/baseline names, invented details. Read footers/metadata carefully. One line each:
-POSTER SAYS "<quote>" | PAPER SAYS "<real fact or 'not in paper'>". List ONLY real discrepancies;
-if a claim is correct, omit it.
+paper (ground truth); the attached image is a generated poster for it. Report ONLY claims VISIBLE
+ON THE POSTER that are CONTRADICTED BY or NOT SUPPORTED BY the paper — wrong numbers, invented
+model/dataset/baseline names, invented details, mislabeled quantities. Read footers/metadata
+carefully.
+
+Scope — flag ONLY substantive factual claims: numbers/metrics, model/dataset/baseline names,
+method facts, quantitative results. IGNORE section headings, panel labels, and poster design text
+(venue/size specifications, QR captions, "Contact"), and IGNORE wording/section-title differences
+from the paper — those are not factual errors.
+
+Output ONLY genuine discrepancies, one per line:
+POSTER SAYS "<quote>" | PAPER SAYS "<the real fact, or 'not in paper'>"
+Do NOT list a claim you judge correct or supported — omit it entirely (never write "correct",
+"no contradiction", or "not contradictory"). If the poster has no discrepancies, output: NONE
 
 === PAPER ===
 {paper}
 === END PAPER ==="""
+
+#: Phrases the auditor uses when it lists a claim it actually judged fine.
+_AUDIT_OK_MARKERS = (
+    "(correct",
+    "no contradiction",
+    "not contradicted",
+    "correctly identifies",
+    "correctly states",
+    "correctly lists",
+    "is correct",
+    "is supported",
+    "supported by the paper",
+    "not a discrepancy",
+    "this is not a difference",
+    "matches the paper",
+    "consistent with the paper",
+)
+
+
+def _real_findings(audit_raw: str) -> list[str]:
+    """Keep only genuine contradiction lines.
+
+    VLM auditors over-report: they tag some lines as actually-correct, and
+    they list lines whose POSTER and PAPER quotes in fact agree. Drop both
+    (markers + quote-agreement). Residual false positives are expected;
+    per-finding verification is a later precision upgrade.
+    """
+    import re
+
+    out = []
+    for line in audit_raw.splitlines():
+        if "POSTER SAYS" not in line:
+            continue
+        low = line.lower()
+        if any(marker in low for marker in _AUDIT_OK_MARKERS):
+            continue
+        m = re.search(r'poster says\s*"(.*?)"\s*\|\s*paper says\s*"(.*?)"', line, re.IGNORECASE)
+        if m:
+            pq, paq = m.group(1).strip().lower(), m.group(2).strip().lower()
+            # Identical or one-contains-the-other quotes = the auditor quoted a
+            # matching fact, not a contradiction.
+            if pq and paq and (pq == paq or pq in paq or paq in pq):
+                continue
+        out.append(line.strip())
+    return out
 
 
 class GenerativePosterOutput(BaseModel):
@@ -204,7 +258,7 @@ class GenerativePosterPipeline:
                 temperature=0.0,
                 max_tokens=1500,
             )
-            audit_findings = [ln.strip() for ln in audit_raw.splitlines() if "POSTER SAYS" in ln]
+            audit_findings = _real_findings(audit_raw)
             self._emit("audit_complete", attempt=attempt, findings=len(audit_findings))
             if not audit_findings or attempt == repair_rounds:
                 break

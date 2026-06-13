@@ -92,10 +92,11 @@ def check_poster_compliance(
     long_edge_in = max(width_mm, height_mm) / 25.4
     dpi = (max(width_px, height_px) / long_edge_in) if long_edge_in else 0.0
     min_dpi = spec.text_rules.min_image_dpi
-    # A single 4K raster on a large board is ~70-80 DPI until tiling/upscaling
-    # lands; readable at 2m but soft up close, so WARN under the figure
-    # minimum and only FAIL when egregiously low.
-    dpi_status = "pass" if dpi >= min_dpi else ("warn" if dpi >= 50 else "fail")
+    # Venues regulate physical SIZE and orientation, not your file's raster
+    # DPI — that is our own quality bar. A single 4K image on a large board
+    # is inherently low-DPI until tiling/upscaling lands, so DPI is advisory:
+    # WARN below our preferred minimum, never a compliance FAIL.
+    dpi_status = "pass" if dpi >= min_dpi else "warn"
     checks.append(
         ComplianceCheck(
             id="print_dpi",
