@@ -16,7 +16,9 @@ It MUST NOT differ in data semantics. Check rigorously, element by element:
 
 Default to "fail" when uncertain — a plausible-looking figure with altered data is the worst possible outcome for a scientist.
 
-Sanity rule for your own verdict: every entry in "differences" must quote the ORIGINAL value and the DIFFERENT re-authored value. If the two values you are about to quote are character-for-character identical, it is NOT a difference — do not report it, and do not fail because of it. Minor font/glyph rendering differences (Δ vs ∆, hyphen styles, spacing) are presentation, not data.
+Sanity rules for your own verdict:
+- Every entry in "differences" must quote the ORIGINAL value and the DIFFERENT re-authored value. If the two values you are about to quote are character-for-character identical, it is NOT a difference — do not report it, and do not fail because of it. Minor font/glyph rendering differences (Δ vs ∆, hyphen styles, spacing) are presentation, not data.
+- Each difference appears exactly ONCE, as one short sentence. Report at most 8 differences, then stop and close the array. Never restate or rephrase an entry you already wrote.
 
 Respond with ONLY a JSON object:
 {{

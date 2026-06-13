@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+import structlog
 from PIL import Image
 from pydantic import BaseModel, Field
 
 from paperbanana.agents.base import BaseAgent
 from paperbanana.core.utils import extract_json
+
+logger = structlog.get_logger()
 
 
 class FaithfulnessVerdict(BaseModel):
@@ -36,13 +39,25 @@ class FaithfulnessAgent(BaseAgent):
     ) -> FaithfulnessVerdict:
         template = self.load_prompt("poster")
         prompt = self.format_prompt(template, caption=caption)
-        raw = await self.vlm.generate(
-            prompt=prompt,
-            images=[original, reauthored],
-            response_format="json",
-            temperature=0.1,
+        # Some VLMs loop restating the same "difference" until the response
+        # is cut mid-JSON, quasi-deterministically at low temperature — the
+        # bounded retries climb the temperature to break the loop.
+        raw = ""
+        for attempt, temperature in enumerate((0.1, 0.4, 0.7)):
+            raw = await self.vlm.generate(
+                prompt=prompt,
+                images=[original, reauthored],
+                response_format="json",
+                temperature=temperature,
+            )
+            data = extract_json(raw)
+            if isinstance(data, dict):
+                return FaithfulnessVerdict(**data)
+            logger.warning(
+                "Faithfulness verdict garbled",
+                attempt=attempt + 1,
+                raw_preview=raw[:200],
+            )
+        raise ValueError(
+            f"faithfulness agent returned no JSON object after 3 attempts: {raw[:400]!r}"
         )
-        data = extract_json(raw)
-        if not isinstance(data, dict):
-            raise ValueError(f"faithfulness agent returned no JSON object: {raw[:400]!r}")
-        return FaithfulnessVerdict(**data)
