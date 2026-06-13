@@ -46,11 +46,27 @@ class TableData(BaseModel):
         return tokens
 
 
-async def parse_table(crop: Image.Image, vlm, prompt_dir: Path, caption: str = "") -> TableData:
-    """VLM parse of a table crop into structured rows/columns."""
+async def parse_table(
+    crop: Image.Image,
+    vlm,
+    prompt_dir: Path,
+    caption: str = "",
+    temperature: float = 0.1,
+) -> TableData:
+    """VLM parse of a table crop into structured rows/columns.
+
+    ``max_tokens`` is generous: a wide table truncated mid-array yields
+    unparseable JSON, which the caller would read as a parse failure.
+    """
     template = (Path(prompt_dir) / "poster" / "table_parser.txt").read_text(encoding="utf-8")
     prompt = template.format(caption=caption or "(none)")
-    raw = await vlm.generate(prompt=prompt, images=[crop], response_format="json", temperature=0.1)
+    raw = await vlm.generate(
+        prompt=prompt,
+        images=[crop],
+        response_format="json",
+        temperature=temperature,
+        max_tokens=8192,
+    )
     data = extract_json(raw)
     if not isinstance(data, dict):
         raise ValueError(f"table parser returned no JSON object: {raw[:400]!r}")

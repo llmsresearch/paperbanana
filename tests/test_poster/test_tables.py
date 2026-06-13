@@ -122,3 +122,23 @@ async def test_visualizer_default_still_emits_placeholder(tmp_path: Path):
         output_path=str(out),
     )
     assert Path(result).is_file()
+
+
+async def test_parse_table_passes_generation_controls():
+    """Wide tables need token headroom; retries need temperature variation."""
+    captured = {}
+
+    class _CapturingVLM:
+        name = "mock"
+        model_name = "mock-model"
+        cost_tracker = None
+
+        async def generate(self, prompt, images=None, **kwargs):
+            captured.update(kwargs)
+            return json.dumps(_table().model_dump())
+
+    await parse_table(
+        Image.new("RGB", (400, 200), "white"), _CapturingVLM(), PROMPT_DIR, temperature=0.7
+    )
+    assert captured["max_tokens"] >= 8192
+    assert captured["temperature"] == 0.7

@@ -273,8 +273,15 @@ async def _execute_decision(
             # not actually a table) is a failed attempt like any other —
             # retried, then escalated with override guidance, never a crash.
             try:
+                # Climb temperature across attempts: a parse truncated or
+                # looping at low temp does so deterministically, so a retry
+                # at the same temp repeats the failure.
                 table = await parse_table(
-                    crop, faithfulness.vlm, faithfulness.prompt_dir, caption=figure.caption
+                    crop,
+                    faithfulness.vlm,
+                    faithfulness.prompt_dir,
+                    caption=figure.caption,
+                    temperature=0.1 + 0.3 * (attempt - 1),
                 )
             except (ValueError, ValidationError) as exc:
                 last_differences = [f"table parse failed: {str(exc)[:200]}"]
