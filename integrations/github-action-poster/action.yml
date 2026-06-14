@@ -1,0 +1,219 @@
+name: "PaperBanana Poster"
+description: >-
+  Generate a venue-compliant conference poster (PNG + print-ready PDF, with the
+  paper's real figures) from your paper PDF and commit it back to the repo.
+  Pairs with Overleaf's GitHub sync: push the paper, generate, pull — the poster
+  appears in your Overleaf project.
+author: "LLMs Research Inc."
+branding:
+  icon: "layout"
+  color: "yellow"
+
+inputs:
+  paper-file:
+    description: "Path to the paper PDF to turn into a poster"
+    required: true
+  venue:
+    description: "Venue with a poster spec (see `paperbanana venues specs`): neurips, cvpr, icml, iclr, acl, aaai"
+    required: true
+  year:
+    description: "Venue spec year (empty = latest available)"
+    required: false
+    default: ""
+  qr-url:
+    description: "URL composited as a scannable QR code on the poster"
+    required: false
+    default: ""
+  figures:
+    description: "Figure policy: auto (default), real, or generated"
+    required: false
+    default: "auto"
+  repair-rounds:
+    description: "Faithfulness repair regenerations after the audit"
+    required: false
+    default: ""
+  output-path:
+    description: "Repo-relative path for the poster image (.png)"
+    required: false
+    default: "poster/poster.png"
+  pdf-path:
+    description: "Repo-relative path for the print-ready PDF (default: output-path with .pdf)"
+    required: false
+    default: ""
+  snippet-path:
+    description: "Repo-relative path for a LaTeX \\includegraphics snippet (default: output-path with .tex)"
+    required: false
+    default: ""
+  figure-width:
+    description: "Width argument for the snippet's \\includegraphics"
+    required: false
+    default: '\linewidth'
+  vlm-provider:
+    description: "VLM provider (openai, gemini, atlas, openrouter, anthropic, bedrock, ollama, litellm)"
+    required: false
+    default: ""
+  vlm-model:
+    description: "VLM model override"
+    required: false
+    default: ""
+  image-provider:
+    description: "Image generation provider (openai_imagen, google_imagen, atlas_imagen, ...)"
+    required: false
+    default: ""
+  image-model:
+    description: "Image generation model override"
+    required: false
+    default: ""
+  budget:
+    description: "Budget cap in USD; the pipeline aborts gracefully when exceeded"
+    required: false
+    default: ""
+  paperbanana-version:
+    description: "PyPI version to install (empty = latest from the GitHub main branch). Posters require >= 0.4.0."
+    required: false
+    default: ""
+  commit:
+    description: "Commit and push the generated files (true/false)"
+    required: false
+    default: "true"
+  commit-message:
+    description: "Commit message ([skip ci] prevents retrigger loops)"
+    required: false
+    default: "chore: update conference poster via PaperBanana [skip ci]"
+
+outputs:
+  image-path:
+    description: "Repo-relative path of the generated poster image"
+    value: ${{ steps.generate.outputs.image-path }}
+  pdf-path:
+    description: "Repo-relative path of the generated print-ready PDF"
+    value: ${{ steps.generate.outputs.pdf-path }}
+  snippet-path:
+    description: "Repo-relative path of the generated LaTeX snippet"
+    value: ${{ steps.snippet.outputs.snippet-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install PaperBanana
+      shell: bash
+      env:
+        PB_VERSION: ${{ inputs.paperbanana-version }}
+      run: |
+        if [ -n "$PB_VERSION" ]; then
+          python -m pip install --quiet "paperbanana[poster]==${PB_VERSION}"
+        else
+          python -m pip install --quiet "paperbanana[poster] @ git+https://github.com/llmsresearch/paperbanana.git@main"
+        fi
+
+    - name: Generate poster
+      id: generate
+      shell: bash
+      env:
+        PAPER_FILE: ${{ inputs.paper-file }}
+        VENUE: ${{ inputs.venue }}
+        YEAR: ${{ inputs.year }}
+        QR_URL: ${{ inputs.qr-url }}
+        FIGURES: ${{ inputs.figures }}
+        REPAIR_ROUNDS: ${{ inputs.repair-rounds }}
+        OUTPUT_PATH: ${{ inputs.output-path }}
+        PDF_PATH: ${{ inputs.pdf-path }}
+        VLM_PROVIDER: ${{ inputs.vlm-provider }}
+        VLM_MODEL: ${{ inputs.vlm-model }}
+        IMAGE_PROVIDER: ${{ inputs.image-provider }}
+        IMAGE_MODEL: ${{ inputs.image-model }}
+        BUDGET: ${{ inputs.budget }}
+      run: |
+        set -euo pipefail
+
+        case "${OUTPUT_PATH##*.}" in
+          png) ;;
+          *) echo "error: output-path must end in .png"; exit 1 ;;
+        esac
+        PDF_OUT="${PDF_PATH:-${OUTPUT_PATH%.png}.pdf}"
+
+        ARGS=(
+          --paper "$PAPER_FILE"
+          --venue "$VENUE"
+          --figures "$FIGURES"
+          --output-dir "$RUNNER_TEMP/pb_poster"
+        )
+        [ -n "$YEAR" ]          && ARGS+=(--year "$YEAR")
+        [ -n "$QR_URL" ]        && ARGS+=(--qr-url "$QR_URL")
+        [ -n "$REPAIR_ROUNDS" ] && ARGS+=(--repair-rounds "$REPAIR_ROUNDS")
+        [ -n "$VLM_PROVIDER" ]  && ARGS+=(--vlm-provider "$VLM_PROVIDER")
+        [ -n "$VLM_MODEL" ]     && ARGS+=(--vlm-model "$VLM_MODEL")
+        [ -n "$IMAGE_PROVIDER" ] && ARGS+=(--image-provider "$IMAGE_PROVIDER")
+        [ -n "$IMAGE_MODEL" ]   && ARGS+=(--image-model "$IMAGE_MODEL")
+        [ -n "$BUDGET" ]        && ARGS+=(--budget "$BUDGET")
+
+        paperbanana poster "${ARGS[@]}"
+
+        # The pipeline writes <output-dir>/poster_<run_id>/poster.{png,pdf}
+        PNG=$(ls -t "$RUNNER_TEMP"/pb_poster/poster_*/poster.png | head -1)
+        PDF=$(ls -t "$RUNNER_TEMP"/pb_poster/poster_*/poster.pdf | head -1)
+        if [ -z "$PNG" ] || [ -z "$PDF" ]; then
+          echo "error: poster PNG/PDF not produced"; exit 1
+        fi
+        mkdir -p "$(dirname "$OUTPUT_PATH")" "$(dirname "$PDF_OUT")"
+        cp "$PNG" "$OUTPUT_PATH"
+        cp "$PDF" "$PDF_OUT"
+        echo "image-path=$OUTPUT_PATH" >> "$GITHUB_OUTPUT"
+        echo "pdf-path=$PDF_OUT" >> "$GITHUB_OUTPUT"
+
+    - name: Write LaTeX snippet
+      id: snippet
+      shell: bash
+      env:
+        OUTPUT_PATH: ${{ inputs.output-path }}
+        SNIPPET_PATH: ${{ inputs.snippet-path }}
+        FIGURE_WIDTH: ${{ inputs.figure-width }}
+      run: |
+        python - <<'PYEOF'
+        import os
+        from pathlib import Path
+
+        output_path = os.environ["OUTPUT_PATH"]
+        snippet_path = os.environ["SNIPPET_PATH"] or str(Path(output_path).with_suffix(".tex"))
+        snippet = "\n".join(
+            [
+                "% Generated by PaperBanana (https://github.com/llmsresearch/paperbanana)",
+                f"% The print-ready poster PDF is {Path(output_path).with_suffix('.pdf')}.",
+                f"% To embed the poster image in a document: \\input{{{Path(snippet_path).with_suffix('')}}}",
+                "\\begin{figure}[p]",
+                "  \\centering",
+                f"  \\includegraphics[width={os.environ['FIGURE_WIDTH']}]{{{output_path}}}",
+                "\\end{figure}",
+                "",
+            ]
+        )
+        Path(snippet_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(snippet_path).write_text(snippet, encoding="utf-8")
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+            fh.write(f"snippet-path={snippet_path}\n")
+        PYEOF
+
+    - name: Commit and push
+      if: ${{ inputs.commit == 'true' }}
+      shell: bash
+      env:
+        IMAGE_PATH: ${{ steps.generate.outputs.image-path }}
+        PDF_PATH: ${{ steps.generate.outputs.pdf-path }}
+        SNIPPET_PATH: ${{ steps.snippet.outputs.snippet-path }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add "$IMAGE_PATH" "$PDF_PATH" "$SNIPPET_PATH"
+        if git diff --cached --quiet; then
+          echo "Poster unchanged — nothing to commit."
+        else
+          git commit -m "$COMMIT_MESSAGE"
+          git push
+        fi

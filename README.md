@@ -721,7 +721,12 @@ See [`mcp_server/README.md`](mcp_server/README.md) for full setup details (Claud
 
 ## Overleaf Integration (GitHub Action)
 
-Keep your paper's methodology figure in sync with the text — automatically. PaperBanana ships a GitHub Action that pairs with Overleaf's built-in GitHub sync: push your `.tex` changes, the action extracts the methodology section, generates the figure, and commits back the image plus a ready-to-`\input` LaTeX snippet. Pull in Overleaf and it's in your file tree. See **[docs/overleaf.md](docs/overleaf.md)** for both the automated figure sync and dropping generated posters/figures into Overleaf manually.
+Keep your paper's figures **and poster** in sync with the text — automatically. PaperBanana ships two GitHub Actions that pair with Overleaf's built-in GitHub sync:
+
+- **[Figure action](integrations/github-action/)** — push your `.tex`, it extracts the methodology section, generates the diagram, and commits the image + a ready-to-`\input` LaTeX snippet.
+- **[Poster action](integrations/github-action-poster/)** — point it at your paper PDF + venue, it generates a venue-sized poster (PNG + print-ready PDF, real figures embedded) and commits it back.
+
+Pull in Overleaf and they're in your file tree. See **[docs/overleaf.md](docs/overleaf.md)** for both the automated sync and the manual workflow.
 
 ```yaml
 - uses: actions/checkout@v4

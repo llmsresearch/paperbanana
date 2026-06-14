@@ -4,13 +4,15 @@ PaperBanana produces standard artifacts — `.png` images, vector/LaTeX figure
 snippets, and print-ready `.pdf` posters — so they drop straight into an Overleaf
 project. There are two paths.
 
-## 1. Figures, automatically (GitHub ↔ Overleaf sync)
+## 1. Automatically, via GitHub Actions (GitHub ↔ Overleaf sync)
 
 Overleaf projects can be [synced with a GitHub repo](https://www.overleaf.com/learn/how-to/Using_Git_and_GitHub).
-PaperBanana ships a **GitHub Action** that, on a push to your `.tex`, extracts the
-methodology section, generates a diagram, and commits the image plus an
-`\includegraphics` LaTeX snippet back to the repo — which then appears in Overleaf
-on the next sync. See [`integrations/github-action`](../integrations/github-action/).
+PaperBanana ships **two GitHub Actions** that commit generated artifacts back to
+the repo, which then appear in Overleaf on the next sync:
+
+**Figures** — [`integrations/github-action`](../integrations/github-action/): on a
+push to your `.tex`, extracts the methodology section, generates a diagram, and
+commits the image plus an `\includegraphics` snippet.
 
 ```yaml
 # .github/workflows/figure.yml
@@ -21,10 +23,25 @@ on the next sync. See [`integrations/github-action`](../integrations/github-acti
     section: Method
 ```
 
-Include the generated snippet in your paper:
+**Posters** — [`integrations/github-action-poster`](../integrations/github-action-poster/):
+turns your paper PDF into a venue-compliant poster (PNG + print-ready PDF, with
+the paper's real figures embedded) and commits it + a LaTeX snippet.
+
+```yaml
+# .github/workflows/poster.yml
+- uses: llmsresearch/paperbanana/integrations/github-action-poster@main
+  with:
+    paper-file: paper.pdf
+    venue: neurips
+    qr-url: https://arxiv.org/abs/XXXX.XXXXX
+    figures: auto
+```
+
+Include the generated snippets in your paper / print the poster PDF:
 
 ```latex
 \input{figures/method_overview.tex}   % \begin{figure}...\includegraphics...\end{figure}
+% poster/poster.pdf is print-ready at the venue's exact physical size
 ```
 
 ## 2. Posters and figures, manually (a few seconds)
@@ -53,5 +70,4 @@ Drop `poster.pdf` into Overleaf to include or print directly, or embed a figure:
 
 ## Roadmap
 
-- A poster mode for the GitHub Action (auto-generate the poster on a tagged
-  release) and an "Open in Overleaf" template project.
+- An "Open in Overleaf" template project (a paper + poster wired to the Actions).
