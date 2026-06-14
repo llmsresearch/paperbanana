@@ -1,6 +1,0 @@
-{
-  "findings": [
-    "POSTER SAYS \"ViT-5 achieves 84.2% top-1 accuracy on ImageNet-1k classification and 1.84 FID in diffusion generation, outperforming DeiT-III-Base (83.8%) and vanilla ViT-based SiT (2.06).\" | PAPER SAYS \"ViT-5-Base reaches 84.2% top-1 accuracy under comparable compute, exceeding DeiT-III at 83.8%. ViT-5 also serves as a stronger backbone for generative modeling: when plugged into an SiT diffusion framework, it achieves 1.84 FID versus 2.06 with a vanilla ViT backbone.\""
-  ],
-  "repair_rounds": 1
-}
