@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "paperbanana"
-version = "0.3.0"
+version = "0.4.0"
 description = "Agentic framework for academic figures, plots, and conference posters from papers"
 readme = "README.md"
 license = "Elastic-2.0"

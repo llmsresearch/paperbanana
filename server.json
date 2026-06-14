@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.llmsresearch/paperbanana",
   "title": "PaperBanana",
-  "description": "Generate academic diagrams and statistical plots from text using multi-agent AI.",
-  "version": "0.3.0",
+  "description": "Generate academic figures, statistical plots, and venue-compliant conference posters (PNG + print-ready PDF, with the paper's real figures) from text or a paper PDF, using multi-agent AI.",
+  "version": "0.4.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "paperbanana",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       }
@@ -24,12 +24,20 @@
       "description": "Generate a methodology diagram from text context and caption"
     },
     {
+      "name": "generate_plot",
+      "description": "Generate a statistical plot from JSON data and intent description"
+    },
+    {
+      "name": "generate_poster",
+      "description": "Generate a venue-compliant conference poster (PNG + print-ready PDF) from a paper PDF, with the paper's real figures embedded and a faithfulness audit"
+    },
+    {
       "name": "continue_run",
       "description": "Continue refinement for an existing run directory (optional critic feedback)"
     },
     {
-      "name": "generate_plot",
-      "description": "Generate a statistical plot from JSON data and intent description"
+      "name": "orchestrate_figures",
+      "description": "Plan and generate a full-paper figure package from a paper"
     },
     {
       "name": "evaluate_diagram",

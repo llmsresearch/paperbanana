@@ -9,6 +9,7 @@ MCP server that exposes PaperBanana's diagram and plot generation as tools for C
 | `generate_diagram` | Generate a methodology diagram from text context + caption |
 | `continue_run` | Continue refinement for an existing `run_*` directory (optional critic feedback) |
 | `generate_plot` | Generate a statistical plot from JSON data + intent description |
+| `generate_poster` | Generate a venue-compliant conference poster (PNG + print-ready PDF) from a paper PDF, with the paper's real figures embedded and a faithfulness audit |
 | `continue_diagram` | Continue a prior methodology `run_*` (more refinement and/or critic feedback); returns JSON paths |
 | `continue_plot` | Continue a prior statistical-plot `run_*`; same JSON contract as `continue_diagram` |
 | `evaluate_diagram` | Compare a generated diagram against a human reference (4 dimensions) |

@@ -6,7 +6,7 @@
     </td>
     <td align="left" valign="middle" style="border: none;">
       <h1>PaperBanana</h1>
-      <p><strong>Automated Academic Illustration for AI Scientists</strong></p>
+      <p><strong>Figures, plots, and conference posters for AI scientists — from a paper PDF</strong></p>
       <p>
         <a href="https://github.com/llmsresearch/paperbanana/actions/workflows/ci.yml"><img src="https://github.com/llmsresearch/paperbanana/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
         <a href="https://pypi.org/project/paperbanana/"><img src="https://img.shields.io/pypi/dm/paperbanana?label=PyPI%20downloads&logo=pypi&logoColor=white" alt="PyPI Downloads"/></a>
@@ -33,8 +33,9 @@
 > This project is **not affiliated with or endorsed by** the original authors or Google Research.
 > The implementation is based on the publicly available paper and may differ from the original system.
 
-An agentic framework for generating publication-quality academic diagrams and statistical plots from text descriptions. Supports OpenAI (GPT-5.2 + GPT-Image-1.5), Azure OpenAI / Foundry, Google Gemini, and Atlas Cloud providers.
+An agentic framework that turns a paper into publication-quality visuals — methodology **diagrams**, statistical **plots**, and now full venue-compliant conference **posters** (PNG **and** print-ready PDF) — from text or a paper PDF. Supports OpenAI (GPT-5.2 + GPT-Image-1.5), Azure OpenAI / Foundry, Google Gemini, and Atlas Cloud providers.
 
+- 🆕 **Conference posters** — `paperbanana poster` turns a paper PDF into a venue-sized poster (PNG + print-ready PDF) with the paper's **real figures embedded** and a faithfulness audit against the source. See [examples](examples/posters/) and [docs/poster.md](docs/poster.md).
 - Two-phase multi-agent pipeline with iterative refinement
 - Multiple VLM and image generation providers (OpenAI, Azure, Gemini, Atlas Cloud)
 - Input optimization layer for better generation quality
@@ -317,7 +318,7 @@ paperbanana poster \
   --qr-url https://arxiv.org/abs/XXXX.XXXXX
 ```
 
-The poster is **designed by an image model at full power**, then verified the way a one-shot model can't do for itself: only the paper's **grounded facts** reach the prompt, a **faithfulness audit** re-reads the rendered poster against the paper and flags every hallucinated number/name, and bounded **repair** regenerates to fix them. Deterministic checks then confirm physical size, orientation, and print DPI. Amplify the model; add the grounding/verification it lacks.
+The poster is **designed by an image model at full power**, then verified the way a one-shot model can't do for itself: only the paper's **grounded facts** reach the prompt; the paper's **real figures are embedded** (re-rendered crisp from the PDF, or reauthored behind a faithfulness gate); a **faithfulness audit** re-reads the rendered poster against the paper and flags every hallucinated number/name; and bounded **repair** regenerates to fix them. Deterministic checks then confirm physical size, orientation, and print DPI. Amplify the model; add the grounding/verification it lacks.
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -325,10 +326,10 @@ The poster is **designed by an image model at full power**, then verified the wa
 | `--venue` | | Venue with a poster spec (`paperbanana venues specs`) |
 | `--year` | | Venue spec year (default: latest) |
 | `--qr-url` | | URL composited as a scannable QR code |
-| `--figures` | | `generated` (default) · `real` · `auto` (real/auto: next milestone) |
+| `--figures` | | `auto` (default — decide per figure) · `real` (always embed the paper's figures) · `generated` (model draws them) |
 | `--repair-rounds` | `-n` | Faithfulness repair regenerations (default: 1) |
 
-Venue regulations live in a versioned bank (`data/venue_specs/<venue>/<year>.yaml`, with cited official sources); list with `paperbanana venues specs`, extend by dropping a YAML under `~/.config/paperbanana/venue_specs/`. See [docs/poster.md](docs/poster.md) for the full architecture, outputs, and evaluation.
+Venue regulations live in a versioned bank (`data/venue_specs/<venue>/<year>.yaml`, with cited official sources); list with `paperbanana venues specs`, extend by dropping a YAML under `~/.config/paperbanana/venue_specs/`. See [docs/poster.md](docs/poster.md) for the full architecture, and the **[example gallery](examples/posters/)** for posters generated across NeurIPS / CVPR / ICLR / ICML.
 
 ### `paperbanana venues` -- Custom Venue Style Packs
 
@@ -720,7 +721,7 @@ See [`mcp_server/README.md`](mcp_server/README.md) for full setup details (Claud
 
 ## Overleaf Integration (GitHub Action)
 
-Keep your paper's methodology figure in sync with the text — automatically. PaperBanana ships a GitHub Action that pairs with Overleaf's built-in GitHub sync: push your `.tex` changes, the action extracts the methodology section, generates the figure, and commits back the image plus a ready-to-`\input` LaTeX snippet. Pull in Overleaf and it's in your file tree.
+Keep your paper's methodology figure in sync with the text — automatically. PaperBanana ships a GitHub Action that pairs with Overleaf's built-in GitHub sync: push your `.tex` changes, the action extracts the methodology section, generates the figure, and commits back the image plus a ready-to-`\input` LaTeX snippet. Pull in Overleaf and it's in your file tree. See **[docs/overleaf.md](docs/overleaf.md)** for both the automated figure sync and dropping generated posters/figures into Overleaf manually.
 
 ```yaml
 - uses: actions/checkout@v4
