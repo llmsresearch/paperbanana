@@ -25,6 +25,7 @@ from paperbanana.core.config import Settings
 from paperbanana.core.cost_tracker import CostTracker
 from paperbanana.core.pdf_text import extract_text_from_pdf
 from paperbanana.poster.compliance import ComplianceReport, check_poster_compliance
+from paperbanana.poster.figure_embed import slot_spec
 from paperbanana.poster.venue_spec import load_venue_spec
 from paperbanana.providers.image_gen.openai_imagen import legal_gpt_image_2_dims
 
@@ -55,7 +56,7 @@ to present at {venue}. Confident, varied color scheme appropriate to the topic (
 navy+orange template). Bold title band, clear section headers, strong visual hierarchy, LARGE
 readable text and LARGE dominant figures/charts, emphasized big result numbers. Fill the whole
 canvas - no large empty areas. Must read clearly from 2 meters.{qr_note}{venue_notes}
-
+{slots}
 Use ONLY these verified facts. Do NOT invent any model name, dataset, baseline, shot-count, or
 number that is not listed here. Every number on the poster must match these exactly:
 
@@ -141,6 +142,7 @@ class GenerativePosterOutput(BaseModel):
     grounding: str
     audit_findings: list[str] = Field(default_factory=list)
     repair_rounds: int = 0
+    figure_decisions: list[dict] = Field(default_factory=list)
     compliance: ComplianceReport
     cost_usd: Optional[float] = None
 
@@ -177,6 +179,9 @@ class GenerativePosterPipeline:
         for p in (self._vlm, self._image_gen):
             if hasattr(p, "cost_tracker"):
                 p.cost_tracker = self._cost
+        from paperbanana.core.utils import find_prompt_dir
+
+        self._prompt_dir = self.settings.prompt_dir or find_prompt_dir()
 
     def _emit(self, event: str, **payload: Any) -> None:
         logger.info("poster_progress", progress_event=event, **payload)
@@ -201,11 +206,8 @@ class GenerativePosterPipeline:
         figure_overrides: Optional[dict[str, str]] = None,
         repair_rounds: int = 1,
     ) -> GenerativePosterOutput:
-        if figures != "generated":
-            raise NotImplementedError(
-                f"figures='{figures}' (per-figure real/auto compositing) lands in the next "
-                "milestone; use figures='generated' for now."
-            )
+        if figures not in ("generated", "real", "auto"):
+            raise ValueError(f"figures must be generated|real|auto, got {figures!r}")
         venue_name = (venue or self.settings.venue).strip().lower()
         spec = load_venue_spec(venue_name, year, extra_dir=self.settings.venue_spec_dir)
         w_mm, h_mm = spec.dimensions.generation_size_mm()
@@ -214,6 +216,16 @@ class GenerativePosterPipeline:
 
         paper_text = extract_text_from_pdf(Path(paper_pdf))[:16000]
         self._emit("ingest_complete", chars=len(paper_text))
+
+        # Real-figure embedding (auto/real): extract the paper's figures and
+        # have the design reserve magenta slots we composite into.
+        selected: list = []
+        slot_block = ""
+        if figures in ("auto", "real"):
+            selected = await self._extract_figures(paper_pdf)
+            if selected:
+                slot_block = "\n" + slot_spec(selected) + "\n"
+                self._emit("figures_extracted", count=len(selected))
 
         # Ground: only the paper's verified facts reach the design prompt.
         grounding = await self._vlm.generate(
@@ -243,6 +255,7 @@ class GenerativePosterPipeline:
                 venue=spec.display_name,
                 qr_note=qr_note,
                 venue_notes=venue_notes,
+                slots=slot_block,
                 grounding=grounding,
                 repair=repair_block,
             )
@@ -269,6 +282,23 @@ class GenerativePosterPipeline:
             rounds += 1
 
         assert image is not None
+        # Composite the real/reauthored figures into the magenta slots.
+        figure_decisions: list[dict] = []
+        if selected:
+            image, figure_decisions = await self._embed_figures(
+                image,
+                selected,
+                figures,
+                w_mm,
+                w_px,
+                h_px,
+                grounding,
+                slot_block,
+                qr_note,
+                venue_notes,
+                orientation,
+                spec,
+            )
         if qr_url:
             image = self._composite_qr(image, qr_url)
 
@@ -295,6 +325,7 @@ class GenerativePosterPipeline:
             grounding=grounding,
             audit_findings=audit_findings,
             repair_rounds=rounds,
+            figure_decisions=figure_decisions,
             compliance=compliance,
             cost_usd=getattr(self._cost, "total_cost", None),
         )
@@ -322,6 +353,111 @@ class GenerativePosterPipeline:
         margin = int(min(poster.width, poster.height) * 0.02)
         poster.paste(framed, (poster.width - framed.width - margin, margin))
         return poster
+
+    async def _extract_figures(self, paper_pdf: Path) -> list:
+        """Extract the paper's figures and select the poster-worthy ones."""
+        from paperbanana.poster.agents.figure_detector import FigureDetectorAgent
+        from paperbanana.poster.agents.paper_metadata import PaperMetadataAgent
+        from paperbanana.poster.figure_embed import select_poster_figures
+        from paperbanana.poster.ingest import ingest_paper
+
+        kwargs = {"prompt_dir": self._prompt_dir}
+        assets = await ingest_paper(
+            Path(paper_pdf),
+            FigureDetectorAgent(self._vlm, **kwargs),
+            PaperMetadataAgent(self._vlm, **kwargs),
+            self._run_dir / "paper_assets",
+            extract_dpi=self.settings.poster_extract_dpi,
+        )
+        return select_poster_figures(assets.figures)
+
+    async def _embed_figures(
+        self,
+        image,
+        selected,
+        policy,
+        w_mm,
+        w_px,
+        h_px,
+        grounding,
+        slot_block,
+        qr_note,
+        venue_notes,
+        orientation,
+        spec,
+    ):
+        """Detect magenta slots and composite each figure (real/reauthored).
+
+        Bounded regeneration if the design didn't leave the expected slot
+        count; a persistent mismatch is a hard error pointing at
+        --figures generated.
+        """
+        from paperbanana.poster.agents.faithfulness import FaithfulnessAgent
+        from paperbanana.poster.agents.figure_curator import FigureCuratorAgent
+        from paperbanana.poster.figure_embed import (
+            SlotCountError,
+            composite_into_slot,
+            detect_slots,
+            prepare_figure,
+        )
+
+        slots = detect_slots(image)
+        for _ in range(2):  # the model sometimes draws the wrong slot count
+            if len(slots) == len(selected):
+                break
+            self._emit("slot_retry", detected=len(slots), expected=len(selected))
+            prompt = POSTER_PROMPT.format(
+                orientation=orientation,
+                width_mm=w_mm,
+                height_mm=spec.dimensions.height_mm,
+                venue=spec.display_name,
+                qr_note=qr_note,
+                venue_notes=venue_notes,
+                slots=slot_block,
+                grounding=grounding,
+                repair="",
+            )
+            image = await self._image_gen.generate(
+                prompt=prompt, width=w_px, height=h_px, quality="high"
+            )
+            slots = detect_slots(image)
+        if len(slots) != len(selected):
+            raise SlotCountError(
+                f"design left {len(slots)} figure slots, expected {len(selected)}; "
+                "re-run with --figures generated or fewer figures."
+            )
+
+        kwargs = {"prompt_dir": self._prompt_dir}
+        curator = FigureCuratorAgent(self._vlm, **kwargs)
+        faithfulness = FaithfulnessAgent(self._vlm, **kwargs)
+        reauthor_template = (Path(self._prompt_dir) / "poster" / "reauthor_edit.txt").read_text(
+            encoding="utf-8"
+        )
+        palette = {
+            "primary": "#1A3A6B",
+            "secondary": "#4A6FA5",
+            "accent": "#E8A33D",
+            "background": "#FFFFFF",
+        }
+        decisions = []
+        for slot, fig in zip(slots, selected):
+            slot_width_mm = slot.w / image.width * w_mm
+            chosen, choice = await prepare_figure(
+                fig,
+                slot_width_mm,
+                policy=policy,
+                curator=curator,
+                faithfulness=faithfulness,
+                image_gen=self._image_gen,
+                palette=palette,
+                reauthor_template=reauthor_template,
+                min_dpi=spec.text_rules.min_image_dpi,
+                out_dir=self._run_dir / "paper_assets",
+            )
+            composite_into_slot(image, slot, chosen)
+            decisions.append(choice.model_dump())
+            self._emit("figure_embedded", figure=fig.id, source=choice.source)
+        return image, decisions
 
     def _write_pdf(self, image: Image.Image, width_mm: float, height_mm: float, out: Path) -> None:
         """Single-page PDF at the exact physical poster size (vector page,

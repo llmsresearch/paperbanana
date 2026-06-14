@@ -1010,7 +1010,7 @@ async def generate_poster(
     venue: str = "neurips",
     year: int | None = None,
     qr_url: str | None = None,
-    figures: str = "generated",
+    figures: str = "auto",
     figure_overrides: dict[str, str] | None = None,
     repair_rounds: int | None = None,
     output_dir: str = "outputs",
@@ -1030,9 +1030,9 @@ async def generate_poster(
             built-ins: neurips, icml, cvpr, acl, iclr, aaai).
         year: Venue spec year (default: latest available).
         qr_url: Optional URL composited as a scannable QR code.
-        figures: Figure policy — "generated" (model draws), "real" (embed
-            the paper's figures), or "auto" (decide per figure). real/auto
-            land in the next milestone.
+        figures: Figure policy — "auto" (decide per figure, default),
+            "real" (always embed the paper's figures), or "generated"
+            (model draws them inline).
         figure_overrides: Optional per-figure overrides, e.g.
             ``{"fig3": "real"}`` with values real|generate|reauthor.
         repair_rounds: Max faithfulness repair regenerations after the
@@ -1044,6 +1044,7 @@ async def generate_poster(
         JSON with PNG/PDF paths, venue + physical size, the audit findings,
         and the compliance summary (passed flag plus failures/warnings).
     """
+    from paperbanana.poster.figure_embed import SlotCountError
     from paperbanana.poster.generative import GenerativePosterPipeline
     from paperbanana.poster.venue_spec import UnknownVenueSpecError
 
@@ -1070,7 +1071,7 @@ async def generate_poster(
         )
     except (
         UnknownVenueSpecError,
-        NotImplementedError,
+        SlotCountError,
         FileNotFoundError,
         ValueError,
         RuntimeError,
@@ -1086,6 +1087,7 @@ async def generate_poster(
             "venue_spec_year": output.venue_spec_year,
             "size_mm": list(output.size_mm),
             "figures_policy": output.figures_policy,
+            "figure_decisions": output.figure_decisions,
             "audit_findings": output.audit_findings,
             "repair_rounds": output.repair_rounds,
             "compliance_passed": output.compliance.passed,

@@ -4856,10 +4856,10 @@ def poster(
         None, "--qr-url", help="URL rendered as a scannable QR code on the poster"
     ),
     figures: str = typer.Option(
-        "generated",
+        "auto",
         "--figures",
-        help="Figure policy: generated (model draws), real (embed paper figures), "
-        "auto (decide per figure). real/auto land in the next milestone.",
+        help="Figure policy: auto (decide per figure, default), real (always embed the "
+        "paper's figures), generated (model draws them inline).",
     ),
     repair_rounds: Optional[int] = typer.Option(
         None,
@@ -4921,15 +4921,18 @@ def poster(
         load_dotenv()
         settings = Settings(**overrides)
 
+    from paperbanana.poster.figure_embed import SlotCountError
     from paperbanana.poster.generative import GenerativePosterPipeline
     from paperbanana.poster.venue_spec import UnknownVenueSpecError
 
     def progress(event: str, payload: dict) -> None:
         labels = {
             "ingest_complete": "Paper text extracted",
+            "figures_extracted": "Paper figures extracted",
             "grounding_complete": "Verified facts grounded",
             "generating": "Generating poster",
             "audit_complete": "Faithfulness audit done",
+            "figure_embedded": "Figure embedded",
             "poster_complete": "Poster complete",
         }
         label = labels.get(event, event)
@@ -4953,11 +4956,8 @@ def poster(
                 repair_rounds=repair_rounds if repair_rounds is not None else 1,
             )
         )
-    except UnknownVenueSpecError as e:
+    except (UnknownVenueSpecError, SlotCountError, ValueError) as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1) from e
-    except NotImplementedError as e:
-        console.print(f"[yellow]{e}[/yellow]")
         raise typer.Exit(1) from e
 
     console.print()
@@ -4968,6 +4968,12 @@ def poster(
         f"  size:               {output.size_mm[0]:.0f}x{output.size_mm[1]:.0f}mm "
         f"({output.venue} {output.venue_spec_year})"
     )
+    if output.figure_decisions:
+        srcs = {}
+        for d in output.figure_decisions:
+            srcs[d["source"]] = srcs.get(d["source"], 0) + 1
+        summary = ", ".join(f"{n} {s}" for s, n in srcs.items())
+        console.print(f"  figures:            {len(output.figure_decisions)} embedded ({summary})")
     if output.audit_findings:
         console.print(
             f"  [yellow]audit: {len(output.audit_findings)} unresolved finding(s)[/yellow] "
