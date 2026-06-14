@@ -1,0 +1,6 @@
+{
+  "findings": [
+    "POSTER SAYS \"Step-up blocks introduce extreme values early; step-down blocks cancel them near the end.\" | PAPER SAYS \"Step-up blocks appear near the beginning of the network and step-down blocks near the end, confining massive activations to intermediate layers.\""
+  ],
+  "repair_rounds": 1
+}

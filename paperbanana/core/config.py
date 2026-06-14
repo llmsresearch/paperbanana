@@ -119,7 +119,7 @@ class Settings(BaseSettings):
         alias="PAPERBANANA_POSTER_MEMORY_DIR",
         description="User poster exemplar memory directory",
     )
-    poster_extract_dpi: int = Field(default=300, gt=0)
+    poster_extract_dpi: int = Field(default=450, gt=0)
     venue_spec_dir: Optional[str] = Field(
         default=None,
         alias="PAPERBANANA_VENUE_SPEC_DIR",

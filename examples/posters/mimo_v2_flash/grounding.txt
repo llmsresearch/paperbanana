@@ -1,0 +1,27 @@
+TITLE: MiMo-V2-Flash Technical Report  
+AUTHORS: LLM-Core Xiaomi  
+VENUE: arXiv:2601.02780v2 [cs.CL] 8 Jan 2026  
+ONE-LINE TAKEAWAY: MiMo-V2-Flash achieves strong reasoning and agentic performance with 309B total parameters and 15B active parameters, rivaling top-tier models like DeepSeek-V3.2 and Kimi-K2 while using only 1/2 and 1/3 of their parameters, respectively.  
+PROBLEM:  
+- Long-context modeling must be simultaneously fast and strong to support advanced reasoning and autonomous agents.  
+- Scaling reinforcement learning (RL) compute efficiently is a bottleneck for improving reasoning and agentic capabilities.  
+METHOD:  
+- Uses a Mixture-of-Experts (MoE) architecture with 309B total parameters and 15B activated per token.  
+- Employs a hybrid attention mechanism interleaving Sliding Window Attention (SWA) with global attention at a 5:1 ratio.  
+- Uses a 128-token sliding window size with learnable attention sink bias to maintain performance.  
+- Pre-trains on 27 trillion tokens using Multi-Token Prediction (MTP) with a native 32k context length extended to 256k.  
+- Introduces Multi-Teacher On-Policy Distillation (MOPD) for post-training, enabling dense token-level reward from domain-specialized teachers.  
+RESULTS:  
+- Achieves 73.4% accuracy on SWE-Bench Verified and 71.7% on SWE-Bench Multilingual.  
+- Rivals DeepSeek-V3.2 and Kimi-K2 despite using only 1/2 and 1/3 of their total parameters.  
+- Attains nearly 100% success rate on long-context retrieval tasks across 32K to 256K context lengths.  
+- Reaches 73.4% on SWE-Bench Verified and 71.7% on SWE-Bench Multilingual, establishing it as the leading open-source model for software engineering.  
+- Achieves up to 3.6 acceptance length and 2.6× decoding speedup using speculative decoding with three MTP layers.  
+KEY NUMBERS:  
+- 309B: Total model parameters.  
+- 15B: Active parameters per token in MoE.  
+- 73.4%: Accuracy on SWE-Bench Verified.  
+- 3.6: Acceptance length in speculative decoding with MTP.  
+FIGURES:  
+- Figure 1: Benchmark performance comparison showing MiMo-V2-Flash against models like DeepSeek-V3.2, Kimi-K2, Claude Sonnet 4.5, GPT-5 (High), and Gemini 3.0 Pro across various tasks including SWE-Bench, AIME25, GPQA-Diamond, and HLE.  
+- Figure 2: Model architecture illustration showing hybrid blocks with interleaved SWA and GA layers, sparse MoE FFNs, and MTP blocks with dense FFNs and SWA.

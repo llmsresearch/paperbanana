@@ -237,8 +237,9 @@ class GenerativePosterPipeline:
         qr_note = ""
         if qr_url:
             qr_note = (
-                " Reserve a small clear square in a top corner for a QR code labeled "
-                "'Scan for paper & code' (a real QR is composited there afterward)."
+                " Leave a solid CYAN (#00FFFF) SQUARE (about 7% of the poster height) in a top "
+                "corner as a QR-code placeholder labeled 'Scan for paper & code' — a real "
+                "scannable QR is composited into that exact square afterward."
             )
         venue_notes = f" Venue notes: {spec.notes}" if spec.notes else ""
         w_px, h_px = self._poster_pixels(w_mm, h_mm)
@@ -282,25 +283,26 @@ class GenerativePosterPipeline:
             rounds += 1
 
         assert image is not None
-        # Composite the real/reauthored figures into the magenta slots.
+        # Finalize: upscale to print resolution, then composite the real
+        # figures and the QR onto the upscaled canvas (so figures keep their
+        # native sharpness instead of being flattened to the base DPI).
         figure_decisions: list[dict] = []
-        if selected:
-            image, figure_decisions = await self._embed_figures(
-                image,
-                selected,
-                figures,
-                w_mm,
-                w_px,
-                h_px,
-                grounding,
-                slot_block,
-                qr_note,
-                venue_notes,
-                orientation,
-                spec,
-            )
-        if qr_url:
-            image = self._composite_qr(image, qr_url)
+        image, figure_decisions = await self._finalize(
+            image,
+            selected,
+            figures,
+            w_mm,
+            h_mm,
+            w_px,
+            h_px,
+            grounding,
+            slot_block,
+            qr_note,
+            venue_notes,
+            orientation,
+            spec,
+            qr_url,
+        )
 
         png_path = self._run_dir / "poster.png"
         image.save(png_path)
@@ -340,25 +342,149 @@ class GenerativePosterPipeline:
         )
         return output
 
-    def _composite_qr(self, image: Image.Image, url: str) -> Image.Image:
-        """Paste a real scannable QR into the top-right corner."""
+    def _print_factor(self, image: Image.Image, w_mm: float, h_mm: float) -> float:
+        """Upscale factor to reach a print-grade resolution (~150 DPI),
+        capped to bound file size. Composited figures are sharp at this scale."""
+        long_in = max(w_mm, h_mm) / 25.4
+        target_long = min(150 * long_in, 7200)
+        return max(1.0, target_long / max(image.width, image.height))
+
+    def _composite_qr(self, poster: Image.Image, url: str, slot=None) -> None:
+        """Paste a scannable QR into its cyan slot (or a top corner default),
+        rendered at the slot's resolution so it stays crisp."""
         import qrcode
 
-        poster = image.convert("RGB")
-        side = max(120, int(min(poster.width, poster.height) * 0.07))
-        qr = qrcode.make(url).convert("RGB").resize((side, side))
-        pad = side // 8
-        framed = Image.new("RGB", (side + 2 * pad, side + 2 * pad), "white")
-        framed.paste(qr, (pad, pad))
-        margin = int(min(poster.width, poster.height) * 0.02)
-        poster.paste(framed, (poster.width - framed.width - margin, margin))
-        return poster
+        from paperbanana.poster.figure_embed import SlotBox
+
+        if slot is None:
+            side = max(160, int(min(poster.width, poster.height) * 0.07))
+            margin = int(min(poster.width, poster.height) * 0.02)
+            slot = SlotBox(x=poster.width - side - margin, y=margin, w=side, h=side)
+        pad = max(4, slot.w // 12)
+        qr = (
+            qrcode.make(url)
+            .convert("RGB")
+            .resize((slot.w - 2 * pad, slot.h - 2 * pad), Image.NEAREST)
+        )
+        poster.paste("white", (slot.x, slot.y, slot.x + slot.w, slot.y + slot.h))
+        poster.paste(qr, (slot.x + pad, slot.y + pad))
+
+    async def _finalize(
+        self,
+        base,
+        selected,
+        policy,
+        w_mm,
+        h_mm,
+        w_px,
+        h_px,
+        grounding,
+        slot_block,
+        qr_note,
+        venue_notes,
+        orientation,
+        spec,
+        qr_url,
+    ):
+        """Upscale to print resolution and composite real figures + QR.
+
+        Slots are detected on the base render (solid sentinel colours), then
+        scaled onto the upscaled canvas so figures keep their native
+        sharpness instead of being flattened to the base ~70 DPI.
+        """
+        from paperbanana.poster.figure_embed import (
+            SlotCountError,
+            composite_into_slot,
+            detect_qr_slot,
+            detect_slots,
+            scale_slot,
+        )
+
+        fig_slots = []
+        if selected:
+            fig_slots = detect_slots(base)
+            for _ in range(2):  # the model sometimes draws the wrong slot count
+                if len(fig_slots) == len(selected):
+                    break
+                self._emit("slot_retry", detected=len(fig_slots), expected=len(selected))
+                prompt = POSTER_PROMPT.format(
+                    orientation=orientation,
+                    width_mm=w_mm,
+                    height_mm=h_mm,
+                    venue=spec.display_name,
+                    qr_note=qr_note,
+                    venue_notes=venue_notes,
+                    slots=slot_block,
+                    grounding=grounding,
+                    repair="",
+                )
+                base = await self._image_gen.generate(
+                    prompt=prompt, width=w_px, height=h_px, quality="high"
+                )
+                fig_slots = detect_slots(base)
+            if len(fig_slots) != len(selected):
+                raise SlotCountError(
+                    f"design left {len(fig_slots)} figure slots, expected {len(selected)}; "
+                    "re-run with --figures generated or fewer figures."
+                )
+
+        qr_slot = detect_qr_slot(base) if qr_url else None
+
+        factor = self._print_factor(base, w_mm, h_mm) if (selected or qr_url) else 1.0
+        poster = (
+            base
+            if factor == 1.0
+            else base.resize(
+                (round(base.width * factor), round(base.height * factor)), Image.LANCZOS
+            )
+        )
+
+        decisions = []
+        if selected:
+            from paperbanana.poster.agents.faithfulness import FaithfulnessAgent
+            from paperbanana.poster.agents.figure_curator import FigureCuratorAgent
+            from paperbanana.poster.figure_embed import prepare_figure
+
+            kwargs = {"prompt_dir": self._prompt_dir}
+            curator = FigureCuratorAgent(self._vlm, **kwargs)
+            faithfulness = FaithfulnessAgent(self._vlm, **kwargs)
+            reauthor_template = (Path(self._prompt_dir) / "poster" / "reauthor_edit.txt").read_text(
+                encoding="utf-8"
+            )
+            palette = {
+                "primary": "#1A3A6B",
+                "secondary": "#4A6FA5",
+                "accent": "#E8A33D",
+                "background": "#FFFFFF",
+            }
+            for slot, fig in zip(fig_slots, selected):
+                up = scale_slot(slot, factor)
+                chosen, choice = await prepare_figure(
+                    fig,
+                    slot_width_mm=slot.w / base.width * w_mm,
+                    policy=policy,
+                    curator=curator,
+                    faithfulness=faithfulness,
+                    image_gen=self._image_gen,
+                    palette=palette,
+                    reauthor_template=reauthor_template,
+                    min_dpi=spec.text_rules.min_image_dpi,
+                    out_dir=self._run_dir / "paper_assets",
+                    reauthor_px=legal_gpt_image_2_dims(up.w, up.h),
+                )
+                composite_into_slot(poster, up, chosen)
+                decisions.append(choice.model_dump())
+                self._emit("figure_embedded", figure=fig.id, source=choice.source)
+
+        if qr_url:
+            self._composite_qr(poster, qr_url, scale_slot(qr_slot, factor) if qr_slot else None)
+        return poster, decisions
 
     async def _extract_figures(self, paper_pdf: Path) -> list:
         """Extract the paper's figures and select the poster-worthy ones."""
         from paperbanana.poster.agents.figure_detector import FigureDetectorAgent
         from paperbanana.poster.agents.paper_metadata import PaperMetadataAgent
-        from paperbanana.poster.figure_embed import select_poster_figures
+        from paperbanana.poster.figure_embed import rerender_high_dpi, select_poster_figures
         from paperbanana.poster.ingest import ingest_paper
 
         kwargs = {"prompt_dir": self._prompt_dir}
@@ -369,95 +495,19 @@ class GenerativePosterPipeline:
             self._run_dir / "paper_assets",
             extract_dpi=self.settings.poster_extract_dpi,
         )
-        return select_poster_figures(assets.figures)
-
-    async def _embed_figures(
-        self,
-        image,
-        selected,
-        policy,
-        w_mm,
-        w_px,
-        h_px,
-        grounding,
-        slot_block,
-        qr_note,
-        venue_notes,
-        orientation,
-        spec,
-    ):
-        """Detect magenta slots and composite each figure (real/reauthored).
-
-        Bounded regeneration if the design didn't leave the expected slot
-        count; a persistent mismatch is a hard error pointing at
-        --figures generated.
-        """
-        from paperbanana.poster.agents.faithfulness import FaithfulnessAgent
-        from paperbanana.poster.agents.figure_curator import FigureCuratorAgent
-        from paperbanana.poster.figure_embed import (
-            SlotCountError,
-            composite_into_slot,
-            detect_slots,
-            prepare_figure,
-        )
-
-        slots = detect_slots(image)
-        for _ in range(2):  # the model sometimes draws the wrong slot count
-            if len(slots) == len(selected):
-                break
-            self._emit("slot_retry", detected=len(slots), expected=len(selected))
-            prompt = POSTER_PROMPT.format(
-                orientation=orientation,
-                width_mm=w_mm,
-                height_mm=spec.dimensions.height_mm,
-                venue=spec.display_name,
-                qr_note=qr_note,
-                venue_notes=venue_notes,
-                slots=slot_block,
-                grounding=grounding,
-                repair="",
-            )
-            image = await self._image_gen.generate(
-                prompt=prompt, width=w_px, height=h_px, quality="high"
-            )
-            slots = detect_slots(image)
-        if len(slots) != len(selected):
-            raise SlotCountError(
-                f"design left {len(slots)} figure slots, expected {len(selected)}; "
-                "re-run with --figures generated or fewer figures."
-            )
-
-        kwargs = {"prompt_dir": self._prompt_dir}
-        curator = FigureCuratorAgent(self._vlm, **kwargs)
-        faithfulness = FaithfulnessAgent(self._vlm, **kwargs)
-        reauthor_template = (Path(self._prompt_dir) / "poster" / "reauthor_edit.txt").read_text(
-            encoding="utf-8"
-        )
-        palette = {
-            "primary": "#1A3A6B",
-            "secondary": "#4A6FA5",
-            "accent": "#E8A33D",
-            "background": "#FFFFFF",
-        }
-        decisions = []
-        for slot, fig in zip(slots, selected):
-            slot_width_mm = slot.w / image.width * w_mm
-            chosen, choice = await prepare_figure(
-                fig,
-                slot_width_mm,
-                policy=policy,
-                curator=curator,
-                faithfulness=faithfulness,
-                image_gen=self._image_gen,
-                palette=palette,
-                reauthor_template=reauthor_template,
-                min_dpi=spec.text_rules.min_image_dpi,
-                out_dir=self._run_dir / "paper_assets",
-            )
-            composite_into_slot(image, slot, chosen)
-            decisions.append(choice.model_dump())
-            self._emit("figure_embedded", figure=fig.id, source=choice.source)
-        return image, decisions
+        selected = select_poster_figures(assets.figures)
+        # Re-render each featured figure straight from the PDF at high DPI:
+        # vector figures become print-crisp and faithful with no model in the
+        # loop, so the curator can reuse them as-is instead of redrawing.
+        hires_dir = self._run_dir / "paper_assets" / "hires"
+        for fig in selected:
+            try:
+                fig.image_path = rerender_high_dpi(Path(paper_pdf), fig, hires_dir)
+            except Exception as exc:
+                logger.warning(
+                    "hi-res re-render failed; using base crop", figure=fig.id, error=str(exc)
+                )
+        return selected
 
     def _write_pdf(self, image: Image.Image, width_mm: float, height_mm: float, out: Path) -> None:
         """Single-page PDF at the exact physical poster size (vector page,

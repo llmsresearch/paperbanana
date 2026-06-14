@@ -1,0 +1,6 @@
+{
+  "findings": [
+    "POSTER SAYS \"At the 1.5B scale, Mamba-3 (MIMO) improves downstream language modeling accuracy by +2.2 over Transformers, +1.9 over Mamba-2, and +1.8 over GDN.\" | PAPER SAYS \"At 1.5B scale, Mamba-3 (MIMO) improves downstream language modeling accuracy by +2.2 over Transformers, +1.9 points over Mamba-2, and +1.8 over GDN\""
+  ],
+  "repair_rounds": 1
+}

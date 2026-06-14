@@ -1,9 +1,0 @@
-{
-  "findings": [
-    "POSTER SAYS \"95% Success rate of human-AI shared control in unseen near-accidental scenes.\" | PAPER SAYS \"95% success rate and almost zero cost.\"",
-    "POSTER SAYS \"ALMOST ZERO COST Safety cost in unseen near-accidental scenes under shared control.\" | PAPER SAYS \"95% success rate and almost zero cost.\"",
-    "POSTER SAYS \"95% SUCCESS RATE AND ALMOST ZERO COST Performance metrics in autonomous driving task.\" | PAPER SAYS \"95% success rate and almost zero cost.\"",
-    "POSTER SAYS \"Figure 3: We first roll out the trained policy and record the neural activities and track kinematic attributes (e.g., yaw rate and velocity).\" | PAPER SAYS \"Figure 3: We first roll out the trained policy and record the neural activities and track kinematic attributes, like yaw and velocity.\""
-  ],
-  "repair_rounds": 1
-}

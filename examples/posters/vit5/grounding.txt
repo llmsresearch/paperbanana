@@ -1,0 +1,27 @@
+TITLE: ViT-5: Vision Transformers for The Mid-2020s  
+AUTHORS: Feng Wang 1 Sucheng Ren 1 Tiezheng Zhang 1 Predrag Neskovic 1 Anand Bhattad 1 Cihang Xie 2 Alan Yuille 1  
+VENUE: unknown  
+ONE-LINE TAKEAWAY: ViT-5 achieves 84.2% top-1 accuracy on ImageNet-1k classification and 1.84 FID in diffusion generation, outperforming DeiT-III-Base (83.8%) and vanilla ViT-based SiT (2.06).  
+PROBLEM:  
+- Vision Transformer architectures have remained largely unchanged since 2021 despite major advancements in language models.  
+- There is a growing architectural gap between vision and language transformers that limits performance and generalizability.  
+METHOD:  
+- Replace LayerNorm with RMSNorm for normalization.  
+- Use LayerScale for activation scaling.  
+- Apply Rotary Positional Embeddings (RoPE) for positional encoding.  
+- Introduce register tokens with high-frequency RoPE.  
+- Avoid SwiGLU activations due to over-gating issues.  
+RESULTS:  
+- ViT-5-Base achieves 84.2% top-1 accuracy on ImageNet-1k classification.  
+- ViT-5 improves SiT diffusion model FID from 2.06 to 1.84.  
+- ViT-5-Base with post-norm achieves 84.15% top-1 accuracy (vs. 84.16% with LayerScale).  
+- ViT-5-Base with LayerScale and no SwiGLU achieves 84.16% top-1 accuracy.  
+- ViT-5-Base with registers and high-frequency RoPE achieves 84.86% top-1 accuracy.  
+KEY NUMBERS:  
+- 84.2%: top-1 accuracy of ViT-5-Base on ImageNet-1k classification.  
+- 83.8%: top-1 accuracy of DeiT-III-Base on ImageNet-1k classification.  
+- 1.84: FID score of SiT diffusion model using ViT-5 backbone.  
+- 2.06: FID score of SiT diffusion model using vanilla ViT backbone.  
+FIGURES:  
+- Figure 1: Overview of ViT-5 architecture showing modernized components including LayerScale, RMSNorm, RoPE, and register tokens.  
+- Figure 2: Demonstrates the need for absolute position embedding when using only RoPE, showing undesirable invariance in patch-flipped images.
