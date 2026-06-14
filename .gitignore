@@ -35,11 +35,14 @@ run_*/
 !data/reference_sets/**/*.jpg
 !assets/img/hero_image.png
 !assets/sponsors/atlas_cloud_logo.png
-# Example poster showcases: commit downscaled previews + text only; keep heavy
-# print artifacts (full-res PNG, multi-MB PDF) out of the repo.
+# Example poster showcases: commit the downscaled preview + the print-ready PDF;
+# keep run files (grounding, audit, full-res PNG, drafts) out of the repo.
 !examples/posters/**/preview.png
 examples/posters/**/poster_fullres.png
-examples/posters/**/poster.pdf
+examples/posters/**/poster_v*.png
+examples/posters/**/grounding.txt
+examples/posters/**/audit.json
+examples/posters/**/hires/
 
 # Reference set build artifacts (large, copyrighted PDFs)
 data/reference_sets/output/
