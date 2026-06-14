@@ -3,6 +3,8 @@
 The most impactful contribution right now is improving the reference dataset. Output quality scales directly with reference quality, so even a single well-chosen example helps. 
 However, we are open to improving distributions or adding new features. Support is always welcome.
 
+> **Before you contribute:** PaperBanana is source-available under the [Elastic License 2.0](LICENSE), and contributions are accepted under the [Contributor License Agreement](CLA.md) (rights granted to LLMs Research Inc. so the project can be maintained and relicensed cleanly). By opening a pull request you agree to the CLA.
+
 ## Contributing Reference Examples
 
 PaperBanana uses a curated set of methodology diagrams for in-context learning. We need more diverse, high-quality samples across different diagram styles and research domains.

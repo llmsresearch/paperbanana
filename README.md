@@ -15,7 +15,7 @@
         <br/>
         <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white" alt="Python 3.10+"/></a>
         <a href="https://arxiv.org/abs/2601.23265"><img src="https://img.shields.io/badge/arXiv-2601.23265-b31b1b?logo=arxiv&logoColor=white" alt="arXiv"/></a>
-        <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?logo=opensourceinitiative&logoColor=white" alt="License: MIT"/></a>
+        <a href="LICENSE"><img src="https://img.shields.io/badge/license-Elastic%202.0-blue" alt="License: Elastic 2.0"/></a>
         <br/>
         <a href="https://pydantic.dev"><img src="https://img.shields.io/badge/Pydantic-v2-e92063?logo=pydantic&logoColor=white" alt="Pydantic v2"/></a>
         <a href="https://typer.tiangolo.com"><img src="https://img.shields.io/badge/CLI-Typer-009688?logo=gnubash&logoColor=white" alt="Typer"/></a>
@@ -867,6 +867,13 @@ It is not affiliated with, endorsed by, or connected to the original authors, Go
 Peking University in any way. The implementation may differ from the original system described in the paper.
 Use at your own discretion.
 
-## License
+## License & commercial use
 
-MIT
+PaperBanana is source-available under the **[Elastic License 2.0](LICENSE)** (© LLMs Research Inc.).
+
+- ✅ Free to **use, modify, and self-host** for any purpose — research, personal, or inside a for-profit company (CLI, MCP server, your own figures/posters).
+- 🚫 You may **not** offer PaperBanana to third parties as a **hosted/managed service** that exposes its features, or remove its notices.
+- 💼 Want to run it as a hosted service or need other terms? See **[COMMERCIAL.md](COMMERCIAL.md)**.
+- "PaperBanana" is a trademark of LLMs Research Inc. — see **[TRADEMARK.md](TRADEMARK.md)**. Contributions are under the **[CLA](CLA.md)**.
+
+> Versions **0.3.0 and earlier** were released under the MIT License and remain available under those terms; the Elastic License 2.0 applies to later versions.

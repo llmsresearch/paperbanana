@@ -5,18 +5,18 @@ build-backend = "hatchling.build"
 [project]
 name = "paperbanana"
 version = "0.3.0"
-description = "Agentic framework for automated academic illustration generation"
+description = "Agentic framework for academic figures, plots, and conference posters from papers"
 readme = "README.md"
-license = "MIT"
+license = "Elastic-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [
-    { name = "PaperBanana Contributors" },
+    { name = "LLMs Research Inc." },
 ]
-keywords = ["academic", "illustration", "diagram", "paper", "ai", "agent"]
+keywords = ["academic", "illustration", "diagram", "poster", "pdf", "paper", "ai", "agent"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
