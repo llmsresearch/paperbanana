@@ -97,7 +97,7 @@ class VisualizerAgent(BaseAgent):
             )
 
     _SKETCH_GUIDED_NOTE = (
-        "Note: this plan was guided by a user-provided reference sketch; "
+        "Note: this plan was guided by a user-provided reference sketch/image; "
         "follow the description above faithfully."
     )
 

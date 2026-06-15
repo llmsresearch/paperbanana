@@ -6,9 +6,11 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+import typer
 from typer.testing import CliRunner
 
-from paperbanana.cli import app
+from paperbanana.cli import _validate_input_image_paths, app
 
 runner = CliRunner()
 HELP_TERMINAL_WIDTH = 200
@@ -1420,6 +1422,7 @@ def _strip_ansi(output: str) -> str:
 def _write_png(path: Path, size=(4, 4)) -> Path:
     from PIL import Image
 
+    path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", size, color=(0, 0, 255)).save(path)
     return path
 
@@ -1460,8 +1463,45 @@ def test_generate_image_flag_round_trip(tmp_path, monkeypatch):
 
     output = _strip_ansi(result.output)
     assert result.exit_code == 0
-    assert captured["input_images"] == [str(sketch1), str(sketch2)]
+    assert captured["input_images"] == [str(sketch1.resolve()), str(sketch2.resolve())]
     assert "Reference images:" in output
+
+
+def test_validate_input_image_paths_returns_absolute_paths(tmp_path):
+    """The reusable --image validator preserves order and normalizes paths."""
+    sketch1 = _write_png(tmp_path / "sketch1.png")
+    sketch2 = _write_png(tmp_path / "sketch2.png")
+
+    assert _validate_input_image_paths([str(sketch1), str(sketch2)]) == [
+        str(sketch1.resolve()),
+        str(sketch2.resolve()),
+    ]
+
+
+def test_validate_input_image_paths_empty_input():
+    """None or empty list validates to an empty list."""
+    assert _validate_input_image_paths(None) == []
+    assert _validate_input_image_paths([]) == []
+
+
+def test_validate_input_image_paths_rejects_missing_file(tmp_path):
+    """A nonexistent path exits with an error."""
+    with pytest.raises(typer.Exit):
+        _validate_input_image_paths([str(tmp_path / "missing.png")])
+
+
+def test_validate_input_image_paths_rejects_directory(tmp_path):
+    """A directory path exits with an error."""
+    with pytest.raises(typer.Exit):
+        _validate_input_image_paths([str(tmp_path)])
+
+
+def test_validate_input_image_paths_rejects_non_image(tmp_path):
+    """A file that is not a readable raster image exits with an error."""
+    fake = tmp_path / "fake.png"
+    fake.write_text("this is not an image", encoding="utf-8")
+    with pytest.raises(typer.Exit):
+        _validate_input_image_paths([str(fake)])
 
 
 def test_generate_image_flag_missing_file_errors(tmp_path):
@@ -1485,7 +1525,7 @@ def test_generate_image_flag_missing_file_errors(tmp_path):
 
     output = _strip_ansi(result.output)
     assert result.exit_code == 1
-    assert "Image file not found" in output
+    assert "Reference image not found" in output
 
 
 def test_generate_image_flag_rejects_non_raster_file(tmp_path):
@@ -1511,18 +1551,19 @@ def test_generate_image_flag_rejects_non_raster_file(tmp_path):
 
     output = _strip_ansi(result.output)
     assert result.exit_code == 1
-    assert "Not a valid raster image" in output
+    assert "not a readable raster image" in output
 
 
 def test_generate_image_flag_rejected_with_continue(tmp_path):
     """--image cannot be combined with --continue / --continue-run."""
     sketch = _write_png(tmp_path / "sketch.png")
 
-    result = runner.invoke(
-        app,
-        ["generate", "--continue", "--image", str(sketch)],
-    )
-
-    output = _strip_ansi(result.output)
-    assert result.exit_code == 1
-    assert "--image cannot be used with --continue" in output
+    for continue_args in (["--continue"], ["--continue-run", "run_x"]):
+        result = runner.invoke(
+            app,
+            ["generate", *continue_args, "--image", str(sketch)],
+            terminal_width=HELP_TERMINAL_WIDTH,
+        )
+        flat = result.output.replace("\n", "")
+        assert result.exit_code == 1
+        assert "--image cannot be used with --continue" in flat

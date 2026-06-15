@@ -1275,6 +1275,7 @@ class PaperBananaPipeline:
             run_id=self.run_id,
             diagram_type=input.diagram_type.value,
             context_length=len(input.source_context),
+            input_image_count=len(input.input_images),
         )
 
         # Save input for resume/continue support
@@ -1559,6 +1560,7 @@ class PaperBananaPipeline:
             save_json(
                 {
                     "retrieved_examples": [e.id for e in examples],
+                    "input_images": input.input_images,
                     "initial_description": description,
                     "optimized_description": optimized_description,
                     "planner_recommended_ratio": planner_ratio,
@@ -1806,6 +1808,7 @@ class PaperBananaPipeline:
             "external_enabled": self.settings.exemplar_retrieval_enabled,
             "external_candidate_ids": external_candidate_ids,
         }
+        metadata_dict["input_images"] = {"count": len(input.input_images)}
         if rollback_info is not None:
             metadata_dict["rollback"] = rollback_info
         if candidates_meta is not None:

@@ -134,6 +134,35 @@ def _check_pdf_dep(path: Path) -> None:
         _require_pdf_dep()
 
 
+def _validate_input_image_paths(image_paths: Optional[list[str]]) -> list[str]:
+    """Validate repeatable --image paths and return absolute path strings."""
+    if not image_paths:
+        return []
+
+    from PIL import Image, UnidentifiedImageError
+
+    validated: list[str] = []
+    for raw in image_paths:
+        path = Path(raw).expanduser()
+        if not path.exists():
+            console.print(f"[red]Error: Reference image not found: {raw}[/red]")
+            raise typer.Exit(1)
+        if not path.is_file():
+            console.print(f"[red]Error: Reference image is not a file: {raw}[/red]")
+            raise typer.Exit(1)
+        try:
+            with Image.open(path) as img:
+                img.verify()
+        except (UnidentifiedImageError, OSError, ValueError) as e:
+            console.print(
+                f"[red]Error: Reference image is not a readable raster image: {raw}[/red]"
+            )
+            console.print(f"[dim]{e}[/dim]")
+            raise typer.Exit(1)
+        validated.append(str(path.resolve()))
+    return validated
+
+
 def _require_studio_dep() -> None:
     """Raise a clean error if Gradio is not installed."""
     try:
@@ -494,26 +523,7 @@ def generate(
         raise typer.Exit(1)
 
     # Validate reference/sketch images before any pipeline work starts.
-    input_images: list[str] = []
-    if image:
-        from PIL import Image as PILImage
-        from PIL import UnidentifiedImageError
-
-        for image_path in image:
-            img_file = Path(image_path)
-            if not img_file.is_file():
-                console.print(f"[red]Error: Image file not found: {image_path}[/red]")
-                raise typer.Exit(1)
-            try:
-                with PILImage.open(img_file) as im:
-                    im.verify()
-            except (UnidentifiedImageError, OSError, ValueError):
-                console.print(
-                    f"[red]Error: Not a valid raster image (e.g. PNG, JPEG, WebP): "
-                    f"{image_path}[/red]"
-                )
-                raise typer.Exit(1)
-            input_images.append(str(img_file))
+    input_images = _validate_input_image_paths(image)
 
     _valid_categories = {
         "agent_reasoning",

@@ -80,7 +80,9 @@ class PlannerAgent(BaseAgent):
         if user_images:
             # Appended pre-format so the prompt recorder captures it; the note
             # is brace-free, keeping str.format() on the template intact.
-            template += "\n\n" + self._format_user_image_note(len(user_images))
+            template += "\n\n" + self._format_user_image_note(
+                len(user_images), offset=len(example_images)
+            )
         # Inject supported ratios into the prompt template
         ratios_str = ", ".join(supported_ratios) if supported_ratios else "1:1, 16:9"
         prompt = self.format_prompt(
@@ -258,16 +260,27 @@ class PlannerAgent(BaseAgent):
         return images
 
     @staticmethod
-    def _format_user_image_note(count: int) -> str:
+    def _format_user_image_note(count: int, offset: int = 0) -> str:
         """Label for user-provided reference/sketch images attached to the prompt."""
-        return (
-            "## User-Provided Reference/Sketch\n"
-            f"The final {count} attached image(s), after the reference example images, "
-            "are user-provided reference/sketch images (e.g. a hand-drawn sketch, "
-            "whiteboard photo, or a prior version of the figure). Use them as guidance "
-            "for the layout and content of the target diagram while staying faithful "
-            "to the source text."
-        )
+        if count <= 0:
+            return ""
+        if count == 1:
+            positions = f"attached image {offset + 1}"
+        else:
+            positions = f"attached images {offset + 1}-{offset + count}"
+        lines = [
+            "## User-Provided Reference/Sketch Images",
+            (
+                f"The final {count} attached image(s) ({positions}) are user-provided "
+                "reference/sketch images (e.g. a hand-drawn sketch, whiteboard photo, "
+                "or a prior version of the figure). Any earlier attached images are "
+                "retrieved reference examples. Use the user-provided images as guidance "
+                "for layout and content while staying faithful to the source text."
+            ),
+        ]
+        for i in range(count):
+            lines.append(f"- User reference/sketch image {i + 1}: attached image {offset + 1 + i}")
+        return "\n".join(lines)
 
     def _load_input_images(self, paths: list[str]) -> list:
         """Load user-provided reference/sketch images from local paths.
