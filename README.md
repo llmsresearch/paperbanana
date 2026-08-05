@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.llmsresearch%2Fpaperbanana.svg)](https://mcptoplist.com/server/io.github.llmsresearch%2Fpaperbanana)
+
 <!-- mcp-name: io.github.llmsresearch/paperbanana -->
 <table align="center" width="100%" style="border: none; border-collapse: collapse;">
   <tr>
