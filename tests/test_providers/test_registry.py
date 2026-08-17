@@ -106,6 +106,49 @@ def test_create_atlas_vlm():
     assert getattr(vlm, "_base_url") == "https://api.atlascloud.ai/v1"
 
 
+def test_create_azure_foundry_vlm():
+    """Microsoft Foundry uses an explicit deployment and endpoint."""
+    settings = Settings(
+        vlm_provider="azure_foundry",
+        vlm_model="gpt-4o",
+        azure_foundry_api_key="test-key",
+        azure_foundry_base_url="https://example.cognitiveservices.azure.com/openai/v1",
+        azure_foundry_vlm_deployment="gpt-4o-deployment",
+    )
+    vlm = ProviderRegistry.create_vlm(settings)
+    assert vlm.name == "azure_foundry"
+    assert vlm.model_name == "gpt-4o-deployment"
+    assert getattr(vlm, "_base_url") == (
+        "https://example.cognitiveservices.azure.com/openai/v1"
+    )
+
+
+def test_create_azure_foundry_image_provider():
+    settings = Settings(
+        image_provider="azure_foundry_image",
+        image_model="gpt-image-2",
+        azure_foundry_api_key="test-key",
+        azure_foundry_base_url="https://example.cognitiveservices.azure.com/openai/v1",
+        azure_foundry_image_deployment="gpt-image-2",
+    )
+    provider = ProviderRegistry.create_image_gen(settings)
+    assert provider.name == "azure_foundry_image"
+    assert provider.model_name == "gpt-image-2"
+
+
+def test_azure_foundry_reuses_existing_openai_environment_aliases():
+    """Existing Azure OpenAI endpoint/key settings remain compatible."""
+    settings = Settings(
+        vlm_provider="azure_foundry",
+        vlm_model="gpt-4o",
+        openai_api_key="test-key",
+        openai_base_url="https://example.cognitiveservices.azure.com/openai/v1",
+    )
+    vlm = ProviderRegistry.create_vlm(settings)
+    assert vlm.name == "azure_foundry"
+    assert vlm.model_name == "gpt-4o"
+
+
 def test_create_atlas_imagen_gen():
     """Atlas image provider uses Atlas-specific image settings."""
     settings = Settings(

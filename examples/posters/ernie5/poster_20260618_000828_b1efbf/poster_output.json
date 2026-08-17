@@ -1,0 +1,60 @@
+{
+  "run_dir": "examples/posters/ernie5/poster_20260618_000828_b1efbf",
+  "png_path": "examples/posters/ernie5/poster_20260618_000828_b1efbf/poster.png",
+  "pdf_path": "examples/posters/ernie5/poster_20260618_000828_b1efbf/poster.pdf",
+  "venue": "iclr",
+  "venue_spec_year": 2026,
+  "size_mm": [
+    1189.0,
+    841.0
+  ],
+  "figures_policy": "auto",
+  "grounding": "TITLE: ERNIE 5.0 Technical Report  \nAUTHORS: ERNIE Team, Baidu  \nONE-LINE TAKEAWAY: ERNIE 5.0 is the first publicly disclosed production-scale trillion-parameter unified autoregressive foundation model that supports both multimodal understanding and generation across text, image, video, and audio.  \n- Existing models often restrict output to text-centric formats, limiting multimodal interaction capabilities.  \n- Late-fusion designs decouple multimodal generation from understanding and hinder deep cross-modal integration.  \n- Unified autoregressive backbone with ultra-sparse Mixture-of-Experts (MoE) architecture.  \n- Modality-agnostic expert routing based on unified token representations.  \n- Next-Group-of-Tokens Prediction objective for joint training of all modalities.  \n- Elastic training paradigm enabling a single pre-training run to produce sub-models with varying depths, widths, and sparsity.  \n- Multi-stage post-training combining supervised fine-tuning (SFT) and unified multimodal reinforcement learning (UMRL).  \n- ERNIE 5.0 achieves strong and balanced performance across multiple modalities.  \n- Reducing routing top-k to 25% during inference yields over 15% decoding speedup with only minor accuracy loss.  \n- Elastic training preserves near-full performance using only 53.7% activated parameters and 35.8% total parameters.  \n- 15% decoding speedup: achieved by reducing routing top-k to 25% during inference.  \n- 53.7% activated parameters: fraction of parameters used in elastic sub-models while preserving near-full performance.  \n- 35.8% total parameters: fraction of full model size used in elastic sub-models.  \n- Trillion-parameter: size of ERNIE 5.0, making it the first publicly disclosed production-scale unified autoregressive model.  \n- Figure 1: Architecture of ERNIE 5.0 showing shared backbone, modality-specific encoders/decoders, and ultra-sparse MoE with modality-agnostic routing.",
+  "audit_findings": [],
+  "repair_rounds": 1,
+  "figure_decisions": [
+    {
+      "figure_id": "fig1",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig2",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig3",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    }
+  ],
+  "compliance": {
+    "venue": "iclr",
+    "year": 2026,
+    "checks": [
+      {
+        "id": "page_size",
+        "status": "pass",
+        "value": "1189x841mm",
+        "threshold": "<= 1900x900mm",
+        "detail": "ICLR 2026 (main conference) size rule (mode=max)"
+      },
+      {
+        "id": "orientation",
+        "status": "pass",
+        "value": "landscape",
+        "threshold": "landscape",
+        "detail": "ICLR 2026 (main conference) orientation rule"
+      },
+      {
+        "id": "print_dpi",
+        "status": "pass",
+        "value": "150 DPI at 47in",
+        "threshold": ">= 100 DPI",
+        "detail": "full-poster raster resolution at physical size"
+      }
+    ]
+  },
+  "cost_usd": 0.12
+}

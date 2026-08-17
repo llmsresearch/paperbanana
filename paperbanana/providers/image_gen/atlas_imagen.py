@@ -87,6 +87,23 @@ class AtlasImageGen(ImageGenProvider):
             return "1536x1024"
         return "1024x1536"
 
+    #: Aspect ratios accepted by the Google async image models (nano-banana / imagen).
+    _NATIVE_RATIOS = {
+        "1:1": 1.0, "5:4": 1.25, "4:3": 4 / 3, "3:2": 1.5, "16:9": 16 / 9, "21:9": 21 / 9,
+        "4:5": 0.8, "3:4": 0.75, "2:3": 2 / 3, "9:16": 9 / 16,
+    }
+
+    def _uses_native_aspect(self) -> bool:
+        """Google's async image models (nano-banana, imagen) take aspect_ratio +
+        resolution instead of gpt-image-2's fixed `size` strings, and support up
+        to 4k — so a poster base can be rendered at full print detail."""
+        m = self._model.lower()
+        return any(tag in m for tag in ("nano-banana", "imagen", "/gemini"))
+
+    def _nearest_native_ratio(self, width: int, height: int) -> str:
+        target = width / max(height, 1)
+        return min(self._NATIVE_RATIOS, key=lambda r: abs(self._NATIVE_RATIOS[r] - target))
+
     def _build_prompt(
         self,
         prompt: str,
@@ -140,12 +157,20 @@ class AtlasImageGen(ImageGenProvider):
             "prompt": self._build_prompt(prompt, negative_prompt, width, height, aspect_ratio),
             "enable_base64_output": False,
             "enable_sync_mode": False,
-            "size": self._size_string(width, height, aspect_ratio),
         }
+        if self._uses_native_aspect():
+            # nano-banana / imagen: native aspect_ratio + up-to-4k resolution, so
+            # the poster base is print-detailed (not capped at gpt-image-2's 1536px).
+            payload["aspect_ratio"] = aspect_ratio or self._nearest_native_ratio(width, height)
+            payload["resolution"] = "4k"
+            payload["output_format"] = "png"
+            payload["media_resolution"] = "high"
+        else:
+            payload["size"] = self._size_string(width, height, aspect_ratio)
+            if quality:
+                payload["quality"] = quality
         if seed is not None:
             payload["seed"] = seed
-        if quality:
-            payload["quality"] = quality
 
         response = await client.post("/model/generateImage", json=payload)
         response.raise_for_status()

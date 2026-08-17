@@ -33,9 +33,37 @@ _MIN_SLOT_AREA_FRAC = 0.004
 _MIN_QR_AREA_FRAC = 0.0006
 #: Crops below this long-edge (px) are too low-res to feature legibly.
 _MIN_FIGURE_LONG_PX = 500
-#: Cover-fit a figure (cropping overflow) only when the cropped fraction is small.
-_COVER_CROP_TOLERANCE = 0.12
+#: Cover-fit a figure (cropping overflow) up to this fraction before letterboxing.
+#: Slots are aspect-matched to the figure (see slot_spec), so the residual
+#: mismatch is small; keep this conservative so we never clip axis labels.
+_COVER_CROP_TOLERANCE = 0.15
 FigureSource = Literal["real", "reauthored"]
+
+
+def trim_whitespace(im: Image.Image, pad_frac: float = 0.01) -> Image.Image:
+    """Crop near-white margins so the actual figure fills its slot.
+
+    Extracted crops include caption/whitespace padding; trimming to the
+    content bounding box (with a small margin) keeps figures from looking
+    tiny inside an oversized slot.
+    """
+    from PIL import ImageChops
+
+    rgb = im.convert("RGB")
+    bg = Image.new("RGB", rgb.size, (255, 255, 255))
+    diff = ImageChops.difference(rgb, bg)
+    # tolerate off-white/JPEG noise: threshold the difference
+    bbox = diff.point(lambda p: 255 if p > 12 else 0).getbbox()
+    if not bbox:
+        return im
+    pad = round(min(im.width, im.height) * pad_frac)
+    box = (
+        max(0, bbox[0] - pad),
+        max(0, bbox[1] - pad),
+        min(im.width, bbox[2] + pad),
+        min(im.height, bbox[3] + pad),
+    )
+    return im.crop(box)
 
 
 class FigureChoice(BaseModel):
@@ -113,10 +141,12 @@ def slot_spec(figures: list[PaperFigure]) -> str:
     return (
         f"Leave EXACTLY {len(figures)} solid bright magenta (#FF00FF) rectangles as FIGURE "
         "PLACEHOLDERS — do not draw any figure, chart, or diagram yourself, only the magenta "
-        "boxes (the real figures are composited in afterward). Make these figures PROMINENT: "
-        "each box LARGE and integrated next to the section it supports (NOT crammed into one "
-        "thin strip), sized to EXACTLY the stated aspect ratio with no padding inside the box "
-        "so the figure fills it edge-to-edge:\n" + "\n".join(lines)
+        "boxes (the real figures are composited in afterward). Figures are the centerpiece of a "
+        "poster: make these boxes BIG — they should together occupy roughly 40-55% of the poster "
+        "area, with the method/architecture diagram the single LARGEST visual. Place each box "
+        "next to the section it supports (do NOT cram them into one thin strip at the bottom), and "
+        "size each to EXACTLY the stated aspect ratio with no inner padding so the figure fills it "
+        "edge-to-edge:\n" + "\n".join(lines)
     )
 
 
@@ -214,7 +244,7 @@ async def prepare_figure(
     is kept whenever reauthoring is unnecessary or fails the gate — the
     paper's own figure is faithful by definition.
     """
-    crop = Image.open(figure.image_path).convert("RGB")
+    crop = trim_whitespace(Image.open(figure.image_path).convert("RGB"))
     if policy == "real":
         return crop, FigureChoice(figure_id=figure.id, source="real", reason="policy=real")
 
@@ -251,6 +281,7 @@ async def prepare_figure(
             caption=figure.caption,
         )
         if verdict.verdict == "pass":
+            reauthored = trim_whitespace(reauthored)
             reauthored.save(out_dir / f"{figure.id}_reauthored.png")
             return reauthored, FigureChoice(
                 figure_id=figure.id, source="reauthored", reason=decision.reason

@@ -36,6 +36,19 @@ class DetectedRegion(BaseModel):
 _REGIONS_ADAPTER: TypeAdapter[list[DetectedRegion]] = TypeAdapter(list[DetectedRegion])
 
 
+def _normalize_regions(data: Any) -> Any:
+    if not isinstance(data, dict):
+        return data
+    bbox = data.get("bbox")
+    if not data or (
+        data.get("figure_number") is None
+        and data.get("caption") is None
+        and (bbox is None or bbox == [] or bbox == [0, 0, 0, 0])
+    ):
+        return []
+    return [data]
+
+
 class FigureDetectorAgent(BaseAgent):
     """Detects figure/table regions and captions on a rendered page."""
 
@@ -64,7 +77,8 @@ class FigureDetectorAgent(BaseAgent):
                 response_format="json",
                 temperature=temperature,
             )
-            data = extract_json(raw)
+            raw = raw or ""
+            data = _normalize_regions(extract_json(raw))
             if isinstance(data, list):
                 try:
                     regions = _REGIONS_ADAPTER.validate_python(data)

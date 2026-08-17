@@ -144,6 +144,15 @@ def test_effective_vlm_model_atlas_override():
     assert settings.effective_vlm_model == "qwen-turbo"
 
 
+def test_effective_vlm_model_azure_foundry_deployment():
+    settings = Settings(
+        vlm_provider="azure_foundry",
+        vlm_model="fallback",
+        azure_foundry_vlm_deployment="gpt-4o",
+    )
+    assert settings.effective_vlm_model == "gpt-4o"
+
+
 def test_effective_image_model_gemini_override():
     """Gemini image model override is used when provider is google_imagen."""
     settings = Settings(

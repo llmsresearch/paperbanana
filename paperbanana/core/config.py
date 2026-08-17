@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    azure_foundry_api_key: Optional[str] = Field(
+        default=None, alias="AZURE_FOUNDRY_API_KEY"
+    )
     atlascloud_api_key: Optional[str] = Field(default=None, alias="ATLASCLOUD_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
     google_base_url: Optional[str] = Field(default=None, alias="GOOGLE_BASE_URL")
@@ -173,6 +176,15 @@ class Settings(BaseSettings):
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
     openai_vlm_model: Optional[str] = Field(default=None, alias="OPENAI_VLM_MODEL")
     openai_image_model: Optional[str] = Field(default=None, alias="OPENAI_IMAGE_MODEL")
+    azure_foundry_base_url: Optional[str] = Field(
+        default=None, alias="AZURE_FOUNDRY_BASE_URL"
+    )
+    azure_foundry_vlm_deployment: Optional[str] = Field(
+        default=None, alias="AZURE_FOUNDRY_VLM_DEPLOYMENT"
+    )
+    azure_foundry_image_deployment: Optional[str] = Field(
+        default=None, alias="AZURE_FOUNDRY_IMAGE_DEPLOYMENT"
+    )
     atlascloud_base_url: str = Field(
         default="https://api.atlascloud.ai/v1",
         alias="ATLASCLOUD_BASE_URL",
@@ -211,6 +223,8 @@ class Settings(BaseSettings):
             return self.google_vlm_model
         if self.vlm_provider == "openai" and self.openai_vlm_model:
             return self.openai_vlm_model
+        if self.vlm_provider == "azure_foundry" and self.azure_foundry_vlm_deployment:
+            return self.azure_foundry_vlm_deployment
         if self.vlm_provider == "atlas" and self.atlascloud_vlm_model:
             return self.atlascloud_vlm_model
         if self.vlm_provider == "bedrock" and self.bedrock_vlm_model:
@@ -224,6 +238,11 @@ class Settings(BaseSettings):
             return self.google_image_model
         if self.image_provider == "openai_imagen" and self.openai_image_model:
             return self.openai_image_model
+        if (
+            self.image_provider == "azure_foundry_image"
+            and self.azure_foundry_image_deployment
+        ):
+            return self.azure_foundry_image_deployment
         if self.image_provider == "atlas_imagen" and self.atlascloud_image_model:
             return self.atlascloud_image_model
         if self.image_provider == "bedrock_imagen" and self.bedrock_image_model:

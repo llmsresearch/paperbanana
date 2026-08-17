@@ -125,3 +125,4 @@ class OpenAIVLM(VLMProvider):
                 output_tokens=getattr(usage, "completion_tokens", 0),
             )
         return text
+

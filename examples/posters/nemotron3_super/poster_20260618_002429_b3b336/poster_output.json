@@ -1,0 +1,62 @@
+{
+  "run_dir": "examples/posters/nemotron3_super/poster_20260618_002429_b3b336",
+  "png_path": "examples/posters/nemotron3_super/poster_20260618_002429_b3b336/poster.png",
+  "pdf_path": "examples/posters/nemotron3_super/poster_20260618_002429_b3b336/poster.pdf",
+  "venue": "neurips",
+  "venue_spec_year": 2025,
+  "size_mm": [
+    1219.2,
+    914.4
+  ],
+  "figures_policy": "auto",
+  "grounding": "TITLE: Nemotron 3 Super: Open, Efficient Mixture-of-Experts Hybrid Mamba-Transformer Model for Agentic Reasoning  \nAUTHORS: NVIDIA  \nONE-LINE TAKEAWAY: Nemotron 3 Super achieves up to 2.2× and 7.5× higher inference throughput than GPT-OSS-120B and Qwen3.5-122B, respectively, while achieving comparable accuracy on common benchmarks.  \n- Large language models (LLMs) face trade-offs between accuracy, inference cost, and latency.  \n- Existing Mixture-of-Experts (MoE) architectures often neglect hardware constraints like memory bandwidth and communication overhead during inference.  \n- Uses a hybrid Mamba-Attention architecture with sparse LatentMoE scaling.  \n- Incorporates Multi-Token Prediction (MTP) layers for speculative decoding and inference acceleration.  \n- Pre-trains in NVFP4 precision with a 2-phase training process on 25 trillion tokens.  \n- Employs a periodic hybrid interleaving pattern of Mamba and attention layers.  \n- Achieves up to 2.2× higher inference throughput than GPT-OSS-120B.  \n- Achieves up to 7.5× higher inference throughput than Qwen3.5-122B.  \n- Supports up to 1 million context length.  \n- Achieves 94.7% accuracy on HMMT Feb25 (Math) benchmark.  \n- Achieves 60.5% accuracy on SWE-Bench (Coding) benchmark.  \n- 120 billion total parameters (12 billion active).  \n- 25 trillion pre-training tokens.  \n- 2.2× inference throughput improvement over GPT-OSS-120B.  \n- 7.5× inference throughput improvement over Qwen3.5-122B.  \n- Figure 1 shows accuracy and throughput comparisons with GPT-OSS-120B and Qwen3.5-122B, highlighting higher throughput at comparable accuracy.  \n- Figure 2 illustrates the layer pattern of Nemotron 3 Super, showing hybrid Mamba-Attention and LatentMoE configuration.  \n- Figure 3 compares standard MoE vs. LatentMoE architectures, demonstrating reduced routing and weight loads through latent space projection.",
+  "audit_findings": [
+    "POSTER SAYS \"120 billion total parameters (12 billion active)\" | PAPER SAYS \"120.6B total parameters, maintaining a constrained active budget of 12.7B parameters (12.1B excluding embeddings) per forward pass\""
+  ],
+  "repair_rounds": 1,
+  "figure_decisions": [
+    {
+      "figure_id": "fig1",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig2",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig4",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    }
+  ],
+  "compliance": {
+    "venue": "neurips",
+    "year": 2025,
+    "checks": [
+      {
+        "id": "page_size",
+        "status": "pass",
+        "value": "1219x914mm",
+        "threshold": "<= 2438x1219mm",
+        "detail": "NeurIPS 2025 (main conference) size rule (mode=max)"
+      },
+      {
+        "id": "orientation",
+        "status": "pass",
+        "value": "landscape",
+        "threshold": "any",
+        "detail": "NeurIPS 2025 (main conference) orientation rule"
+      },
+      {
+        "id": "print_dpi",
+        "status": "pass",
+        "value": "150 DPI at 48in",
+        "threshold": ">= 100 DPI",
+        "detail": "full-poster raster resolution at physical size"
+      }
+    ]
+  },
+  "cost_usd": 0.09
+}

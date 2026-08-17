@@ -33,6 +33,10 @@ _API_KEY_HINTS = {
         "  2. Set the environment variable:\n\n"
         "  export OPENAI_API_KEY=your-key-here"
     ),
+    "AZURE_FOUNDRY_API_KEY": (
+        "AZURE_FOUNDRY_API_KEY not found. Set it to the key for the configured "
+        "Microsoft Foundry resource, or map your existing Azure OpenAI key to this variable."
+    ),
     "ATLASCLOUD_API_KEY": (
         "ATLASCLOUD_API_KEY not found.\n\n"
         "To fix this:\n"
@@ -127,6 +131,22 @@ class ProviderRegistry:
                 model=settings.atlascloud_vlm_model or settings.vlm_model,
                 base_url=settings.atlascloud_base_url,
             )
+        elif provider == "azure_foundry":
+            key = settings.azure_foundry_api_key or settings.openai_api_key
+            base_url = settings.azure_foundry_base_url or settings.openai_base_url
+            deployment = settings.azure_foundry_vlm_deployment or settings.vlm_model
+            _validate_api_key(key, "AZURE_FOUNDRY_API_KEY")
+            if not base_url:
+                raise ValueError("AZURE_FOUNDRY_BASE_URL is required")
+            if not deployment:
+                raise ValueError("AZURE_FOUNDRY_VLM_DEPLOYMENT is required")
+            from paperbanana.providers.vlm.azure_foundry import AzureFoundryVLM
+
+            return AzureFoundryVLM(
+                api_key=key,
+                deployment=deployment,
+                base_url=base_url,
+            )
         elif provider == "bedrock":
             _validate_bedrock_auth(settings.aws_region, settings.aws_profile)
             from paperbanana.providers.vlm.bedrock import BedrockVLM
@@ -190,7 +210,8 @@ class ProviderRegistry:
         else:
             raise ValueError(
                 "Unknown VLM provider: "
-                f"{provider}. Available: gemini, openrouter, openai, atlas, openai_local, "
+                f"{provider}. Available: gemini, openrouter, openai, azure_foundry, atlas, "
+                "openai_local, "
                 f"bedrock, anthropic, ollama, claude_code, litellm"
             )
 
@@ -236,6 +257,28 @@ class ProviderRegistry:
                 model=settings.openai_image_model or settings.image_model,
                 base_url=settings.openai_base_url,
             )
+        elif provider == "azure_foundry_image":
+            key = settings.azure_foundry_api_key or settings.openai_api_key
+            base_url = settings.azure_foundry_base_url or settings.openai_base_url
+            deployment = (
+                settings.azure_foundry_image_deployment
+                or settings.openai_image_model
+                or settings.image_model
+            )
+            _validate_api_key(key, "AZURE_FOUNDRY_API_KEY")
+            if not base_url:
+                raise ValueError("AZURE_FOUNDRY_BASE_URL is required")
+            if not deployment:
+                raise ValueError("AZURE_FOUNDRY_IMAGE_DEPLOYMENT is required")
+            from paperbanana.providers.image_gen.azure_foundry_image import (
+                AzureFoundryImageGen,
+            )
+
+            return AzureFoundryImageGen(
+                api_key=key,
+                deployment=deployment,
+                base_url=base_url,
+            )
         elif provider == "atlas_imagen":
             _validate_api_key(settings.atlascloud_api_key, "ATLASCLOUD_API_KEY")
             from paperbanana.providers.image_gen.atlas_imagen import AtlasImageGen
@@ -258,5 +301,5 @@ class ProviderRegistry:
             raise ValueError(
                 f"Unknown image provider: {provider}. "
                 "Available: none, google_imagen, openrouter_imagen, "
-                "openai_imagen, atlas_imagen, bedrock_imagen"
+                "openai_imagen, azure_foundry_image, atlas_imagen, bedrock_imagen"
             )

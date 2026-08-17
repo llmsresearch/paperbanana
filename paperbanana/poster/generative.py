@@ -34,6 +34,15 @@ logger = structlog.get_logger()
 FigurePolicy = Literal["auto", "real", "generated"]
 #: Largest edge (px) we ask the image provider for before its budget clamp.
 _TARGET_LONG_EDGE_PX = 4000
+#: Figures are a poster's centerpiece. We hold the design to a measured bar:
+#: the magenta figure slots must together cover at least this fraction of the
+#: poster, and the single largest must cover at least the second — otherwise we
+#: regenerate the design with numeric feedback (not patch the small output).
+_FIG_AREA_TARGET = 0.35
+_FIG_MAX_TARGET = 0.15
+#: Total design generations (1 initial + this many regenerations) we'll spend
+#: getting the slot COUNT right and the figures PROMINENT before giving up.
+_MAX_LAYOUT_ROUNDS = 3
 
 GROUND_PROMPT = """Extract ONLY facts present in this paper, to build a FAITHFUL poster.
 Output plain text with these labeled fields (invent nothing; if unknown write 'unknown'):
@@ -51,11 +60,21 @@ FIGURES: short list of what the paper's real figures show
 {paper}"""
 
 POSTER_PROMPT = """A complete, professionally designed ACADEMIC CONFERENCE POSTER, {orientation},
-physical size {width_mm:.0f}mm x {height_mm:.0f}mm, print quality, that a researcher would be proud
-to present at {venue}. Confident, varied color scheme appropriate to the topic (NOT a generic
-navy+orange template). Bold title band, clear section headers, strong visual hierarchy, LARGE
-readable text and LARGE dominant figures/charts, emphasized big result numbers. Fill the whole
-canvas - no large empty areas. Must read clearly from 2 meters.{qr_note}{venue_notes}
+print quality, that a researcher would be proud to present at {venue}. Confident, varied color
+scheme appropriate to the topic (NOT a generic navy+orange template); restrained palette of ~4
+colors with a single accent, vivid color confined to the figures. Typically a 3-column layout
+flowing problem -> method -> results, with a bold title band and clear section headers.
+The METHOD / ARCHITECTURE diagram is the CENTERPIECE: it must be the single LARGEST element on the
+poster, placed prominently (center or upper area), clearly larger than any other figure, chart, or
+text block. Other figures and result charts are SECONDARY and smaller. Result numbers belong in a
+COMPACT results strip or small highlight boxes — do NOT let big numbers or a "key numbers" sidebar
+dominate or rival the architecture diagram. LARGE readable text, strong visual hierarchy; the
+poster should read clearly from 2 meters. Let the layout BREATHE — generous margins and balanced
+whitespace around blocks; do NOT cram every region or stretch elements to fill space.
+The poster shows ONLY the paper's scientific content: title, authors, the sections below, figures,
+and result numbers. Do NOT print any poster dimensions, physical size, DPI, file format, color
+profile (e.g. CMYK), page/print specifications, or mounting/printing instructions anywhere on the
+poster — those are production settings, never poster content.{qr_note}
 {slots}
 Use ONLY these verified facts. Do NOT invent any model name, dataset, baseline, shot-count, or
 number that is not listed here. Every number on the poster must match these exactly:
@@ -99,6 +118,35 @@ _AUDIT_OK_MARKERS = (
     "matches the paper",
     "consistent with the paper",
 )
+
+
+#: Grounding field values that mean "the paper didn't state this" — they must
+#: never reach the design prompt, or the model prints them verbatim (e.g. a
+#: literal "Venue: unknown" on the poster). Same failure mode as printing the
+#: physical dimensions: a production/extraction placeholder leaking onto content.
+_PLACEHOLDER_VALUES = {
+    "unknown", "n/a", "na", "none", "not stated", "not specified",
+    "not available", "not provided", "tbd", "",
+}
+
+
+def _strip_unknown_fields(grounding: str) -> str:
+    """Drop labeled grounding fields whose value is a 'not-stated' placeholder.
+
+    The grounding step writes ``VENUE: unknown`` (etc.) when a fact is absent;
+    feeding that into the design prompt makes the image model render the word
+    'unknown' on the poster. Removing the whole line leaves the model nothing
+    to print for the missing fact.
+    """
+    kept = []
+    for line in grounding.splitlines():
+        if ":" in line:
+            _, _, value = line.partition(":")
+            norm = value.strip().strip("\"'.").lower()
+            if norm in _PLACEHOLDER_VALUES:
+                continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def _real_findings(audit_raw: str) -> list[str]:
@@ -231,6 +279,9 @@ class GenerativePosterPipeline:
         grounding = await self._vlm.generate(
             prompt=GROUND_PROMPT.format(paper=paper_text), temperature=0.0, max_tokens=1500
         )
+        # Strip 'unknown'/not-stated placeholders so the model never renders them
+        # as poster content (e.g. a literal "Venue: unknown").
+        grounding = _strip_unknown_fields(grounding)
         (self._run_dir / "grounding.txt").write_text(grounding, encoding="utf-8")
         self._emit("grounding_complete")
 
@@ -241,7 +292,6 @@ class GenerativePosterPipeline:
                 "corner as a QR-code placeholder labeled 'Scan for paper & code' — a real "
                 "scannable QR is composited into that exact square afterward."
             )
-        venue_notes = f" Venue notes: {spec.notes}" if spec.notes else ""
         w_px, h_px = self._poster_pixels(w_mm, h_mm)
 
         audit_findings: list[str] = []
@@ -251,11 +301,8 @@ class GenerativePosterPipeline:
         for attempt in range(repair_rounds + 1):
             prompt = POSTER_PROMPT.format(
                 orientation=orientation,
-                width_mm=w_mm,
-                height_mm=h_mm,
                 venue=spec.display_name,
                 qr_note=qr_note,
-                venue_notes=venue_notes,
                 slots=slot_block,
                 grounding=grounding,
                 repair=repair_block,
@@ -298,7 +345,6 @@ class GenerativePosterPipeline:
             grounding,
             slot_block,
             qr_note,
-            venue_notes,
             orientation,
             spec,
             qr_url,
@@ -342,6 +388,28 @@ class GenerativePosterPipeline:
         )
         return output
 
+    def _layout_feedback(self, slots, selected, total_frac, max_frac, count_ok) -> str:
+        """Numeric correction appended to the prompt when the design's figure
+        placeholders are wrong in count or too small. The image model doesn't
+        honor abstract size words, so we feed it the measured gap and a concrete
+        target — the same generate/measure/repair loop as the faithfulness audit."""
+        parts = ["\n\nREVISION — your previous attempt failed the figure layout requirements:"]
+        if not count_ok:
+            parts.append(
+                f"- You drew {len(slots)} magenta figure placeholder(s); EXACTLY {len(selected)} "
+                "are required, one per figure listed above."
+            )
+        if total_frac < _FIG_AREA_TARGET or max_frac < _FIG_MAX_TARGET:
+            parts.append(
+                f"- The figure placeholders were FAR TOO SMALL: they covered only "
+                f"{total_frac * 100:.0f}% of the poster (largest just {max_frac * 100:.0f}%). "
+                "Figures are the centerpiece of a poster. Make the magenta boxes MUCH larger — "
+                f"together at least {int(_FIG_AREA_TARGET * 100 + 15)}% of the poster area, with "
+                "the method/architecture box the single LARGEST element on the poster. Shrink the "
+                "text blocks and remove empty space for room; do not put figures in thin strips."
+            )
+        return "\n".join(parts)
+
     def _print_factor(self, image: Image.Image, w_mm: float, h_mm: float) -> float:
         """Upscale factor to reach a print-grade resolution (~150 DPI),
         capped to bound file size. Composited figures are sharp at this scale."""
@@ -381,7 +449,6 @@ class GenerativePosterPipeline:
         grounding,
         slot_block,
         qr_note,
-        venue_notes,
         orientation,
         spec,
         qr_url,
@@ -402,24 +469,37 @@ class GenerativePosterPipeline:
 
         fig_slots = []
         if selected:
+            # Generate -> MEASURE figure prominence -> regenerate with feedback.
+            # Figure size is otherwise an uncontrolled emergent property of the
+            # image model; we hold it to a measured bar (same generate/verify
+            # pattern as the faithfulness audit), instead of patching the output.
+            area = base.width * base.height
             fig_slots = detect_slots(base)
-            for _ in range(2):  # the model sometimes draws the wrong slot count
-                if len(fig_slots) == len(selected):
+            for attempt in range(_MAX_LAYOUT_ROUNDS):
+                total_frac = sum(s.w * s.h for s in fig_slots) / area
+                max_frac = max((s.w * s.h for s in fig_slots), default=0) / area
+                count_ok = len(fig_slots) == len(selected)
+                prominent = total_frac >= _FIG_AREA_TARGET and max_frac >= _FIG_MAX_TARGET
+                if count_ok and prominent:
                     break
-                self._emit("slot_retry", detected=len(fig_slots), expected=len(selected))
-                prompt = POSTER_PROMPT.format(
-                    orientation=orientation,
-                    width_mm=w_mm,
-                    height_mm=h_mm,
-                    venue=spec.display_name,
-                    qr_note=qr_note,
-                    venue_notes=venue_notes,
-                    slots=slot_block,
-                    grounding=grounding,
-                    repair="",
+                if attempt == _MAX_LAYOUT_ROUNDS - 1:
+                    break
+                feedback = self._layout_feedback(
+                    fig_slots, selected, total_frac, max_frac, count_ok
+                )
+                self._emit(
+                    "layout_retry",
+                    attempt=attempt,
+                    detected=len(fig_slots),
+                    expected=len(selected),
+                    figure_area=round(total_frac, 2),
                 )
                 base = await self._image_gen.generate(
-                    prompt=prompt, width=w_px, height=h_px, quality="high"
+                    prompt=POSTER_PROMPT.format(
+                        orientation=orientation, venue=spec.display_name, qr_note=qr_note,
+                        slots=slot_block, grounding=grounding, repair=feedback,
+                    ),
+                    width=w_px, height=h_px, quality="high",
                 )
                 fig_slots = detect_slots(base)
             if len(fig_slots) != len(selected):
@@ -427,6 +507,9 @@ class GenerativePosterPipeline:
                     f"design left {len(fig_slots)} figure slots, expected {len(selected)}; "
                     "re-run with --figures generated or fewer figures."
                 )
+            final_frac = sum(s.w * s.h for s in fig_slots) / area
+            if final_frac < _FIG_AREA_TARGET:
+                self._emit("figures_undersized", figure_area=round(final_frac, 2))
 
         qr_slot = detect_qr_slot(base) if qr_url else None
 

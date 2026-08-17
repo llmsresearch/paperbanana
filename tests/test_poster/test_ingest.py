@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from paperbanana.poster.agents.figure_detector import DetectedRegion, FigureDetectorAgent
 from paperbanana.poster.agents.paper_metadata import PaperMetadataAgent
@@ -157,6 +158,52 @@ async def test_ingest_bad_detection_json_raises(paper_pdf: Path, tmp_path: Path)
             PaperMetadataAgent(vlm, prompt_dir=str(PROMPT_DIR)),
             tmp_path / "out",
         )
+
+
+async def test_figure_detector_retries_null_content():
+    class NullThenEmptyVLM:
+        calls = 0
+
+        async def generate(self, **kwargs):
+            self.calls += 1
+            return None if self.calls == 1 else "[]"
+
+    vlm = NullThenEmptyVLM()
+    detector = FigureDetectorAgent(vlm, prompt_dir=str(PROMPT_DIR))
+
+    regions = await detector.run(Image.new("RGB", (100, 100)), page_number=1)
+
+    assert regions == []
+    assert vlm.calls == 2
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        "{}",
+        json.dumps(
+            {
+                "kind": "figure",
+                "figure_number": None,
+                "caption": None,
+                "bbox": [0, 0, 0, 0],
+            }
+        ),
+        _page2_detection()[1:-1],
+    ],
+)
+async def test_ingest_normalizes_azure_object_detection(
+    paper_pdf: Path, tmp_path: Path, response: str
+):
+    vlm = _MockVLM(_metadata_response(), {1: "{}", 2: response})
+    assets = await ingest_paper(
+        paper_pdf,
+        FigureDetectorAgent(vlm, prompt_dir=str(PROMPT_DIR)),
+        PaperMetadataAgent(vlm, prompt_dir=str(PROMPT_DIR)),
+        tmp_path / "out",
+    )
+
+    assert len(assets.figures) == (1 if "synthetic figure" in response else 0)
 
 
 async def test_ingest_missing_pdf_raises(tmp_path: Path):

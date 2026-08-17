@@ -1,0 +1,62 @@
+{
+  "run_dir": "examples/posters/kimi_k2_5/poster_20260617_235355_7ad3fa",
+  "png_path": "examples/posters/kimi_k2_5/poster_20260617_235355_7ad3fa/poster.png",
+  "pdf_path": "examples/posters/kimi_k2_5/poster_20260617_235355_7ad3fa/poster.pdf",
+  "venue": "neurips",
+  "venue_spec_year": 2025,
+  "size_mm": [
+    1219.2,
+    914.4
+  ],
+  "figures_policy": "auto",
+  "grounding": "TITLE: KIMI K2.5: VISUAL AGENTIC INTELLIGENCE  \nAUTHORS: Kimi Team  \nONE-LINE TAKEAWAY: Kimi K2.5 achieves state-of-the-art results across coding, vision, reasoning, and agentic tasks with Agent Swarm reducing latency by up to 4.5× over single-agent baselines.  \n- Sequential agent execution leads to linear scaling of inference time, causing high latency and limiting task complexity.  \n- Existing multimodal models often suffer from modality conflict and poor cross-modal generalization.  \n- Joint text-vision pre-training with early fusion at a constant low ratio (10%) throughout training.  \n- Zero-vision SFT using only text data to activate visual reasoning and tool use.  \n- Joint text-vision reinforcement learning (RL) that enhances both modalities simultaneously.  \n- Agent Swarm framework enabling dynamic decomposition of complex tasks into parallel subtasks.  \n- Parallel-Agent Reinforcement Learning (PARL) where only the orchestrator is updated during training.  \n- Agent Swarm reduces inference latency by up to 4.5× compared to single-agent baselines.  \n- Agent Swarm improves item-level F1 from 72.8% to 79.0% in wide-search scenarios.  \n- Vision RL improves MMLU-Pro from 84.7% to 86.4%.  \n- Vision RL improves GPQA-Diamond from 84.3% to 86.4%.  \n- Vision RL improves LongBench v2 from 56.7% to 58.9%.  \n- 4.5×: Latency reduction by Agent Swarm over single-agent baselines.  \n- 79.0%: Item-level F1 improvement with Agent Swarm in wide-search scenarios.  \n- 86.4%: MMLU-Pro accuracy after vision RL.  \n- 86.4%: GPQA-Diamond accuracy after vision RL.  \n- Figure 1: Main results of Kimi K2.5 across multiple domains.  \n- Figure 2: Vision RL training curves showing performance improvement on vision benchmarks starting from zero-vision SFT.  \n- Figure 3: Architecture of Agent Swarm with a trainable orchestrator creating specialized frozen subagents.  \n- Figure 4: Performance progression showing cumulative reward increase as the orchestrator learns parallelization strategies.",
+  "audit_findings": [
+    "POSTER SAYS \"Item-level F1 improvement with Agent Swarm in wide-search scenarios. 79.0%\" | PAPER SAYS \"In wide-search scenarios, Agent Swarm reduces inference latency by up to 4.5× while improving item-level F1 from 72.8% to 79.0% compared to single-agent baselines.\""
+  ],
+  "repair_rounds": 1,
+  "figure_decisions": [
+    {
+      "figure_id": "fig1",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig2",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig3",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    }
+  ],
+  "compliance": {
+    "venue": "neurips",
+    "year": 2025,
+    "checks": [
+      {
+        "id": "page_size",
+        "status": "pass",
+        "value": "1219x914mm",
+        "threshold": "<= 2438x1219mm",
+        "detail": "NeurIPS 2025 (main conference) size rule (mode=max)"
+      },
+      {
+        "id": "orientation",
+        "status": "pass",
+        "value": "landscape",
+        "threshold": "any",
+        "detail": "NeurIPS 2025 (main conference) orientation rule"
+      },
+      {
+        "id": "print_dpi",
+        "status": "pass",
+        "value": "150 DPI at 48in",
+        "threshold": ">= 100 DPI",
+        "detail": "full-poster raster resolution at physical size"
+      }
+    ]
+  },
+  "cost_usd": 0.12
+}

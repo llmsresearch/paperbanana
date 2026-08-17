@@ -1,0 +1,62 @@
+{
+  "run_dir": "examples/posters/step3_5_flash/poster_20260618_010829_ecc33d",
+  "png_path": "examples/posters/step3_5_flash/poster_20260618_010829_ecc33d/poster.png",
+  "pdf_path": "examples/posters/step3_5_flash/poster_20260618_010829_ecc33d/poster.pdf",
+  "venue": "iclr",
+  "venue_spec_year": 2026,
+  "size_mm": [
+    1189.0,
+    841.0
+  ],
+  "figures_policy": "auto",
+  "grounding": "TITLE: Step 3.5 Flash: Open Frontier-Level Intelligence with 11B Active Parameters  \nAUTHORS: StepFun Team  \nVENUE: AIME 2025  \nONE-LINE TAKEAWAY: Step 3.5 Flash achieves frontier-level intelligence with only 11B active parameters (196B MoE), matching leading models like GPT-5.2 xHigh and Gemini 3.0 Pro on reasoning and agentic tasks.  \n- Agentic systems require low latency for real-time interaction, but long-context inference is computationally expensive.  \n- Current post-training methods struggle with scalable reinforcement learning and efficient expert iteration in sparse Mixture-of-Experts models.  \n- Uses a sparse Mixture-of-Experts (MoE) architecture with 196B total parameters and 11B active per token.  \n- Employs hybrid attention with 3:1 ratio of Sliding Window Attention (SWA) to Full Attention.  \n- Implements Multi-Token Prediction (MTP-3) for speculative decoding to reduce latency.  \n- Applies head-wise gated attention and GQA-8 for hardware-aligned efficiency.  \n- Uses Metropolis Independence Sampling-Filtered Policy Optimization (MIS-PO) for stable RL training.  \n- Achieves 85.4% accuracy on IMO-AnswerBench.  \n- Achieves 86.4% accuracy on LiveCodeBench-v6 (2024.08–2025.05).  \n- Achieves 88.2% accuracy on 𝜏2-Bench.  \n- Achieves 69.0% accuracy on BrowseComp (with Context Manage).  \n- Achieves 51.0% accuracy on Terminal-Bench 2.0.  \n- 11B: active parameters during inference (out of 196B total).  \n- 85.4%: accuracy on IMO-AnswerBench.  \n- 88.2%: accuracy on 𝜏2-Bench.  \n- 170 tokens/s: inference speed on Hopper GPUs during first week on OpenRouter.  \n- Figure 1: Shows Step 3.5 Flash's performance across multiple benchmarks compared to leading models, highlighting its high accuracy with minimal active parameters.",
+  "audit_findings": [
+    "POSTER SAYS \"Step 3.5 Flash achieves frontier-level intelligence with only 11B active parameters (196B MoE), matching leading models like GPT-5.2 xHigh and Gemini 3.0 Pro on reasoning and agentic tasks.\" | PAPER SAYS \"Step 3.5 Flash achieves competitive performance with leading frontier models and systems across a broad range of reasoning and agentic benchmarks, despite 11B active parameters.\""
+  ],
+  "repair_rounds": 1,
+  "figure_decisions": [
+    {
+      "figure_id": "fig1",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig2",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig3",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    }
+  ],
+  "compliance": {
+    "venue": "iclr",
+    "year": 2026,
+    "checks": [
+      {
+        "id": "page_size",
+        "status": "pass",
+        "value": "1189x841mm",
+        "threshold": "<= 1900x900mm",
+        "detail": "ICLR 2026 (main conference) size rule (mode=max)"
+      },
+      {
+        "id": "orientation",
+        "status": "pass",
+        "value": "landscape",
+        "threshold": "landscape",
+        "detail": "ICLR 2026 (main conference) orientation rule"
+      },
+      {
+        "id": "print_dpi",
+        "status": "pass",
+        "value": "150 DPI at 47in",
+        "threshold": ">= 100 DPI",
+        "detail": "full-poster raster resolution at physical size"
+      }
+    ]
+  },
+  "cost_usd": 0.09
+}

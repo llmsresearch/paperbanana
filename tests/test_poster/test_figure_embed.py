@@ -78,3 +78,22 @@ def test_composite_fills_slot_and_replaces_magenta():
     assert px[2] > px[0]  # bluish
     # aspect preserved (4:3 fig in 4:3 slot fills it)
     assert poster.getpixel((110, 110)) != SENTINEL_RGB
+
+
+def test_trim_whitespace_crops_margins():
+    from paperbanana.poster.figure_embed import trim_whitespace
+
+    img = Image.new("RGB", (1000, 600), "white")
+    # a 200x100 dark content block offset from the corner
+    for x in range(400, 600):
+        for y in range(250, 350):
+            img.putpixel((x, y), (20, 20, 20))
+    trimmed = trim_whitespace(img, pad_frac=0.0)
+    assert 190 <= trimmed.width <= 210 and 90 <= trimmed.height <= 110
+
+
+def test_trim_whitespace_allwhite_noop():
+    from paperbanana.poster.figure_embed import trim_whitespace
+
+    img = Image.new("RGB", (300, 200), "white")
+    assert trim_whitespace(img).size == (300, 200)

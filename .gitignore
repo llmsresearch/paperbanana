@@ -82,3 +82,16 @@ CLAUDE.md
 .venv/
 .env
 uv.lock
+
+# Research corpus: third-party clones and a scraped poster corpus (~390 MB).
+research/posters/
+research/bolei_awesome_posters/
+research/poster_template/
+research/source_papers/
+research/*.parquet
+
+# Intermediate poster renders. Only poster.pdf and the small metadata files are
+# kept per generated example.
+examples/posters/*/poster_*/poster.png
+examples/posters/*/poster_*/poster_v*.png
+examples/posters/*/poster_*/paper_assets/

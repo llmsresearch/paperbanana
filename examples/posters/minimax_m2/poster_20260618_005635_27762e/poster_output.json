@@ -1,0 +1,67 @@
+{
+  "run_dir": "examples/posters/minimax_m2/poster_20260618_005635_27762e",
+  "png_path": "examples/posters/minimax_m2/poster_20260618_005635_27762e/poster.png",
+  "pdf_path": "examples/posters/minimax_m2/poster_20260618_005635_27762e/poster.pdf",
+  "venue": "icml",
+  "venue_spec_year": 2026,
+  "size_mm": [
+    1219.2,
+    914.4
+  ],
+  "figures_policy": "auto",
+  "grounding": "TITLE: The MiniMax-M2 Series: Mini Activations Unleashing Max Real-World Intelligence  \nVENUE: arXiv:2605.26494v1 [cs.AI] 26 May 2026  \nONE-LINE TAKEAWAY: MiniMax-M2.7 achieves frontier-tier performance on agentic coding, reasoning, and office-task benchmarks with only 9.8B activated parameters per token, competing with larger closed-weight models.  \n- Agentic workflows require long-horizon tasks that create efficiency and cost bottlenecks during training and inference.  \n- Deployment in real-world settings demands solving complex, high-stakes tasks like production software engineering and knowledge-intensive automation.  \n- Agent-driven data pipelines for agentic coding, cowork, reasoning, and knowledge tasks using executable workspaces and artifact-aligned rewards.  \n- Forge, an agent-native RL system supporting white-box and black-box agents with windowed-FIFO scheduling, prefix-tree merging, and inference optimization.  \n- Mixture-of-Experts (MoE) architecture with 229.9B total parameters and 9.8B activated per token using sigmoid gating and fine-grained experts.  \n- Multi-Token Prediction (MTP) module expanded to K=3 for speculative decoding during inference.  \n- Self-evolution in M2.7: autonomous triage of failed training runs and modification of its own agent scaffold.  \n- M2.7 scores 56.2 on SWE-bench Pro, 76.5 on SWE-bench Multilingual, 52.7 on Multi-SWE-bench, and 57.0 on Terminal-Bench 2.0.  \n- On agentic cowork, M2.7 reaches 62.7 on MM Claw, 77.8 on BrowseComp, 50.0 on GDPval-AA, and 46.3 on Toolathlon.  \n- On reasoning & knowledge, M2.7 posts 94.2 on AIME 2026 and 89.8 on GPQA-Diamond.  \n- M2.7 is competitive with GPT-5.4 (57.7), Opus 4.6 (75.4), and Sonnet 4.6 (64.2) despite having only ~10B activated parameters.  \n- M2.7 autonomously modifies its own agent scaffold and performs self-improvement on ML-engineering tasks.  \n- 229.9B: total parameters in the M2 model.  \n- 9.8B: number of activated parameters per token in M2.  \n- 56.2: SWE-bench Pro score of M2.7.  \n- 57.7: SWE-bench Pro score of GPT-5.4 (benchmark comparison).  \n- Figure 1 shows performance of MiniMax-M2.7 versus closed-weight frontier baselines across agentic coding, agentic cowork, and reasoning & knowledge benchmarks.",
+  "audit_findings": [
+    "POSTER SAYS \"M2.7 SWE-bench Pro 56.2\" | PAPER SAYS \"M2.7 SWE Bench Pro 56.2\"",
+    "POSTER SAYS \"M2.7 Multi-SWE-bench 52.7\" | PAPER SAYS \"M2.7 Multi-SWE Bench 52.7\"",
+    "POSTER SAYS \"M2.7 MM Claw 62.7\" | PAPER SAYS \"M2.7 MM-ClawBench 62.7\"",
+    "POSTER SAYS \"SWE-bench Pro Benchmark Comparison M2.7 56.2\" | PAPER SAYS \"M2.7 SWE Bench Pro 56.2\"",
+    "POSTER SAYS \"SWE-bench Pro Benchmark Comparison GPT-5.4 57.7\" | PAPER SAYS \"GPT 5.4 57.7\"",
+    "POSTER SAYS \"MiniMax-M2.7 achieves frontier-tier performance on agentic coding, reasoning, and office-task benchmarks with only 9.8B activated parameters per token, competing with larger closed-weight models.\" | PAPER SAYS \"With only ∼10 B activated parameters, MiniMax-M2.7 remains competitive with substantially larger and more compute-intensive systems.\""
+  ],
+  "repair_rounds": 1,
+  "figure_decisions": [
+    {
+      "figure_id": "fig1",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig2",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    },
+    {
+      "figure_id": "fig3",
+      "source": "real",
+      "reason": "reauthor not faithful/available"
+    }
+  ],
+  "compliance": {
+    "venue": "icml",
+    "year": 2026,
+    "checks": [
+      {
+        "id": "page_size",
+        "status": "pass",
+        "value": "1219x914mm",
+        "threshold": "<= 1829x914mm",
+        "detail": "ICML 2026 (main conference) size rule (mode=max)"
+      },
+      {
+        "id": "orientation",
+        "status": "pass",
+        "value": "landscape",
+        "threshold": "landscape",
+        "detail": "ICML 2026 (main conference) orientation rule"
+      },
+      {
+        "id": "print_dpi",
+        "status": "pass",
+        "value": "150 DPI at 48in",
+        "threshold": ">= 100 DPI",
+        "detail": "full-poster raster resolution at physical size"
+      }
+    ]
+  },
+  "cost_usd": 0.09
+}

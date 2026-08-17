@@ -49,6 +49,15 @@ PanelRole = Literal[
     "custom",
 ]
 
+PaperArchetype = Literal[
+    "method",
+    "empirical",
+    "system",
+    "dataset",
+    "theory",
+    "analysis",
+]
+
 #: Roles with structural meaning; everything else is presentational.
 STRUCTURAL_ROLES = frozenset({"header", "qr"})
 
@@ -512,6 +521,15 @@ class Storyboard(BaseModel):
     """Content agent output: panel plan plus layout hints."""
 
     panels: list[StoryboardPanel] = Field(min_length=1)
+    archetype: PaperArchetype = "method"
+    primary_visual_panel_id: Optional[str] = Field(
+        default=None,
+        description="Panel that carries the paper's main visual argument",
+    )
+    secondary_visual_panel_ids: list[str] = Field(
+        default_factory=list,
+        description="Evidence panels that must remain visibly prominent after the primary visual",
+    )
     columns: int = Field(default=3, ge=1, le=6)
     qr_url: Optional[str] = None
     takeaway: Optional[str] = Field(
@@ -535,6 +553,17 @@ class Storyboard(BaseModel):
         ids = [p.id for p in self.panels]
         if len(ids) != len(set(ids)):
             raise ValueError(f"duplicate storyboard panel ids: {ids}")
+        if self.primary_visual_panel_id is not None and self.primary_visual_panel_id not in ids:
+            raise ValueError(
+                f"primary visual panel '{self.primary_visual_panel_id}' is not in storyboard"
+            )
+        unknown_secondary = set(self.secondary_visual_panel_ids) - set(ids)
+        if unknown_secondary:
+            raise ValueError(
+                f"secondary visual panels are not in storyboard: {sorted(unknown_secondary)}"
+            )
+        if self.primary_visual_panel_id in self.secondary_visual_panel_ids:
+            raise ValueError("primary visual panel cannot also be a secondary visual panel")
         for panel in self.panels:
             for fid in panel.figure_ids:
                 if fid.startswith("new:") and fid[4:] not in self.new_figure_briefs:
