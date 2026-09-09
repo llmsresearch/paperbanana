@@ -5,8 +5,8 @@ from __future__ import annotations
 import builtins
 from pathlib import Path
 
-import click
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from paperbanana.cli import _check_pdf_dep, _require_pdf_dep, app
@@ -39,7 +39,7 @@ def block_gradio(monkeypatch):
 
 
 def test_require_pdf_dep_exits_when_fitz_missing(block_fitz):
-    with pytest.raises(click.exceptions.Exit) as exc_info:
+    with pytest.raises(typer.Exit) as exc_info:
         _require_pdf_dep()
     assert exc_info.value.exit_code == 1
 
