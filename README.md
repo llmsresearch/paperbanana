@@ -50,6 +50,10 @@ An agentic framework for generating publication-quality academic diagrams and st
   <img src="assets/img/hero_image.png" alt="PaperBanana takes paper as input and provide diagram as output" style="max-width: 960px; width: 100%; height: auto;"/>
 </p>
 
+**Learning LLM concepts?** We also publish [211 free visual cards](https://github.com/llmsresearch/llm-flashcards)
+on attention, RAG, agents, and inference.
+[Read them online](https://llmsresearch.com/cards?utm_source=github&utm_medium=referral&utm_campaign=visual_library&utm_content=paperbanana-readme).
+
 ## Atlas Cloud
 
 <p align="center">
