@@ -544,3 +544,52 @@ async def test_vanilla_mode_single_visualizer_call(tmp_path):
     assert entry_result.iteration_count == 1
     assert report.mode == "vanilla"
     assert report.split == "test"
+
+
+# ── judge provider/model separation ──────────────────────────────
+
+
+def _atlas_settings(**overrides) -> Settings:
+    kwargs = {
+        "vlm_provider": "atlas",
+        "atlascloud_api_key": "test-atlas-key",
+        "atlascloud_vlm_model": "qwen/qwen3-vl-30b-a3b-instruct",
+        "judge_vlm_provider": None,
+        "judge_vlm_model": None,
+    }
+    kwargs.update(overrides)
+    return Settings(**kwargs)
+
+
+def test_judge_factory_defaults_to_pipeline_vlm():
+    settings = _atlas_settings()
+    runner = BenchmarkRunner(settings)
+    judge = runner._default_judge_factory(settings)
+
+    assert judge.vlm.name == "atlas"
+    assert judge.vlm.model_name == "qwen/qwen3-vl-30b-a3b-instruct"
+
+
+def test_judge_factory_uses_judge_model_override():
+    settings = _atlas_settings(judge_vlm_model="Qwen/Qwen3-VL-235B-A22B-Instruct")
+    runner = BenchmarkRunner(settings)
+    judge = runner._default_judge_factory(settings)
+
+    assert judge.vlm.name == "atlas"
+    assert judge.vlm.model_name == "Qwen/Qwen3-VL-235B-A22B-Instruct"
+    # Pipeline settings are untouched.
+    assert settings.atlascloud_vlm_model == "qwen/qwen3-vl-30b-a3b-instruct"
+
+
+def test_judge_factory_uses_judge_provider_override():
+    settings = _atlas_settings(
+        judge_vlm_provider="openai",
+        judge_vlm_model="gpt-5.2",
+        openai_api_key="test-openai-key",
+        openai_vlm_model=None,
+    )
+    runner = BenchmarkRunner(settings)
+    judge = runner._default_judge_factory(settings)
+
+    assert judge.vlm.name == "openai"
+    assert judge.vlm.model_name == "gpt-5.2"
