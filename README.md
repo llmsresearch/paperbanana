@@ -24,6 +24,10 @@
     </td>
   </tr>
 </table>
+<p align="center">
+<a href="https://trendshift.io/repositories/20880?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-20880" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/20880/daily?language=Python" alt="llmsresearch%2Fpaperbanana | Trendshift" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/20880?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-20880" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/20880/weekly?language=Python" alt="llmsresearch%2Fpaperbanana | Trendshift" width="250" height="55"/></a>
+</p>
 
 ---
 
