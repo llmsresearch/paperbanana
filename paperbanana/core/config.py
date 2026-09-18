@@ -23,7 +23,7 @@ class VLMConfig(BaseSettings):
     """VLM provider configuration."""
 
     provider: str = "gemini"
-    model: str = "gemini-2.5-flash"
+    model: str = "gemini-flash-latest"
 
 
 class ImageConfig(BaseSettings):
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
 
     # Provider settings
     vlm_provider: str = Field(default="gemini", alias="VLM_PROVIDER")
-    vlm_model: str = Field(default="gemini-2.5-flash", alias="VLM_MODEL")
+    vlm_model: str = Field(default="gemini-flash-latest", alias="VLM_MODEL")
     image_provider: str = Field(default="google_imagen", alias="IMAGE_PROVIDER")
     image_model: str = Field(default="gemini-3-pro-image-preview", alias="IMAGE_MODEL")
 

@@ -4,7 +4,7 @@
 # Provider settings
 vlm:
   provider: gemini
-  model: gemini-2.5-flash
+  model: gemini-flash-latest
 
 image:
   provider: google_imagen
