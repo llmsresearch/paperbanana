@@ -3542,6 +3542,16 @@ def benchmark(
         None, "--image-provider", help="Image gen provider"
     ),
     image_model: Optional[str] = typer.Option(None, "--image-model", help="Image gen model name"),
+    judge_provider: Optional[str] = typer.Option(
+        None,
+        "--judge-provider",
+        help="VLM provider for the judge (defaults to the pipeline VLM provider)",
+    ),
+    judge_model: Optional[str] = typer.Option(
+        None,
+        "--judge-model",
+        help="VLM model for the judge (defaults to the pipeline VLM model)",
+    ),
     iterations: Optional[int] = typer.Option(
         None, "--iterations", "-n", help="Refinement iterations per entry"
     ),
@@ -3629,6 +3639,10 @@ def benchmark(
         overrides["image_provider"] = image_provider
     if image_model:
         overrides["image_model"] = image_model
+    if judge_provider:
+        overrides["judge_vlm_provider"] = judge_provider
+    if judge_model:
+        overrides["judge_vlm_model"] = judge_model
     if iterations is not None:
         overrides["refinement_iterations"] = iterations
     if auto:

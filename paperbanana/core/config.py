@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     # Benchmark settings
     benchmark_concurrency: int = 1
 
+    # Judge settings (benchmark/evaluation VLM; defaults to the pipeline VLM)
+    judge_vlm_provider: Optional[str] = Field(default=None, alias="JUDGE_VLM_PROVIDER")
+    judge_vlm_model: Optional[str] = Field(default=None, alias="JUDGE_VLM_MODEL")
+
     # API Keys (loaded from environment)
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
@@ -315,6 +319,8 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
     key_map = {
         "vlm.provider": "vlm_provider",
         "vlm.model": "vlm_model",
+        "judge.provider": "judge_vlm_provider",
+        "judge.model": "judge_vlm_model",
         "image.provider": "image_provider",
         "image.model": "image_model",
         "image.quality": "image_quality",

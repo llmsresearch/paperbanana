@@ -87,8 +87,24 @@ class ProviderRegistry:
     """Factory for creating VLM and image generation providers from config."""
 
     @staticmethod
-    def create_vlm(settings: Settings) -> VLMProvider:
-        """Create a VLM provider based on settings."""
+    def create_vlm(settings: Settings, model_override: str | None = None) -> VLMProvider:
+        """Create a VLM provider based on settings.
+
+        ``model_override`` takes precedence over both the provider-specific
+        model fields (e.g. ``atlascloud_vlm_model``) and ``vlm_model``.
+        """
+        if model_override:
+            settings = settings.model_copy(
+                update={
+                    "vlm_model": model_override,
+                    "google_vlm_model": None,
+                    "openai_vlm_model": None,
+                    "atlascloud_vlm_model": None,
+                    "bedrock_vlm_model": None,
+                    "ollama_model": None,
+                    "litellm_model": None,
+                }
+            )
         provider = settings.vlm_provider.lower()
         logger.info("Creating VLM provider", provider=provider, model=settings.effective_vlm_model)
 
