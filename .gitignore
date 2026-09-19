@@ -23,6 +23,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Local clone of the GitHub wiki (https://github.com/llmsresearch/paperbanana.wiki.git)
+wiki-temp/
+
 # Outputs and generated images
 outputs/
 run_*/
